@@ -430,6 +430,15 @@ class _WatchlistPageState extends State<WatchlistPage> {
       changePercent = ((displayPrice - basePrice) / basePrice) * 100.0;
     }
 
+    // Target Proximity Calculation (0.0 to 1.0)
+    double targetProximity = 0.5;
+    if (rule.conditionType == AlertConditionType.priceThreshold && rule.targetPrice != null && rule.targetPrice! > 0 && displayPrice != null) {
+      targetProximity = (displayPrice / rule.targetPrice!).clamp(0.0, 1.0);
+    } else if (rule.conditionType == AlertConditionType.percentChange && rule.percent != null && rule.percent! > 0 && changePercent != null) {
+      targetProximity = (changePercent.abs() / rule.percent!).clamp(0.0, 1.0);
+    }
+    final int proximityPercent = (targetProximity * 100).round();
+
     return Dismissible(
       key: Key(rule.uuid),
       direction: DismissDirection.endToStart,
@@ -438,42 +447,62 @@ class _WatchlistPageState extends State<WatchlistPage> {
         padding: const EdgeInsets.only(right: AppTokens.space20),
         decoration: BoxDecoration(
           color: AppTokens.negative,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(18),
         ),
-        child: const Icon(Icons.delete_sweep_rounded, color: Colors.white, size: 24),
+        child: const Icon(Icons.delete_sweep_rounded, color: Colors.white, size: 26),
       ),
       onDismissed: (_) => _onRuleDismissed(rule, repository),
       child: Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(18),
         child: InkWell(
           onTap: () => _openEditFlow(rule),
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(18),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: theme.colorScheme.surface,
-              borderRadius: BorderRadius.circular(14),
+              gradient: LinearGradient(
+                colors: [
+                  theme.colorScheme.surface,
+                  theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(18),
               border: Border.all(
                 color: isTriggeredOneShot
-                    ? AppTokens.warning.withValues(alpha: 0.7)
-                    : theme.dividerColor,
-                width: isTriggeredOneShot ? 1.5 : 1.0,
+                    ? AppTokens.warning.withValues(alpha: 0.75)
+                    : (rule.isActive
+                        ? theme.colorScheme.primary.withValues(alpha: 0.25)
+                        : theme.dividerColor),
+                width: isTriggeredOneShot ? 1.5 : 1.1,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.04),
-                  blurRadius: 6,
-                  offset: const Offset(0, 2),
+                  color: Colors.black.withValues(alpha: 0.12),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3),
                 ),
               ],
             ),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Row 1: Logo + Coin info & Exchange Name + Live Price + Switch
+                // === ROW 1: Hero Asset + Live Price + Switch ===
                 Row(
                   children: [
-                    CryptoIcons.buildLogo(rule.baseCurrency, size: 36),
+                    Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: theme.colorScheme.primary.withValues(alpha: 0.3),
+                          width: 1.2,
+                        ),
+                      ),
+                      child: CryptoIcons.buildLogo(rule.baseCurrency, size: 36),
+                    ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Column(
@@ -485,47 +514,49 @@ class _WatchlistPageState extends State<WatchlistPage> {
                                 child: Text(
                                   rule.pair.displayName,
                                   style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 14,
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 15,
                                     color: rule.isActive ? theme.colorScheme.onSurface : textMuted,
                                   ),
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
-                              const SizedBox(width: 4),
-                              Icon(Icons.edit_note_rounded, size: 14, color: theme.colorScheme.primary.withValues(alpha: 0.5)),
+                              if (rule.customNote != null && rule.customNote!.trim().isNotEmpty) ...[
+                                const SizedBox(width: 4),
+                                Icon(Icons.edit_note_rounded, size: 15, color: theme.colorScheme.primary),
+                              ],
                             ],
                           ),
                           const SizedBox(height: 2),
-                          Row(
-                            children: [
-                              Icon(Icons.storefront_rounded, size: 12, color: theme.colorScheme.primary),
-                              const SizedBox(width: 4),
-                              Flexible(
-                                child: Text(
-                                  _getExchangeDisplayName(rule.exchangeId, lang),
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w500,
-                                    color: rule.isActive ? textSecondary : textMuted,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.surfaceContainerHighest,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              _getExchangeDisplayName(rule.exchangeId, lang).toUpperCase(),
+                              style: TextStyle(
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.bold,
+                                color: rule.isActive ? theme.colorScheme.primary : textMuted,
+                                letterSpacing: 0.5,
                               ),
-                            ],
+                            ),
                           ),
                         ],
                       ),
                     ),
                     const SizedBox(width: 8),
+                    // Live Price Column
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Text(
                           displayPrice != null ? FormatUtils.formatPrice(displayPrice, currencySymbol: rule.counterCurrency) : '---',
                           style: TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w800,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
                             fontFamily: 'monospace',
                             color: rule.isActive
                                 ? (changePercent != null && changePercent >= 0 ? theme.colorScheme.primary : theme.colorScheme.onSurface)
@@ -533,28 +564,27 @@ class _WatchlistPageState extends State<WatchlistPage> {
                           ),
                         ),
                         if (changePercent != null)
-                          Text(
-                            '${changePercent >= 0 ? '+' : ''}${changePercent.toStringAsFixed(2)}%',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              fontFamily: 'monospace',
-                              color: changePercent >= 0 ? AppTokens.positive : AppTokens.negative,
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                            decoration: BoxDecoration(
+                              color: (changePercent >= 0 ? AppTokens.positive : AppTokens.negative).withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(5),
                             ),
-                          ),
-                        if (rule.lastCheckedAt != null)
-                          Text(
-                            _formatTimeAgo(rule.lastCheckedAt!, lang),
-                            style: TextStyle(
-                              fontSize: 9.5,
-                              color: textMuted,
+                            child: Text(
+                              '${changePercent >= 0 ? '▲ +' : '▼ '}${changePercent.toStringAsFixed(2)}%',
+                              style: TextStyle(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.bold,
+                                fontFamily: 'monospace',
+                                color: changePercent >= 0 ? AppTokens.positive : AppTokens.negative,
+                              ),
                             ),
                           ),
                       ],
                     ),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: 6),
                     Transform.scale(
-                      scale: 0.8,
+                      scale: 0.82,
                       child: isTriggeredOneShot
                           ? IconButton(
                               icon: const Icon(Icons.replay_rounded, color: AppTokens.warning),
@@ -570,109 +600,145 @@ class _WatchlistPageState extends State<WatchlistPage> {
                   ],
                 ),
 
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
 
-                // Row 2: Condition Summary Tag
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.primary.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.2)),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        rule.conditionType == AlertConditionType.priceThreshold
-                            ? Icons.flag_rounded
-                            : Icons.show_chart_rounded,
-                        size: 14,
-                        color: theme.colorScheme.primary,
-                      ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          _buildConditionSummary(rule, lang),
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w600,
-                            color: rule.isActive ? theme.colorScheme.onSurface : textMuted,
-                          ),
-                          overflow: TextOverflow.ellipsis,
+                // === ROW 2: Target Proximity Progress Gauge ===
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              rule.conditionType == AlertConditionType.priceThreshold
+                                  ? Icons.gps_fixed_rounded
+                                  : Icons.trending_up_rounded,
+                              size: 13,
+                              color: theme.colorScheme.primary,
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              _buildConditionSummary(rule, lang),
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: rule.isActive ? theme.colorScheme.onSurface.withValues(alpha: 0.9) : textMuted,
+                              ),
+                            ),
+                          ],
                         ),
+                        Text(
+                          '$proximityPercent% ${lang == 'fa' ? 'تا هدف' : 'to target'}',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            fontFamily: 'monospace',
+                            color: proximityPercent >= 85
+                                ? AppTokens.warning
+                                : theme.colorScheme.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: Stack(
+                        children: [
+                          Container(
+                            height: 3.5,
+                            width: double.infinity,
+                            color: theme.colorScheme.surfaceContainerHighest,
+                          ),
+                          FractionallySizedBox(
+                            widthFactor: targetProximity.clamp(0.05, 1.0),
+                            child: Container(
+                              height: 3.5,
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [
+                                    theme.colorScheme.primary,
+                                    proximityPercent >= 85 ? AppTokens.warning : const Color(0xFF06B6D4),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
 
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
 
-                // Row 3: Interval Tag + Baseline + Remaining Time to Next Check + Quick Check Now Button
+                // === ROW 3: Time Interval + Sound/TTS Badges + Manual Sync Button ===
                 Row(
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
                       decoration: BoxDecoration(
-                        color: theme.colorScheme.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(color: theme.dividerColor),
+                        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.7),
+                        borderRadius: BorderRadius.circular(6),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(Icons.timer_outlined, size: 11, color: theme.colorScheme.primary),
-                          const SizedBox(width: 3),
+                          const SizedBox(width: 4),
                           Text(
                             _formatInterval(rule.checkIntervalSeconds, lang),
-                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: theme.colorScheme.primary),
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (rule.basePrice != null && rule.basePrice! > 0) ...[
-                      const SizedBox(width: 8),
-                      Text(
-                        '${AppStrings.get('baseline', lang)}: ${_formatPrice(rule.basePrice!)}',
-                        style: TextStyle(fontSize: 10, color: textMuted),
-                      ),
-                    ],
-                    const SizedBox(width: 8),
-                    // Remaining Time until Next Scheduled Check
-                    Expanded(
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.hourglass_bottom_rounded,
-                            size: 11,
-                            color: rule.isActive ? theme.colorScheme.primary : textMuted,
-                          ),
-                          const SizedBox(width: 3),
-                          Flexible(
-                            child: Text(
-                              _formatNextCheckTime(rule, lang),
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w600,
-                                color: rule.isActive ? theme.colorScheme.primary : textMuted,
-                              ),
-                              overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: theme.colorScheme.primary,
                             ),
                           ),
                         ],
                       ),
                     ),
                     const SizedBox(width: 6),
+                    if (rule.ttsEnabled)
+                      Icon(Icons.record_voice_over_rounded, size: 13, color: theme.colorScheme.primary.withValues(alpha: 0.7)),
+                    if (rule.soundEnabled)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 4),
+                        child: Icon(Icons.volume_up_rounded, size: 13, color: theme.colorScheme.onSurface.withValues(alpha: 0.5)),
+                      ),
+                    const Spacer(),
+                    // Next check or last check time
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.hourglass_bottom_rounded,
+                          size: 11,
+                          color: rule.isActive ? theme.colorScheme.primary : textMuted,
+                        ),
+                        const SizedBox(width: 3),
+                        Text(
+                          _formatNextCheckTime(rule, lang),
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w500,
+                            color: rule.isActive ? theme.colorScheme.onSurface.withValues(alpha: 0.7) : textMuted,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(width: 8),
+                    // Quick Manual Check Button
                     InkWell(
                       onTap: isChecking ? null : () => _manualCheck(rule, scheduler, lang),
                       borderRadius: BorderRadius.circular(6),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
                         decoration: BoxDecoration(
-                          color: theme.colorScheme.surfaceContainerHighest,
+                          color: theme.colorScheme.primary.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: theme.dividerColor),
+                          border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.3)),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -684,11 +750,15 @@ class _WatchlistPageState extends State<WatchlistPage> {
                                 child: CircularProgressIndicator(strokeWidth: 1.5, color: theme.colorScheme.primary),
                               )
                             else
-                              Icon(Icons.refresh_rounded, size: 12, color: theme.colorScheme.primary),
-                            const SizedBox(width: 4),
+                              Icon(Icons.sync_rounded, size: 12, color: theme.colorScheme.primary),
+                            const SizedBox(width: 3),
                             Text(
                               AppStrings.get('check_now', lang),
-                              style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: theme.colorScheme.primary),
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: theme.colorScheme.primary,
+                              ),
                             ),
                           ],
                         ),

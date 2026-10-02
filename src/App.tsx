@@ -1204,108 +1204,122 @@ export default function App() {
                         const displayP = rule.lastCheckedPrice ?? rule.basePrice;
                         const changePct = rule.basePrice > 0 ? ((displayP - rule.basePrice) / rule.basePrice) * 100 : 0;
 
+                        // Proximity Calculation (0 to 100%)
+                        let targetProximity = 50;
+                        if (rule.conditionType === 'PRICE_THRESHOLD' && rule.targetValue > 0) {
+                          targetProximity = Math.min(100, Math.round((displayP / rule.targetValue) * 100));
+                        } else if (rule.conditionType === 'PERCENT_CHANGE' && rule.targetValue > 0) {
+                          const deltaPct = Math.abs(((displayP - rule.basePrice) / rule.basePrice) * 100);
+                          targetProximity = Math.min(100, Math.round((deltaPct / rule.targetValue) * 100));
+                        }
+
                         return (
                           <div
                             key={rule.uuid}
-                            className={`p-3.5 rounded-2xl border transition-all ${
+                            className={`p-4 rounded-3xl border transition-all shadow-md ${
                               isLight
-                                ? 'bg-white border-slate-200 shadow-sm'
-                                : (rule.isActive ? 'bg-slate-900/90 border-slate-800 hover:border-slate-700' : 'bg-slate-900/40 border-slate-800/40 opacity-70')
+                                ? 'bg-gradient-to-br from-white to-slate-50 border-slate-200'
+                                : (rule.isActive
+                                    ? 'bg-gradient-to-br from-slate-900/95 via-slate-900 to-slate-950 border-slate-800/90 hover:border-slate-700/80 shadow-slate-950/40'
+                                    : 'bg-slate-950/50 border-slate-900/50 opacity-60')
                             }`}
                           >
-                            {/* Top Row: Icon + Name + Market Badge + Toggle */}
-                            <div className="flex items-center justify-between mb-2.5">
-                              <div className="flex items-center gap-2.5">
-                                <img
-                                  src={iconUrl}
-                                  alt={nameFa}
-                                  className="h-10 w-10 rounded-full object-cover border border-slate-700 p-0.5 bg-slate-800"
-                                  onError={(e) => {
-                                    (e.target as any).src = 'https://cdn-icons-png.flaticon.com/512/2830/2830284.png';
-                                  }}
-                                />
+                            {/* Row 1: Hero Asset + Live Price + Switch */}
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center gap-3">
+                                <div className="relative">
+                                  <img
+                                    src={iconUrl}
+                                    alt={nameFa}
+                                    className="h-10 w-10 rounded-2xl object-cover border-2 border-slate-800/80 p-0.5 bg-slate-950 shadow-sm"
+                                    onError={(e) => {
+                                      (e.target as any).src = 'https://cdn-icons-png.flaticon.com/512/2830/2830284.png';
+                                    }}
+                                  />
+                                  <span className={`absolute -bottom-1 -right-1 h-3.5 w-3.5 rounded-full border-2 border-slate-900 ${
+                                    rule.isActive ? 'bg-emerald-500' : 'bg-slate-600'
+                                  }`} />
+                                </div>
                                 <div>
                                   <div className="flex items-center gap-1.5">
-                                    <span className="font-bold text-sm">{nameFa}</span>
-                                    <span className="text-[11px] font-mono text-slate-400">({rule.marketSymbol})</span>
+                                    <span className="font-extrabold text-sm text-white">{nameFa}</span>
+                                    <span className="text-[10px] font-mono text-slate-400">({rule.marketSymbol})</span>
                                   </div>
                                   <div className="flex items-center gap-1.5 mt-0.5">
-                                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
-                                      rule.assetCategory === 'bond' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' :
-                                      rule.assetCategory === 'forex' ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30' :
-                                      rule.assetCategory === 'stock' ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30' :
-                                      rule.assetCategory === 'commodity' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' :
-                                      'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
-                                    }`}>
+                                    <span className="px-1.5 py-0.2 rounded text-[9px] font-bold uppercase tracking-wider bg-slate-800 text-slate-300 border border-slate-700/60">
                                       {rule.exchangeName}
                                     </span>
-                                    <span className={`px-2 py-0.5 rounded border text-[10px] font-medium flex items-center gap-1 ${accentSubtleClass}`}>
-                                      <Timer className="h-3 w-3" />
-                                      <span>بررسی هر {formatInterval(rule.checkIntervalSeconds)}</span>
-                                    </span>
+                                    {rule.ttsEnabled && <Volume2 className="h-3 w-3 text-violet-400" />}
                                   </div>
                                 </div>
                               </div>
 
-                              {/* Toggle Switch */}
-                              <button
-                                onClick={() => handleToggle(rule.uuid)}
-                                className={`w-10 h-6 rounded-full transition-colors relative p-0.5 ${
-                                  rule.isActive ? (isOrange ? 'bg-orange-500' : 'bg-emerald-500') : 'bg-slate-700'
-                                }`}
-                              >
-                                <div
-                                  className={`w-5 h-5 rounded-full bg-white transition-transform ${
-                                    rule.isActive ? '-translate-x-4' : 'translate-x-0'
+                              {/* Price Column + Switch */}
+                              <div className="flex items-center gap-3">
+                                <div className="text-left">
+                                  <span className="text-base font-black font-mono tracking-tight text-white block">
+                                    {unit === '$' ? `$${displayP >= 1000 ? Math.round(displayP).toLocaleString() : (displayP < 1 ? displayP.toFixed(6) : displayP.toFixed(2))}` : `${displayP >= 1000 ? Math.round(displayP).toLocaleString() : displayP.toFixed(2)}${unit}`}
+                                  </span>
+                                  <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[10px] font-mono font-bold ${
+                                    changePct >= 0
+                                      ? 'bg-emerald-500/15 text-emerald-400'
+                                      : 'bg-rose-500/15 text-rose-400'
+                                  }`}>
+                                    {changePct >= 0 ? '▲ +' : '▼ '}{changePct.toFixed(2)}%
+                                  </span>
+                                </div>
+
+                                <button
+                                  onClick={() => handleToggle(rule.uuid)}
+                                  className={`w-9 h-5 rounded-full transition-colors relative p-0.5 ${
+                                    rule.isActive ? (isOrange ? 'bg-orange-500' : 'bg-emerald-500') : 'bg-slate-800 border border-slate-700'
                                   }`}
-                                />
-                              </button>
+                                >
+                                  <div
+                                    className={`w-4 h-4 rounded-full bg-white transition-transform ${
+                                      rule.isActive ? '-translate-x-4' : 'translate-x-0'
+                                    }`}
+                                  />
+                                </button>
+                              </div>
                             </div>
 
-                            {/* Prominent Latest Checked Price (بزرگ و بولد) */}
-                            <div className={`p-3 rounded-xl border mb-2 flex items-center justify-between ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-800'}`}>
-                              <div>
-                                <span className="text-[10px] text-slate-400 block mb-0.5">آخرین نرخ بررسی‌شده:</span>
-                                <span className="text-xl font-extrabold font-mono tracking-tight">
-                                  {unit === '$' ? `$${displayP >= 1000 ? Math.round(displayP).toLocaleString() : (displayP < 1 ? displayP.toFixed(6) : displayP.toFixed(2))}` : `${displayP >= 1000 ? Math.round(displayP).toLocaleString() : displayP.toFixed(2)}${unit}`}
-                                </span>
-                              </div>
-                              <div className="text-left">
-                                <span className={`px-2 py-1 rounded-lg border font-mono font-bold text-xs flex items-center gap-1 ${
-                                  changePct >= 0
-                                    ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
-                                    : 'bg-rose-500/10 text-rose-500 border-rose-500/20'
+                            {/* Row 2: Target Proximity Progress Gauge */}
+                            <div className="mb-3 space-y-1.5 bg-slate-950/60 p-2.5 rounded-2xl border border-slate-800/60">
+                              <div className="flex items-center justify-between text-[11px]">
+                                <div className="flex items-center gap-1.5 text-slate-300">
+                                  <Zap className="h-3.5 w-3.5 text-emerald-400" />
+                                  <span className="font-semibold">
+                                    {rule.conditionType === 'PERCENT_CHANGE'
+                                      ? `تغییر نرخ ${rule.direction === 'BOTH' ? '±' : (rule.direction === 'ABOVE' ? '+' : '-')}${rule.targetValue}%`
+                                      : `تارگت قیمت: ${unit}${rule.targetValue.toLocaleString()}`}
+                                  </span>
+                                </div>
+                                <span className={`font-mono font-bold text-[10px] ${
+                                  targetProximity >= 85 ? 'text-amber-400' : 'text-emerald-400'
                                 }`}>
-                                  {changePct >= 0 ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}
-                                  <span>{changePct >= 0 ? '+' : ''}{changePct.toFixed(2)}%</span>
+                                  {targetProximity}% تا هدف
                                 </span>
+                              </div>
+                              <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full transition-all duration-500 ${
+                                    targetProximity >= 85
+                                      ? 'bg-gradient-to-r from-emerald-500 to-amber-400'
+                                      : 'bg-gradient-to-r from-emerald-500 to-cyan-400'
+                                  }`}
+                                  style={{ width: `${Math.max(5, targetProximity)}%` }}
+                                />
                               </div>
                             </div>
 
-                            {/* Condition Banner */}
-                            <div className={`p-2 rounded-xl border mb-2 text-[11px] ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-900 border-slate-800'}`}>
-                              {rule.conditionType === 'PERCENT_CHANGE' ? (
-                                <div className="flex items-center justify-between">
-                                  <span className={`flex items-center gap-1 font-semibold ${accentClass}`}>
-                                    {rule.direction === 'BOTH' ? 'تغییر نرخ: ±' : (rule.direction === 'ABOVE' ? 'افزایش نرخ: +' : 'کاهش نرخ: -')}
-                                    <span className="font-mono">{rule.targetValue}%</span>
-                                  </span>
-                                  <span className="text-slate-400 text-[10px]">ادامه‌دار (تکرارشونده)</span>
-                                </div>
-                              ) : (
-                                <div className="flex items-center justify-between">
-                                  <span className="font-semibold text-amber-400">
-                                    نرخ هدف: {unit}{rule.targetValue.toLocaleString()}
-                                  </span>
-                                  <span className="text-slate-400 text-[10px]">یک‌بار مصرف</span>
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Rich Footer: Base Price, Last Checked, Manual Refresh & Delete */}
-                            <div className={`flex items-center justify-between text-[10px] text-slate-400 pt-2 border-t ${isLight ? 'border-slate-200' : 'border-slate-800/80'}`}>
+                            {/* Row 3: Modern Minimal Footer */}
+                            <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1">
                               <div className="flex items-center gap-2">
-                                <span>قیمت مبنا: <strong className="font-mono text-slate-300">{unit}{rule.basePrice < 1 ? rule.basePrice.toFixed(6) : rule.basePrice.toLocaleString()}</strong></span>
+                                <span className="flex items-center gap-1 text-slate-400">
+                                  <Timer className="h-3 w-3 text-slate-500" />
+                                  <span>هر {formatInterval(rule.checkIntervalSeconds)}</span>
+                                </span>
                                 <span>•</span>
                                 <span>{rule.lastCheckedAt ? formatTimeAgo(rule.lastCheckedAt) : 'در صف'}</span>
                               </div>
@@ -1314,15 +1328,15 @@ export default function App() {
                                 <button
                                   onClick={() => handleManualCheck(rule)}
                                   disabled={isChecking}
-                                  className={`px-2.5 py-1 rounded-lg ${isLight ? 'bg-slate-100 hover:bg-slate-200 text-slate-800' : 'bg-slate-800 hover:bg-slate-700 text-emerald-400'} flex items-center gap-1 text-[10px] font-semibold transition-all`}
+                                  className="px-2.5 py-1 rounded-xl bg-slate-800/90 hover:bg-slate-800 text-emerald-400 flex items-center gap-1 text-[10px] font-bold border border-slate-700/60 transition-all cursor-pointer"
                                   title="بررسی آنی قیمت"
                                 >
                                   <RefreshCw className={`h-3 w-3 ${isChecking ? 'animate-spin' : ''}`} />
-                                  <span>بررسی آنی</span>
+                                  <span>بررسی</span>
                                 </button>
                                 <button
                                   onClick={() => handleDelete(rule.uuid)}
-                                  className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                                  className="p-1 rounded-xl hover:bg-rose-500/10 text-slate-500 hover:text-rose-400 transition-all cursor-pointer"
                                   title="حذف هشدار"
                                 >
                                   <Trash2 className="h-3.5 w-3.5" />
