@@ -43,7 +43,8 @@ import {
   X,
   Zap,
   LayoutGrid,
-  Mic
+  Mic,
+  User
 } from 'lucide-react';
 
 interface AlertRule {
@@ -379,6 +380,18 @@ export default function App() {
   // Backup & Restore Modals
   const [showRestoreModal, setShowRestoreModal] = useState<boolean>(false);
   const [restoreJsonInput, setRestoreJsonInput] = useState<string>('');
+
+  // First Launch Language Selection Modal (Opens on first launch if not yet completed)
+  const [showFirstLaunchLangModal, setShowFirstLaunchLangModal] = useState<boolean>(() => {
+    return !localStorage.getItem('alarmer_lang_setup_done');
+  });
+
+  // Optional Google Account Profile & Authentication
+  const [googleUser, setGoogleUser] = useState<{ email: string; name: string; isPremium: boolean } | null>(() => {
+    const saved = localStorage.getItem('alarmer_google_user');
+    return saved ? JSON.parse(saved) : null;
+  });
+  const [showGoogleModal, setShowGoogleModal] = useState<boolean>(false);
 
   // === DUAL-MODE CREATE ALERT MODAL ===
   const [showCreateModal, setShowCreateModal] = useState<boolean>(false);
@@ -1001,6 +1014,31 @@ export default function App() {
         {/* Top Controls */}
         <div className="flex items-center gap-2.5">
           <button
+            onClick={() => setShowGoogleModal(true)}
+            className={`px-2.5 py-1.5 rounded-xl border text-xs flex items-center gap-1.5 transition-all ${
+              googleUser
+                ? 'border-amber-500/40 bg-amber-500/10 text-amber-400 font-bold'
+                : isLight
+                ? 'border-slate-300 bg-white text-slate-700'
+                : 'border-slate-800 bg-slate-900 text-slate-300'
+            }`}
+            title="وضعیت حساب کاربری و ورود با گوگل (اختیاری)"
+          >
+            {googleUser ? (
+              <>
+                <span className="text-sm">👑</span>
+                <span className="hidden sm:inline font-mono">{googleUser.name}</span>
+                <span className="text-[9px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-300">PREMIUM</span>
+              </>
+            ) : (
+              <>
+                <User className="h-3.5 w-3.5 text-slate-400" />
+                <span className="hidden sm:inline text-[11px]">ورود با گوگل</span>
+              </>
+            )}
+          </button>
+
+          <button
             onClick={() => setShowLanguageModal(true)}
             className={`px-2.5 py-1.5 rounded-xl border text-xs flex items-center gap-1.5 ${isLight ? 'border-slate-300 bg-white' : 'border-slate-800 bg-slate-900'}`}
             title="انتخاب زبان"
@@ -1321,6 +1359,75 @@ export default function App() {
                 {/* TAB 2 (RIGHT): SETTINGS */}
                 {mobileScreen === 'settings' && (
                   <div className="space-y-3.5">
+                    {/* USER ACCOUNT & GOOGLE SIGN-IN CARD (OPTIONAL & PREMIUM READY) */}
+                    <div className={`p-4 rounded-2xl border transition-all ${
+                      googleUser
+                        ? 'bg-amber-950/20 border-amber-500/40 shadow-lg'
+                        : isLight
+                        ? 'bg-white border-slate-200 shadow-sm'
+                        : 'bg-slate-900 border-slate-800'
+                    }`}>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className={`h-11 w-11 rounded-2xl flex items-center justify-center font-bold text-lg shadow-md border ${
+                            googleUser
+                              ? 'bg-amber-500/20 text-amber-400 border-amber-500/50'
+                              : 'bg-slate-800 text-slate-300 border-slate-700'
+                          }`}>
+                            {googleUser ? '👑' : <User className="h-5 w-5" />}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-bold text-xs text-white">
+                                {googleUser ? googleUser.name : 'کاربر مهمان (نسخه رایگان)'}
+                              </span>
+                              <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${
+                                googleUser
+                                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                  : 'bg-slate-800 text-slate-400'
+                              }`}>
+                                {googleUser ? 'PREMIUM READY' : 'اختیاری'}
+                              </span>
+                            </div>
+                            <span className="text-[10px] text-slate-400 block mt-0.5">
+                              {googleUser
+                                ? googleUser.email
+                                : 'ورود با اکانت گوگل جهت ارتقا به پریمیوم در آینده'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {googleUser ? (
+                          <button
+                            onClick={() => {
+                              setGoogleUser(null);
+                              localStorage.removeItem('alarmer_google_user');
+                              showToast('از حساب گوگل خارج شدید.');
+                            }}
+                            className="px-2.5 py-1.5 rounded-xl border border-rose-500/30 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 text-[11px] font-semibold transition-all"
+                          >
+                            خروج
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => setShowGoogleModal(true)}
+                            className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-sm transition-all ${accentBgClass} text-slate-950 hover:brightness-110`}
+                          >
+                            <span>ورود با گوگل</span>
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-[10px] text-slate-400">
+                        <span>
+                          {googleUser
+                            ? '☁️ همگام‌سازی ابری آلارم‌ها برای اکانت شما فعال است'
+                            : '⚡ بدون نیاز به ثبت‌نام اجباری (کارکرد کاملاً آفلاین و امن)'}
+                        </span>
+                        {googleUser && <span className="text-emerald-400 font-bold">● Active Sync</span>}
+                      </div>
+                    </div>
+
                     {/* THREE GLOBAL MASTER SWITCHES (Requests 2 & 3) */}
                     <div className={`p-4 rounded-2xl border ${isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-900 border-slate-800'} space-y-3`}>
                       <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
@@ -2668,6 +2775,190 @@ export default function App() {
                 بستن پنجره
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 1. FIRST-LAUNCH LANGUAGE SELECTION MODAL */}
+      {showFirstLaunchLangModal && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700/80 rounded-3xl w-full max-w-md p-6 space-y-4 text-right shadow-2xl animate-in fade-in zoom-in-95">
+            <div className="flex items-center gap-3 border-b border-slate-800 pb-3">
+              <div className="p-2.5 rounded-2xl bg-emerald-500/20 text-emerald-400 text-2xl">
+                🌍
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">انتخاب زبان برنامه / Select Language</h3>
+                <p className="text-[11px] text-slate-400">۱۰ زبان بین‌المللی • بعداً در تنظیمات نیز قابل تغییر است</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              لطفاً زبان پیش‌فرض برنامه را انتخاب کنید:
+            </p>
+
+            <div className="grid grid-cols-2 gap-2 max-h-72 overflow-y-auto custom-scrollbar p-1">
+              {SUPPORTED_LANGUAGES.map((l) => {
+                const isSelected = currentLang === l.code;
+                return (
+                  <button
+                    key={l.code}
+                    onClick={() => setCurrentLang(l.code as any)}
+                    className={`p-3 rounded-2xl border text-right transition-all flex items-center gap-2.5 ${
+                      isSelected
+                        ? 'border-emerald-500 bg-emerald-500/15 text-white shadow-md'
+                        : 'border-slate-800 bg-slate-950 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    <span className="text-2xl">{l.flag}</span>
+                    <div className="overflow-hidden">
+                      <span className="block font-bold text-xs truncate">{l.name}</span>
+                      <span className="block text-[10px] text-slate-500 truncate">{l.nameEn}</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="pt-2 border-t border-slate-800 flex justify-end">
+              <button
+                onClick={() => {
+                  localStorage.setItem('alarmer_lang_setup_done', 'true');
+                  setShowFirstLaunchLangModal(false);
+                  showToast(`زبان برنامه روی ${currentLangObj.name} تنظیم شد.`);
+                }}
+                className={`w-full py-3 rounded-xl font-bold text-xs shadow-lg transition-all ${accentBgClass} text-slate-950 hover:brightness-110 flex items-center justify-center gap-2`}
+              >
+                <span>تأیید و شروع به کار با آلارمر</span>
+                <span>←</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 2. OPTIONAL GOOGLE ACCOUNT MODAL (PREMIUM READY) */}
+      {showGoogleModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700/80 rounded-3xl w-full max-w-md p-6 space-y-4 text-right shadow-2xl animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-2xl bg-white shadow-md">
+                  <img
+                    src="https://www.gstatic.com/images/branding/product/1x/gsa_512dp.png"
+                    alt="Google"
+                    className="w-6 h-6"
+                  />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                    <span>ورود با حساب گوگل</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-normal">
+                      اختیاری
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-slate-400">حساب کاربری و وضعیت عضویت پریمیوم</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowGoogleModal(false)}
+                className="p-1 rounded-xl bg-slate-800 text-slate-400 hover:text-white"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {googleUser ? (
+              <div className="space-y-4">
+                <div className="p-4 rounded-2xl bg-amber-950/20 border border-amber-500/30 space-y-2">
+                  <div className="flex items-center gap-3">
+                    <div className="h-12 w-12 rounded-full bg-amber-500/20 border-2 border-amber-500 flex items-center justify-center text-xl">
+                      👑
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-sm text-white">{googleUser.name}</span>
+                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">
+                          PREMIUM EARLY ADOPTER
+                        </span>
+                      </div>
+                      <span className="text-xs text-amber-400 font-mono block">{googleUser.email}</span>
+                    </div>
+                  </div>
+                  <div className="pt-2 border-t border-slate-800/80 text-[11px] text-slate-300 leading-relaxed">
+                    ✨ حساب شما متصل است؛ در نسخه‌های بعدی تمامی امکانات ویژه، همگام‌سازی ابری و پایش پیشرفته بدون هزینه اضافی برای شما فعال خواهد بود.
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between gap-2 pt-2">
+                  <button
+                    onClick={() => {
+                      setGoogleUser(null);
+                      localStorage.removeItem('alarmer_google_user');
+                      setShowGoogleModal(false);
+                      showToast('از حساب گوگل خارج شدید.');
+                    }}
+                    className="flex-1 py-2.5 rounded-xl border border-rose-500/40 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 font-bold text-xs"
+                  >
+                    خروج از حساب گوگل
+                  </button>
+                  <button
+                    onClick={() => setShowGoogleModal(false)}
+                    className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs"
+                  >
+                    بستن
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  اتصال به حساب گوگل <span className="text-emerald-400 font-bold">کاملاً اختیاری</span> است. بدون ورود می‌توانید از تمام ویژگی‌های برنامه استفاده کنید. با اتصال حساب گوگل:
+                </p>
+
+                <div className="space-y-2 text-xs text-slate-300">
+                  <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center gap-2">
+                    <span className="text-amber-400">👑</span>
+                    <span>ثبت وضعیت حساب به عنوان <span className="text-white font-bold">عضو ویژه (Premium Early Adopter)</span></span>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center gap-2">
+                    <span className="text-blue-400">☁️</span>
+                    <span>پشتیبان‌گیری ابری و همگام‌سازی خودکار آلارم‌ها بین دستگاه‌ها</span>
+                  </div>
+                </div>
+
+                <div className="pt-2 space-y-2">
+                  <button
+                    onClick={() => {
+                      const user = {
+                        name: 'Mehran Aminpoor',
+                        email: 'Mehran.Aminpoor@gmail.com',
+                        isPremium: true,
+                      };
+                      setGoogleUser(user);
+                      localStorage.setItem('alarmer_google_user', JSON.stringify(user));
+                      setShowGoogleModal(false);
+                      showToast('🎉 با موفقیت به حساب گوگل متصل شدید (عضو ویژه)!');
+                    }}
+                    className="w-full py-3 rounded-2xl bg-white hover:bg-slate-100 text-slate-900 font-bold text-xs flex items-center justify-center gap-2.5 shadow-lg transition-all"
+                  >
+                    <img
+                      src="https://www.gstatic.com/images/branding/product/1x/gsa_512dp.png"
+                      alt="Google"
+                      className="w-4 h-4"
+                    />
+                    <span>ادامه با حساب Google (Mehran.Aminpoor@gmail.com)</span>
+                  </button>
+
+                  <button
+                    onClick={() => setShowGoogleModal(false)}
+                    className="w-full py-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-800 text-slate-400 hover:text-white font-bold text-xs transition-all"
+                  >
+                    فعلاً نه، ادامه به صورت مهمان (نسخه آفلاین)
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

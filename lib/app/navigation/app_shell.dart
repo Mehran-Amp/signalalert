@@ -5,6 +5,7 @@ import '../../core/utils/app_lifecycle_helper.dart';
 import '../../features/notifications/pages/notification_history_page.dart';
 import '../../features/settings/pages/settings_page.dart';
 import '../../features/settings/services/settings_service.dart';
+import '../../features/settings/widgets/first_launch_language_dialog.dart';
 import '../../features/watchlist/pages/watchlist_page.dart';
 
 /// App-wide Navigation Shell with custom floating center tab.
@@ -26,6 +27,16 @@ class _AppShellState extends State<AppShell> {
     WatchlistPage(),
     SettingsPage(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        FirstLaunchLanguageDialog.showIfNeeded(context);
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {

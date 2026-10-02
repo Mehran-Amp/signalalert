@@ -19,6 +19,12 @@ class AppSettings {
   final String soundName;
   final double alarmVolume;
   final int alarmDurationSec;
+  final bool hasCompletedLanguageSetup;
+  final String? userEmail;
+  final String? userDisplayName;
+  final String? userPhotoUrl;
+  final bool isPremium;
+  final String accountType; // 'guest' | 'google'
 
   const AppSettings({
     this.themePalette = AppThemePalette.darkGreen,
@@ -30,7 +36,16 @@ class AppSettings {
     this.soundName = 'alarm_siren',
     this.alarmVolume = 1.0,
     this.alarmDurationSec = 5,
+    this.hasCompletedLanguageSetup = false,
+    this.userEmail,
+    this.userDisplayName,
+    this.userPhotoUrl,
+    this.isPremium = false,
+    this.accountType = 'guest',
   });
+
+  /// Helper whether user is logged in with Google
+  bool get isSignedInWithGoogle => accountType == 'google' && userEmail != null && userEmail!.isNotEmpty;
 
   /// Resolves effective TTS voice language code ('fa', 'en', 'ar', etc.)
   String get effectiveTtsLanguage =>
@@ -46,6 +61,12 @@ class AppSettings {
     String? soundName,
     double? alarmVolume,
     int? alarmDurationSec,
+    bool? hasCompletedLanguageSetup,
+    String? userEmail,
+    String? userDisplayName,
+    String? userPhotoUrl,
+    bool? isPremium,
+    String? accountType,
   }) {
     return AppSettings(
       themePalette: themePalette ?? this.themePalette,
@@ -57,6 +78,12 @@ class AppSettings {
       soundName: soundName ?? this.soundName,
       alarmVolume: alarmVolume ?? this.alarmVolume,
       alarmDurationSec: alarmDurationSec ?? this.alarmDurationSec,
+      hasCompletedLanguageSetup: hasCompletedLanguageSetup ?? this.hasCompletedLanguageSetup,
+      userEmail: userEmail ?? this.userEmail,
+      userDisplayName: userDisplayName ?? this.userDisplayName,
+      userPhotoUrl: userPhotoUrl ?? this.userPhotoUrl,
+      isPremium: isPremium ?? this.isPremium,
+      accountType: accountType ?? this.accountType,
     );
   }
 
@@ -70,6 +97,12 @@ class AppSettings {
         'soundName': soundName,
         'alarmVolume': alarmVolume,
         'alarmDurationSec': alarmDurationSec,
+        'hasCompletedLanguageSetup': hasCompletedLanguageSetup,
+        'userEmail': userEmail,
+        'userDisplayName': userDisplayName,
+        'userPhotoUrl': userPhotoUrl,
+        'isPremium': isPremium,
+        'accountType': accountType,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) {
@@ -94,6 +127,12 @@ class AppSettings {
       soundName: (json['soundName'] as String?) ?? 'alarm_siren',
       alarmVolume: (json['alarmVolume'] as num?)?.toDouble() ?? 1.0,
       alarmDurationSec: (json['alarmDurationSec'] as int?) ?? 5,
+      hasCompletedLanguageSetup: (json['hasCompletedLanguageSetup'] as bool?) ?? false,
+      userEmail: json['userEmail'] as String?,
+      userDisplayName: json['userDisplayName'] as String?,
+      userPhotoUrl: json['userPhotoUrl'] as String?,
+      isPremium: (json['isPremium'] as bool?) ?? false,
+      accountType: (json['accountType'] as String?) ?? 'guest',
     );
   }
 

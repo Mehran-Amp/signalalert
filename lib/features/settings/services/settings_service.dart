@@ -83,4 +83,32 @@ class SettingsService extends ChangeNotifier {
   Future<void> setTtsVoiceLanguage(String voiceLang) async {
     await update(_settings.copyWith(ttsVoiceLanguage: voiceLang));
   }
+
+  Future<void> completeLanguageSetup() async {
+    await update(_settings.copyWith(hasCompletedLanguageSetup: true));
+  }
+
+  Future<void> signInWithGoogle({
+    required String email,
+    required String displayName,
+    String? photoUrl,
+  }) async {
+    await update(_settings.copyWith(
+      accountType: 'google',
+      userEmail: email,
+      userDisplayName: displayName,
+      userPhotoUrl: photoUrl,
+      isPremium: true, // Early adopter Google sign-in gets free premium perks!
+    ));
+  }
+
+  Future<void> signOut() async {
+    await update(_settings.copyWith(
+      accountType: 'guest',
+      userEmail: null,
+      userDisplayName: null,
+      userPhotoUrl: null,
+      isPremium: false,
+    ));
+  }
 }

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import '../../../core/localization/app_strings.dart';
+import '../../../core/services/google_auth_service.dart';
 import '../../../core/theme/tokens.dart';
 import '../../alert_engine/repositories/json_alert_rule_repository.dart';
 import '../../notifications/repositories/notification_repository.dart';
@@ -526,6 +527,9 @@ class _SettingsPageState extends State<SettingsPage> {
       body: ListView(
         padding: const EdgeInsets.symmetric(horizontal: AppTokens.space16, vertical: AppTokens.space20),
         children: [
+          // Section 0: User Profile & Optional Google Sign-In (Premium Ready)
+          _buildUserAccountCard(context, settingsService, settings, theme, lang, isFa),
+
           // Section 1: Languages (10 Languages)
           _buildSectionHeader(AppStrings.get('select_language', lang), theme),
           const SizedBox(height: AppTokens.space8),
@@ -1146,6 +1150,203 @@ class _SettingsPageState extends State<SettingsPage> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildUserAccountCard(
+    BuildContext context,
+    SettingsService settingsService,
+    AppSettings settings,
+    ThemeData theme,
+    String lang,
+    bool isFa,
+  ) {
+    final isSignedIn = settings.isSignedInWithGoogle;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: AppTokens.space20),
+      padding: const EdgeInsets.all(AppTokens.space16),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isSignedIn
+              ? AppTokens.warning.withValues(alpha: 0.45)
+              : theme.dividerColor,
+          width: isSignedIn ? 1.4 : 1.0,
+        ),
+        boxShadow: isSignedIn
+            ? [
+                BoxShadow(
+                  color: AppTokens.warning.withValues(alpha: 0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, 2),
+                )
+              ]
+            : null,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: isSignedIn
+                      ? AppTokens.warning.withValues(alpha: 0.15)
+                      : theme.colorScheme.surfaceContainerHighest,
+                  border: Border.all(
+                    color: isSignedIn ? AppTokens.warning : theme.dividerColor,
+                    width: 1.5,
+                  ),
+                ),
+                child: Center(
+                  child: isSignedIn
+                      ? const Text('👑', style: TextStyle(fontSize: 22))
+                      : Image.network(
+                          'https://www.gstatic.com/images/branding/product/1x/gsa_512dp.png',
+                          width: 22,
+                          height: 22,
+                          errorBuilder: (_, __, ___) => const Icon(Icons.account_circle_outlined, size: 24),
+                        ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            isSignedIn
+                                ? (settings.userDisplayName ?? 'Google User')
+                                : (isFa ? 'حساب کاربری مهمان (رایگان)' : 'Guest User (Free Plan)'),
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: theme.colorScheme.onSurface,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: isSignedIn
+                                ? AppTokens.warning.withValues(alpha: 0.2)
+                                : theme.colorScheme.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: isSignedIn ? AppTokens.warning : theme.dividerColor,
+                            ),
+                          ),
+                          child: Text(
+                            isSignedIn
+                                ? (isFa ? 'عضو طلایی' : 'PREMIUM READY')
+                                : (isFa ? 'اختیاری' : 'OPTIONAL'),
+                            style: TextStyle(
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.bold,
+                              color: isSignedIn ? AppTokens.warning : theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      isSignedIn
+                          ? (settings.userEmail ?? '')
+                          : (isFa
+                              ? 'ورود با اکانت گوگل جهت ارتقا به پریمیوم در آینده'
+                              : 'Sign in to unlock Premium & Cloud sync in future'),
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Divider(height: 1, color: theme.dividerColor),
+          const SizedBox(height: 10),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                isSignedIn
+                    ? (isFa ? '☁️ آماده پشتیبان‌گیری ابری' : '☁️ Cloud Backup Ready')
+                    : (isFa ? 'بدون نیاز به ورود اجباری' : '100% Free & Local-First'),
+                style: TextStyle(
+                  fontSize: 10.5,
+                  color: isSignedIn ? AppTokens.positive : theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              if (isSignedIn)
+                TextButton.icon(
+                  onPressed: () async {
+                    await settingsService.signOut();
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(isFa ? 'از حساب گوگل خارج شدید.' : 'Signed out of Google account.'),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    }
+                  },
+                  icon: const Icon(Icons.logout_rounded, size: 14),
+                  label: Text(
+                    isFa ? 'خروج از حساب' : 'Sign Out',
+                    style: const TextStyle(fontSize: 11),
+                  ),
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppTokens.negative,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                )
+              else
+                ElevatedButton.icon(
+                  onPressed: () async {
+                    final signedIn = await GoogleAuthService.promptGoogleSignIn(context, settingsService, lang);
+                    if (signedIn && context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(isFa ? '🎉 با موفقیت به حساب گوگل متصل شدید (عضو ویژه)!' : '🎉 Connected to Google account!'),
+                          backgroundColor: AppTokens.positive,
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    }
+                  },
+                  icon: const Icon(Icons.login_rounded, size: 15),
+                  label: Text(
+                    isFa ? 'ورود با حساب گوگل' : 'Sign In with Google',
+                    style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: theme.colorScheme.primary,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+            ],
+          ),
+        ],
       ),
     );
   }
