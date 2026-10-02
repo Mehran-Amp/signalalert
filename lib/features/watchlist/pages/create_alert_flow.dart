@@ -4,7 +4,6 @@ import '../../../core/localization/app_strings.dart';
 import '../../../core/theme/tokens.dart';
 import '../../../core/utils/crypto_icons.dart';
 import '../../alert_engine/models/alert_rule.dart';
-import '../../alert_engine/models/trigger_mode.dart';
 import '../../alert_engine/repositories/json_alert_rule_repository.dart';
 import '../../exchanges/base/crypto_catalog_data.dart';
 import '../../exchanges/base/currency_pair.dart';
@@ -1313,7 +1312,7 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
             Expanded(
               flex: 3,
               child: DropdownButtonFormField<CheckUnit>(
-                value: _checkUnit,
+                initialValue: _checkUnit,
                 decoration: InputDecoration(
                   labelText: AppStrings.get('time_unit', lang),
                   filled: true,
@@ -1589,7 +1588,7 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
                         style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
                       ),
                       value: _soundEnabled,
-                      activeColor: theme.colorScheme.primary,
+                      activeThumbColor: theme.colorScheme.primary,
                       onChanged: (val) => setState(() => _soundEnabled = val),
                     ),
                   ),
@@ -1602,7 +1601,7 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
                         style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
                       ),
                       value: _vibrationEnabled,
-                      activeColor: theme.colorScheme.primary,
+                      activeThumbColor: theme.colorScheme.primary,
                       onChanged: (val) => setState(() => _vibrationEnabled = val),
                     ),
                   ),
@@ -1649,7 +1648,7 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
                         ),
                       ),
                       value: _ttsEnabled,
-                      activeColor: theme.colorScheme.primary,
+                      activeThumbColor: theme.colorScheme.primary,
                       onChanged: (val) => setState(() => _ttsEnabled = val),
                     ),
                     if (_ttsEnabled) ...[
@@ -1702,7 +1701,6 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
   }
 
   void _showSoundPickerModal(BuildContext context, ThemeData theme, String lang) {
-    final isFa = lang == 'fa' || lang == 'ar' || lang == 'ckb';
     final isRtl = AppStrings.isRtl(lang);
 
     showModalBottomSheet(

@@ -61,6 +61,12 @@ class AlertRule extends Equatable {
   /// Helper getter for current display price
   double? get currentDisplayPrice => lastCheckedPrice ?? basePrice;
 
+  /// Helper getter for target value across various condition types
+  double? get targetValue => targetPrice ?? percent ?? deltaAbsolute ?? volumePercent;
+
+  /// Helper getter for polling time window
+  int get timeWindowSeconds => checkIntervalSeconds;
+
   /// Baseline reference volume
   final double? baseVolume;
 

@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:provider/provider.dart';
 import '../../../core/localization/app_strings.dart';
 import '../../../core/theme/tokens.dart';
 import '../../settings/services/settings_service.dart';

@@ -1,6 +1,5 @@
 import '../../../core/utils/format_utils.dart';
 import '../models/alert_rule.dart';
-import '../models/trigger_mode.dart';
 
 /// Result of evaluating an alert rule condition against current market data
 class EvaluationResult {

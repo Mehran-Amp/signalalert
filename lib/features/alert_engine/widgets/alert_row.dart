@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../../core/constants/strings.dart';
 import '../../../core/localization/app_strings.dart';
 import '../../../core/theme/tokens.dart';
 import '../../settings/services/settings_service.dart';
 import '../models/alert_rule.dart';
-import '../models/alert_type.dart';
 import 'cooldown_timer.dart';
 
 /// Single alert rule row widget with swipe-to-delete, direct toggle,
@@ -264,12 +262,10 @@ class AlertRow extends StatelessWidget {
   }
 
   String _buildConditionDescription(AlertRule rule, String lang) {
-    final target = (rule.targetValue ?? 0.0).toStringAsFixed(2);
-    final isAbove = rule.condition == ConditionType.above;
-
-    switch (rule.alertType) {
-      case AlertType.price:
-      case AlertType.priceCross:
+    switch (rule.conditionType) {
+      case AlertConditionType.priceThreshold:
+        final target = (rule.targetPrice ?? 0.0).toStringAsFixed(rule.targetPrice != null && rule.targetPrice! < 1 ? 4 : 2);
+        final isAbove = rule.direction == AlertDirection.above;
         if (lang == 'fa') {
           return 'عبور قیمت ${isAbove ? 'به بالاتر از' : 'به پایین‌تر از'} \$$target';
         } else if (lang == 'ckb') {
@@ -281,33 +277,34 @@ class AlertRow extends StatelessWidget {
         }
         final dir = isAbove ? 'ABOVE' : 'BELOW';
         return 'Price crosses $dir \$$target';
-      case AlertType.percent:
-      case AlertType.percentChange:
-        final dir = rule.condition == ConditionType.percentUp ? '+' : '-';
-        final secs = rule.timeWindowSeconds;
+
+      case AlertConditionType.percentChange:
+        final dir = rule.direction == AlertDirection.above
+            ? '+'
+            : (rule.direction == AlertDirection.below ? '-' : '±');
+        final pct = rule.percent ?? 0.0;
+        final secs = rule.checkIntervalSeconds;
         final windowLabel = secs >= 3600
             ? '${secs ~/ 3600}h'
             : (secs >= 60 ? '${secs ~/ 60}m' : '${secs}s');
         if (lang == 'fa') {
-          return 'نوسان قیمت $dir${rule.targetValue ?? 0}% در $windowLabel';
+          return 'نوسان قیمت $dir$pct% در $windowLabel';
         } else if (lang == 'ckb') {
-          return 'جووڵەی نرخ $dir${rule.targetValue ?? 0}% لە $windowLabel';
+          return 'جووڵەی نرخ $dir$pct% لە $windowLabel';
         } else if (lang == 'ar') {
-          return 'تغير السعر $dir${rule.targetValue ?? 0}% خلال $windowLabel';
+          return 'تغير السعر $dir$pct% خلال $windowLabel';
         }
-        return 'Price moves $dir${rule.targetValue ?? 0}% in $windowLabel';
-      case AlertType.absolute:
-        return 'Price delta >= \$$target';
-      case AlertType.volume:
-      case AlertType.volumeSurge:
-        final volTarget = (rule.targetValue ?? 0.0).toStringAsFixed(0);
-        return 'Volume surge >= \$$volTarget';
-      case AlertType.compound:
-        return 'Compound Rule ($dirOperator)';
+        return 'Price moves $dir$pct% in $windowLabel';
+
+      case AlertConditionType.absolutePriceChange:
+        final delta = (rule.deltaAbsolute ?? 0.0).toStringAsFixed(2);
+        return 'Price delta >= \$$delta';
+
+      case AlertConditionType.volumeChange:
+        final vol = (rule.volumePercent ?? 0.0).toStringAsFixed(0);
+        return 'Volume surge >= $vol%';
     }
   }
-
-  String get dirOperator => rule.logicOperator?.name.toUpperCase() ?? 'AND';
 
   String _formatTime(DateTime dt) {
     final h = dt.hour.toString().padLeft(2, '0');

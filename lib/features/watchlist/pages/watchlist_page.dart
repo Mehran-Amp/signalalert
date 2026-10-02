@@ -1,13 +1,11 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../../core/constants/strings.dart';
 import '../../../core/localization/app_strings.dart';
 import '../../../core/theme/tokens.dart';
 import '../../../core/utils/crypto_icons.dart';
 import '../../../core/utils/format_utils.dart';
 import '../../alert_engine/models/alert_rule.dart';
-import '../../alert_engine/models/trigger_mode.dart';
 import '../../alert_engine/repositories/json_alert_rule_repository.dart';
 import '../../alert_engine/scheduler/scheduler_service.dart';
 import '../../exchanges/registry/exchange_registry.dart';
@@ -251,6 +249,15 @@ class _WatchlistPageState extends State<WatchlistPage> {
           ],
         ),
         actions: [
+          IconButton(
+            icon: Icon(
+              Icons.widgets_outlined,
+              size: 22,
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
+            ),
+            tooltip: lang == 'fa' ? 'پیش‌نمایش ویجت صفحه اصلی' : 'Home Widget Preview',
+            onPressed: () => _showHomeWidgetSheet(context, repository, lang, theme),
+          ),
           IconButton(
             icon: _isRefreshingAll
                 ? SizedBox(
@@ -533,6 +540,14 @@ class _WatchlistPageState extends State<WatchlistPage> {
                               fontWeight: FontWeight.bold,
                               fontFamily: 'monospace',
                               color: changePercent >= 0 ? AppTokens.positive : AppTokens.negative,
+                            ),
+                          ),
+                        if (rule.lastCheckedAt != null)
+                          Text(
+                            _formatTimeAgo(rule.lastCheckedAt!, lang),
+                            style: TextStyle(
+                              fontSize: 9.5,
+                              color: textMuted,
                             ),
                           ),
                       ],

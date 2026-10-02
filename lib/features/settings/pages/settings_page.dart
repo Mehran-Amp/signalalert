@@ -160,7 +160,6 @@ class _SettingsPageState extends State<SettingsPage> {
 
   void _showSoundPicker(BuildContext context, SettingsService settingsService, String currentSoundId, String lang) {
     final theme = Theme.of(context);
-    final isFa = lang == 'fa' || lang == 'ar' || lang == 'ckb';
     final isRtl = AppStrings.isRtl(lang);
 
     showModalBottomSheet(
@@ -736,7 +735,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     style: TextStyle(fontSize: 10.5, color: theme.colorScheme.onSurface.withValues(alpha: 0.55)),
                   ),
                   value: settings.vibrationEnabled,
-                  activeColor: theme.colorScheme.primary,
+                  activeThumbColor: theme.colorScheme.primary,
                   onChanged: (val) => settingsService.toggleVibration(val),
                 ),
                 Divider(height: 1, color: theme.dividerColor),
@@ -754,7 +753,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     style: TextStyle(fontSize: 10.5, color: theme.colorScheme.onSurface.withValues(alpha: 0.55)),
                   ),
                   value: settings.soundEnabled,
-                  activeColor: theme.colorScheme.primary,
+                  activeThumbColor: theme.colorScheme.primary,
                   onChanged: (val) => settingsService.toggleSound(val),
                 ),
                 Divider(height: 1, color: theme.dividerColor),
@@ -772,7 +771,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     style: TextStyle(fontSize: 10.5, color: theme.colorScheme.onSurface.withValues(alpha: 0.55)),
                   ),
                   value: settings.ttsEnabled,
-                  activeColor: theme.colorScheme.primary,
+                  activeThumbColor: theme.colorScheme.primary,
                   onChanged: (val) => settingsService.toggleTts(val),
                 ),
                 const SizedBox(height: 10),

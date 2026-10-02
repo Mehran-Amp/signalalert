@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/services.dart';
 import '../../features/alert_engine/models/alert_rule.dart';
-import '../../features/alert_engine/models/trigger_mode.dart';
 import '../../features/settings/models/app_settings.dart';
 import '../utils/format_utils.dart';
 

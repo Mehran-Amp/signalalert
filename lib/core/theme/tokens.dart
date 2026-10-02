@@ -38,9 +38,44 @@ abstract class AppTokens {
   static const Color border = Color(0xFF374151);
   static const Color borderSubtle = Color(0xFF1F2937);
   static const Color primary = Color(0xFF10B981);
+  static const Color secondary = Color(0xFF06B6D4);
+  static const Color primarySubtle = Color(0x2610B981);
   static const Color textPrimary = Color(0xFFF9FAFB);
   static const Color textSecondary = Color(0xFF9CA3AF);
   static const Color textMuted = Color(0xFF6B7280);
+
+  // Typography Tokens
+  static const TextStyle caption = TextStyle(
+    fontSize: 11.0,
+    fontWeight: FontWeight.w500,
+    color: textSecondary,
+  );
+
+  static const TextStyle body = TextStyle(
+    fontSize: 13.0,
+    fontWeight: FontWeight.normal,
+    color: textPrimary,
+    height: 1.4,
+  );
+
+  static const TextStyle bodySecondary = TextStyle(
+    fontSize: 13.0,
+    fontWeight: FontWeight.normal,
+    color: textSecondary,
+  );
+
+  static const TextStyle sectionHeader = TextStyle(
+    fontSize: 15.0,
+    fontWeight: FontWeight.w600,
+    color: textPrimary,
+  );
+
+  static const TextStyle monoNumbers = TextStyle(
+    fontFamily: 'monospace',
+    fontSize: 14.0,
+    fontWeight: FontWeight.w600,
+    color: textPrimary,
+  );
 
   // Helper dynamic getters
   static TextStyle titleStyle(BuildContext context) {

@@ -3,8 +3,6 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import '../models/alert_rule.dart';
-import '../models/alert_type.dart';
-import '../models/trigger_mode.dart';
 import '../../../core/services/native_widget_sync_service.dart';
 
 /// Local-First JSON File-based Repository for managing alert rules.
