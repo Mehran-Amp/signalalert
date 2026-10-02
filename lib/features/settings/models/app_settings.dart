@@ -15,6 +15,7 @@ class AppSettings {
   final String ttsVoiceLanguage;
   final bool soundEnabled;
   final bool vibrationEnabled;
+  final bool ttsEnabled;
   final String soundName;
   final double alarmVolume;
   final int alarmDurationSec;
@@ -25,6 +26,7 @@ class AppSettings {
     this.ttsVoiceLanguage = 'app_default',
     this.soundEnabled = true,
     this.vibrationEnabled = true,
+    this.ttsEnabled = true,
     this.soundName = 'alarm_siren',
     this.alarmVolume = 1.0,
     this.alarmDurationSec = 5,
@@ -40,6 +42,7 @@ class AppSettings {
     String? ttsVoiceLanguage,
     bool? soundEnabled,
     bool? vibrationEnabled,
+    bool? ttsEnabled,
     String? soundName,
     double? alarmVolume,
     int? alarmDurationSec,
@@ -50,6 +53,7 @@ class AppSettings {
       ttsVoiceLanguage: ttsVoiceLanguage ?? this.ttsVoiceLanguage,
       soundEnabled: soundEnabled ?? this.soundEnabled,
       vibrationEnabled: vibrationEnabled ?? this.vibrationEnabled,
+      ttsEnabled: ttsEnabled ?? this.ttsEnabled,
       soundName: soundName ?? this.soundName,
       alarmVolume: alarmVolume ?? this.alarmVolume,
       alarmDurationSec: alarmDurationSec ?? this.alarmDurationSec,
@@ -62,6 +66,7 @@ class AppSettings {
         'ttsVoiceLanguage': ttsVoiceLanguage,
         'soundEnabled': soundEnabled,
         'vibrationEnabled': vibrationEnabled,
+        'ttsEnabled': ttsEnabled,
         'soundName': soundName,
         'alarmVolume': alarmVolume,
         'alarmDurationSec': alarmDurationSec,
@@ -85,6 +90,7 @@ class AppSettings {
       ttsVoiceLanguage: (json['ttsVoiceLanguage'] as String?) ?? 'app_default',
       soundEnabled: (json['soundEnabled'] as bool?) ?? true,
       vibrationEnabled: (json['vibrationEnabled'] as bool?) ?? true,
+      ttsEnabled: (json['ttsEnabled'] as bool?) ?? true,
       soundName: (json['soundName'] as String?) ?? 'alarm_siren',
       alarmVolume: (json['alarmVolume'] as num?)?.toDouble() ?? 1.0,
       alarmDurationSec: (json['alarmDurationSec'] as int?) ?? 5,

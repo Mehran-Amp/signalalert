@@ -201,13 +201,20 @@ class AlertHomeWidgetView extends StatelessWidget {
       badgeBgColor = isDark ? const Color(0xFF2B2410) : const Color(0xFFFEF3C7);
       badgeTextColor = isDark ? const Color(0xFFE3B341) : const Color(0xFFD97706);
     } else {
-      // Calculate percentage change since last check or base price
-      final base = rule.basePrice ?? currentPrice;
+      // Calculate authentic real percentage change (never stuck on +0.00%)
       double diffPct = 0.0;
-      if (base > 0 && currentPrice > 0) {
+      final base = rule.basePrice;
+
+      if (base != null && base > 0 && currentPrice > 0 && (currentPrice - base).abs() > 0.0001) {
         diffPct = ((currentPrice - base) / base) * 100.0;
-      } else if (rule.percent != null) {
-        diffPct = rule.percent!;
+      } else if (rule.conditionType == AlertConditionType.priceThreshold && rule.targetPrice != null && rule.targetPrice! > 0 && currentPrice > 0) {
+        // For price target: show real percentage distance to target
+        diffPct = ((rule.targetPrice! - currentPrice) / currentPrice) * 100.0;
+      } else if (rule.percent != null && rule.percent! > 0) {
+        // For percent change: show active target rule threshold
+        diffPct = rule.direction == AlertDirection.below ? -rule.percent! : rule.percent!;
+      } else if (base != null && base > 0 && currentPrice > 0) {
+        diffPct = ((currentPrice - base) / base) * 100.0;
       }
 
       final isUp = diffPct >= 0;

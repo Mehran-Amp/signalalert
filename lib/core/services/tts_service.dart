@@ -521,6 +521,34 @@ class TtsService {
     return _PairInfo(base, counter);
   }
 
+  final List<String> _speechQueue = [];
+  bool _isSpeakingQueue = false;
+
+  /// Queues speech so multiple simultaneous alerts are vocalized sequentially and completely without overlap
+  void enqueueSpeech(String text) {
+    if (text.trim().isEmpty) return;
+    _speechQueue.add(text);
+    if (!_isSpeakingQueue) {
+      _processQueue();
+    }
+  }
+
+  Future<void> _processQueue() async {
+    if (_speechQueue.isEmpty) {
+      _isSpeakingQueue = false;
+      return;
+    }
+    _isSpeakingQueue = true;
+    final nextText = _speechQueue.removeAt(0);
+    await speak(text: nextText);
+
+    // Word count calculation to wait for utterance to finish completely before next item speaks
+    final wordCount = nextText.split(RegExp(r'\s+')).length;
+    final estimatedDurationMs = (wordCount * 260 + 2000).clamp(2800, 12000);
+    await Future.delayed(Duration(milliseconds: estimatedDurationMs));
+    _processQueue();
+  }
+
   /// Speaks the given text using the platform English TTS engine
   Future<void> speak({
     required String text,
@@ -543,6 +571,8 @@ class TtsService {
 
   /// Stops any currently playing speech
   Future<void> stop() async {
+    _speechQueue.clear();
+    _isSpeakingQueue = false;
     try {
       await _channel.invokeMethod('stopSpeak');
     } catch (_) {}

@@ -126,7 +126,8 @@ class MainActivity : FlutterActivity(), TextToSpeech.OnInitListener {
                 tts?.setLanguage(Locale.US)
             }
 
-            tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "AlarmerSpeech_${System.currentTimeMillis()}")
+            // Use QUEUE_ADD so multiple concurrent notifications queue their speech sequentially without overlapping
+            tts?.speak(text, TextToSpeech.QUEUE_ADD, null, "AlarmerSpeech_${System.currentTimeMillis()}")
         } catch (_: Exception) {}
     }
 

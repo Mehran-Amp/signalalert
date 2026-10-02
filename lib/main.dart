@@ -56,6 +56,7 @@ void main() async {
     exchangeRegistry: exchangeRegistry,
     notificationService: notificationService,
     notificationRepository: notificationRepository,
+    settingsService: settingsService,
   )..start();
 
   runApp(BitcoinCheckerApp(

@@ -693,30 +693,87 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                 ),
                 Divider(height: 1, color: theme.dividerColor),
+                const SizedBox(height: 8),
 
-                // 3. Sound & Vibration Switches
+                // Helper Note for Global Master Switches
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primary.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline_rounded, size: 15, color: theme.colorScheme.primary),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          isFa
+                              ? 'تنظیمات سراسری (Master): با خاموش کردن هر گزینه، آن مورد برای تمام آلارم‌ها متوقف شده و با روشن کردن مجدد، تنظیمات قبلی هر آلارم بازیابی می‌شود.'
+                              : 'Global Master Switches: Disabling a master switch mutes it for all alerts, and enabling it automatically restores each alert\'s previous state.',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.75),
+                            height: 1.35,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                // 1. 🔔 ویبره (Vibration)
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  secondary: Icon(Icons.music_note_rounded, color: theme.colorScheme.primary),
+                  secondary: Icon(Icons.vibration_rounded, color: settings.vibrationEnabled ? theme.colorScheme.primary : theme.colorScheme.onSurface.withValues(alpha: 0.4)),
                   title: Text(
-                    AppStrings.get('sound_alert', lang),
+                    isFa ? '🔔 ویبره (Vibration)' : '🔔 Vibration',
                     style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
+                  ),
+                  subtitle: Text(
+                    isFa ? 'لرزش سراسری دستگاه هنگام وقوع هشدارها' : 'Global device vibration upon alert trigger',
+                    style: TextStyle(fontSize: 10.5, color: theme.colorScheme.onSurface.withValues(alpha: 0.55)),
+                  ),
+                  value: settings.vibrationEnabled,
+                  activeColor: theme.colorScheme.primary,
+                  onChanged: (val) => settingsService.toggleVibration(val),
+                ),
+                Divider(height: 1, color: theme.dividerColor),
+
+                // 2. 🔊 صدا (Sound)
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  secondary: Icon(Icons.volume_up_rounded, color: settings.soundEnabled ? theme.colorScheme.primary : theme.colorScheme.onSurface.withValues(alpha: 0.4)),
+                  title: Text(
+                    isFa ? '🔊 صدا (Sound)' : '🔊 Sound & Alarm Tone',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
+                  ),
+                  subtitle: Text(
+                    isFa ? 'پخش صدای زنگ و آهنگ هشدار برای آلارم‌ها' : 'Global alarm sound chime playback',
+                    style: TextStyle(fontSize: 10.5, color: theme.colorScheme.onSurface.withValues(alpha: 0.55)),
                   ),
                   value: settings.soundEnabled,
                   activeColor: theme.colorScheme.primary,
                   onChanged: (val) => settingsService.toggleSound(val),
                 ),
                 Divider(height: 1, color: theme.dividerColor),
+
+                // 3. 🗣️ Voice Speech (خوانش صوتی هوشمند)
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  secondary: Icon(Icons.vibration_rounded, color: theme.colorScheme.primary),
+                  secondary: Icon(Icons.record_voice_over_rounded, color: settings.ttsEnabled ? theme.colorScheme.primary : theme.colorScheme.onSurface.withValues(alpha: 0.4)),
                   title: Text(
-                    AppStrings.get('vibrate_alert', lang),
+                    isFa ? '🗣️ اعلام صوتی (Voice Speech)' : '🗣️ Voice Speech (TTS)',
                     style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
                   ),
-                  value: settings.vibrationEnabled,
+                  subtitle: Text(
+                    isFa ? 'خوانش نام دارایی و قیمت به زبان انگلیسی با صدای طبیعی' : 'Global voice speech announcement for alerts',
+                    style: TextStyle(fontSize: 10.5, color: theme.colorScheme.onSurface.withValues(alpha: 0.55)),
+                  ),
+                  value: settings.ttsEnabled,
                   activeColor: theme.colorScheme.primary,
-                  onChanged: (val) => settingsService.toggleVibration(val),
+                  onChanged: (val) => settingsService.toggleTts(val),
                 ),
                 const SizedBox(height: 10),
 

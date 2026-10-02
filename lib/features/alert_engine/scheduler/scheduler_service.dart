@@ -4,6 +4,7 @@ import '../../exchanges/registry/exchange_registry.dart';
 import '../../notifications/models/notification_log.dart';
 import '../../notifications/repositories/notification_repository.dart';
 import '../../notifications/services/notification_service.dart';
+import '../../settings/services/settings_service.dart';
 import '../models/alert_rule.dart';
 import '../repositories/json_alert_rule_repository.dart';
 import 'condition_evaluator.dart';
@@ -19,6 +20,7 @@ class SchedulerService {
   final ExchangeRegistry _exchangeRegistry;
   final NotificationService _notificationService;
   final NotificationRepository? _notificationRepository;
+  final SettingsService? _settingsService;
 
   Timer? _tickTimer;
   final Set<String> _evaluatingRuleUuids = {};
@@ -32,10 +34,12 @@ class SchedulerService {
     required ExchangeRegistry exchangeRegistry,
     required NotificationService notificationService,
     NotificationRepository? notificationRepository,
+    SettingsService? settingsService,
   })  : _alertRuleRepository = alertRuleRepository,
         _exchangeRegistry = exchangeRegistry,
         _notificationService = notificationService,
-        _notificationRepository = notificationRepository;
+        _notificationRepository = notificationRepository,
+        _settingsService = settingsService;
 
   /// Starts the fine-grained tick scheduler
   void start() {
@@ -102,18 +106,27 @@ class SchedulerService {
         // Dispatch Notification with custom note and custom sound
         final finalBody = result.message;
 
-        await _notificationService.showCriticalAlert(
+        // Master Settings Override Logic:
+        // If master setting is OFF, it suppresses all alerts; if ON, individual alert preference is honored!
+        final settings = _settingsService?.settings;
+        final effectiveSound = (settings?.soundEnabled ?? true) && rule.soundEnabled;
+        final effectiveVibration = (settings?.vibrationEnabled ?? true) && rule.vibrationEnabled;
+        final effectiveTts = (settings?.ttsEnabled ?? true) && rule.ttsEnabled;
+
+        // Use sequential alert queue so multiple simultaneous alerts never overlap
+        _notificationService.enqueueCriticalAlert(
           id: rule.uuid.hashCode,
           title: result.title,
           body: finalBody,
           payload: rule.uuid,
           soundName: rule.customSound ?? 'alarm_siren',
-          soundEnabled: rule.soundEnabled,
-          vibrationEnabled: rule.vibrationEnabled,
+          volume: settings?.alarmVolume ?? 1.0,
+          soundEnabled: effectiveSound,
+          vibrationEnabled: effectiveVibration,
         );
 
-        // Vocalize speech if TTS enabled for this rule (Always in English)
-        if (rule.ttsEnabled) {
+        // Vocalize speech sequentially via enqueueSpeech if TTS enabled (fully read, never cut off)
+        if (effectiveTts) {
           final speechText = TtsService.buildAlertSpeech(
             symbol: rule.pair.displayName,
             baseCurrency: rule.baseCurrency,
@@ -121,7 +134,7 @@ class SchedulerService {
             price: ticker.lastPrice,
             customNote: rule.note,
           );
-          unawaited(TtsService.instance.speak(text: speechText, lang: 'en'));
+          TtsService.instance.enqueueSpeech(speechText);
         }
 
         // Save notification log

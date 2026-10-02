@@ -112,6 +112,52 @@ class NotificationService {
     }
   }
 
+  final List<Future<void> Function()> _alertQueue = [];
+  bool _isProcessingAlertQueue = false;
+
+  /// Enqueues critical alert notifications so simultaneous triggers appear sequentially
+  /// and do not overlap on top of each other.
+  void enqueueCriticalAlert({
+    required int id,
+    required String title,
+    required String body,
+    String? payload,
+    String soundName = 'alarm_siren',
+    double volume = 1.0,
+    bool soundEnabled = true,
+    bool vibrationEnabled = true,
+  }) {
+    _alertQueue.add(() => showCriticalAlert(
+          id: id,
+          title: title,
+          body: body,
+          payload: payload,
+          soundName: soundName,
+          volume: volume,
+          soundEnabled: soundEnabled,
+          vibrationEnabled: vibrationEnabled,
+        ));
+
+    if (!_isProcessingAlertQueue) {
+      _processAlertQueue();
+    }
+  }
+
+  Future<void> _processAlertQueue() async {
+    if (_alertQueue.isEmpty) {
+      _isProcessingAlertQueue = false;
+      return;
+    }
+    _isProcessingAlertQueue = true;
+    final task = _alertQueue.removeAt(0);
+    try {
+      await task();
+    } catch (_) {}
+    // Spacing between multiple notifications so they display one by one
+    await Future.delayed(const Duration(milliseconds: 1800));
+    _processAlertQueue();
+  }
+
   /// Dispatches an immediate high-priority alert notification with sound and vibration
   Future<void> showCriticalAlert({
     required int id,

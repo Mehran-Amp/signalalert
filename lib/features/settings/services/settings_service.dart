@@ -68,6 +68,10 @@ class SettingsService extends ChangeNotifier {
     await update(_settings.copyWith(vibrationEnabled: val));
   }
 
+  Future<void> toggleTts(bool val) async {
+    await update(_settings.copyWith(ttsEnabled: val));
+  }
+
   Future<void> setSoundName(String soundId) async {
     await update(_settings.copyWith(soundName: soundId));
   }

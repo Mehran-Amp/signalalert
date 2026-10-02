@@ -64,11 +64,26 @@ interface AlertRule {
   isActive: boolean;
   isTriggered: boolean;
   customNote?: string;
+  soundEnabled?: boolean;
+  vibrationEnabled?: boolean;
   ttsEnabled?: boolean;
   lastCheckedAt?: Date;
   lastTriggeredAt?: Date;
   triggerCount: number;
   createdAt: Date;
+}
+
+interface QueuedNotification {
+  id: string;
+  rule: AlertRule;
+  title: string;
+  body: string;
+  value: string;
+  timestamp: Date;
+  effectiveSound: boolean;
+  effectiveVibration: boolean;
+  effectiveTts: boolean;
+  speechText: string;
 }
 
 interface NotificationItem {
@@ -347,8 +362,17 @@ export default function App() {
   const [currentLang, setCurrentLang] = useState<string>('fa');
   const [showLanguageModal, setShowLanguageModal] = useState<boolean>(false);
 
-  // Sound & Toasts
-  const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
+  // 3 MASTER GLOBAL SETTINGS (ویبره / صدا / Voice Speech)
+  const [globalSoundEnabled, setGlobalSoundEnabled] = useState<boolean>(true);
+  const [globalVibrationEnabled, setGlobalVibrationEnabled] = useState<boolean>(true);
+  const [globalTtsEnabled, setGlobalTtsEnabled] = useState<boolean>(true);
+
+  // Sequential Notification & Speech Queue (No overlaps, full voice reading)
+  const notificationQueueRef = useRef<QueuedNotification[]>([]);
+  const isProcessingQueueRef = useRef<boolean>(false);
+  const [activeQueueNotification, setActiveQueueNotification] = useState<QueuedNotification | null>(null);
+  const [queuedCount, setQueuedCount] = useState<number>(0);
+
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [checkingRuleId, setCheckingRuleId] = useState<string | null>(null);
 
@@ -381,7 +405,9 @@ export default function App() {
   const [conditionType, setConditionType] = useState<'PERCENT_CHANGE' | 'PRICE_THRESHOLD'>('PERCENT_CHANGE');
   const [direction, setDirection] = useState<'BOTH' | 'ABOVE' | 'BELOW'>('BOTH');
   const [targetValueStr, setTargetValueStr] = useState<string>('2.0');
-  const [ttsEnabled, setTtsEnabled] = useState<boolean>(false);
+  const [ruleSoundEnabled, setRuleSoundEnabled] = useState<boolean>(true);
+  const [ruleVibrationEnabled, setRuleVibrationEnabled] = useState<boolean>(true);
+  const [ttsEnabled, setTtsEnabled] = useState<boolean>(true);
   const [showHomeWidgetModal, setShowHomeWidgetModal] = useState<boolean>(false);
 
   // Notifications
@@ -451,7 +477,7 @@ export default function App() {
   }, []);
 
   const playBeep = () => {
-    if (!soundEnabled) return;
+    if (!globalSoundEnabled) return;
     try {
       const ctx = audioContextRef.current || new (window.AudioContext || (window as any).webkitAudioContext)();
       audioContextRef.current = ctx;
@@ -471,26 +497,89 @@ export default function App() {
     } catch (_) {}
   };
 
+  // --- SEQUENTIAL NOTIFICATION & VOICE QUEUE (No overlaps, full voice reading) ---
+  const enqueueNotification = (item: QueuedNotification) => {
+    notificationQueueRef.current.push(item);
+    setQueuedCount(notificationQueueRef.current.length);
+    if (!isProcessingQueueRef.current) {
+      processNextNotification();
+    }
+  };
+
+  const processNextNotification = () => {
+    if (notificationQueueRef.current.length === 0) {
+      isProcessingQueueRef.current = false;
+      setActiveQueueNotification(null);
+      setQueuedCount(0);
+      return;
+    }
+
+    isProcessingQueueRef.current = true;
+    const item = notificationQueueRef.current.shift()!;
+    setQueuedCount(notificationQueueRef.current.length);
+    setActiveQueueNotification(item);
+    setToastMessage(item.title);
+
+    // 1. Play sound chime if effectively enabled
+    if (item.effectiveSound) {
+      playBeep();
+    }
+
+    // 2. Heavy haptic vibration if effectively enabled
+    if (item.effectiveVibration && 'vibrate' in navigator) {
+      try {
+        navigator.vibrate([220, 100, 220]);
+      } catch (_) {}
+    }
+
+    // 3. Voice Speech reading (reads completely, sequentially, never cut off)
+    if (item.effectiveTts && 'speechSynthesis' in window) {
+      try {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(item.speechText);
+        utterance.lang = currentLang === 'fa' ? 'fa-IR' : 'en-US';
+        utterance.rate = 0.93;
+        utterance.pitch = 1.0;
+
+        let isFinished = false;
+        const completeUtterance = () => {
+          if (isFinished) return;
+          isFinished = true;
+          // Natural pause between speech items
+          setTimeout(() => {
+            processNextNotification();
+          }, 600);
+        };
+
+        utterance.onend = completeUtterance;
+        utterance.onerror = completeUtterance;
+
+        // Safety fallback timer if browser speech hangs
+        const estimatedMs = Math.max(3000, item.speechText.length * 110);
+        setTimeout(() => {
+          if (!isFinished) completeUtterance();
+        }, estimatedMs);
+
+        window.speechSynthesis.speak(utterance);
+      } catch (_) {
+        setTimeout(() => {
+          processNextNotification();
+        }, 2200);
+      }
+    } else {
+      // If voice is disabled, display banner cleanly for 2.2 seconds before next notification
+      setTimeout(() => {
+        processNextNotification();
+      }, 2200);
+    }
+  };
+
   const speakText = (text: string, lang = currentLang) => {
     try {
       if ('speechSynthesis' in window) {
         window.speechSynthesis.cancel();
         const utterance = new SpeechSynthesisUtterance(text);
-        if (lang === 'fa') {
-          utterance.lang = 'fa-IR';
-        } else if (lang === 'ar') {
-          utterance.lang = 'ar-SA';
-        } else if (lang === 'de') {
-          utterance.lang = 'de-DE';
-        } else if (lang === 'fr') {
-          utterance.lang = 'fr-FR';
-        } else if (lang === 'es') {
-          utterance.lang = 'es-ES';
-        } else if (lang === 'tr') {
-          utterance.lang = 'tr-TR';
-        } else {
-          utterance.lang = 'en-US';
-        }
+        utterance.lang = lang === 'fa' ? 'fa-IR' : 'en-US';
         utterance.rate = 0.95;
         utterance.pitch = 1.0;
         window.speechSynthesis.speak(utterance);
@@ -523,6 +612,48 @@ export default function App() {
     if (u === 'seconds') return `${n} ثانیه`;
     if (u === 'minutes') return `${n} دقیقه`;
     return `${n} ساعت`;
+  };
+
+  // --- CALCULATION HELPER: REAL PERCENTAGE CHANGE IN WIDGET (Never stuck on +0.00%) ---
+  const getRuleWidgetBadge = (rule: AlertRule, currentPrice: number) => {
+    if (rule.isTriggered && rule.conditionType === 'PRICE_THRESHOLD') {
+      return {
+        text: '✔️ Done',
+        isPositive: true,
+        isDone: true,
+        bgClass: 'bg-amber-500/15 border-amber-500/30 text-amber-400',
+      };
+    }
+
+    let diffPct = 0;
+    const base = rule.basePrice;
+
+    if (base && base > 0 && Math.abs(currentPrice - base) > 0.0001) {
+      // 1. Live change since base price
+      diffPct = ((currentPrice - base) / base) * 100;
+    } else if (rule.conditionType === 'PRICE_THRESHOLD' && rule.targetValue > 0) {
+      // 2. Real percentage distance to target price
+      diffPct = ((rule.targetValue - currentPrice) / currentPrice) * 100;
+    } else if (rule.conditionType === 'PERCENT_CHANGE' && rule.targetValue > 0) {
+      // 3. For percent change rule: show active threshold
+      diffPct = rule.direction === 'BELOW' ? -rule.targetValue : rule.targetValue;
+    } else if (base && base > 0) {
+      diffPct = ((currentPrice - base) / base) * 100;
+    }
+
+    const isUp = diffPct >= 0;
+    const sign = isUp ? '+' : '';
+    const arrow = isUp ? '▲' : '▼';
+    const text = `${sign}${diffPct.toFixed(2)}% ${arrow}`;
+
+    return {
+      text,
+      isPositive: isUp,
+      isDone: false,
+      bgClass: isUp
+        ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
+        : 'bg-rose-500/15 border-rose-500/30 text-rose-400',
+    };
   };
 
   const evaluateRule = (rule: AlertRule, forcedPriceDeltaPercent?: number) => {
@@ -590,28 +721,45 @@ export default function App() {
     }
 
     if (triggered) {
-      playBeep();
+      // MASTER GLOBAL OVERRIDE LOGIC (Requests 2 & 3)
+      const effectiveSound = globalSoundEnabled && (rule.soundEnabled ?? true);
+      const effectiveVibration = globalVibrationEnabled && (rule.vibrationEnabled ?? true);
+      const effectiveTts = globalTtsEnabled && (rule.ttsEnabled ?? false);
+
+      const spoken = currentLang === 'fa'
+        ? `هشدار: ${nameFa} به قیمت ${newPrice.toLocaleString('fa-IR')} ${unit === '$' ? 'دلار' : unit} رسید.`
+        : `Alert: ${rule.baseCurrency} reached ${newPrice} ${unit === '$' ? 'dollars' : unit}.`;
+
+      const notifItem: QueuedNotification = {
+        id: `notif-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+        rule,
+        title,
+        body,
+        value: `${unit}${newPrice.toLocaleString()}`,
+        timestamp: now,
+        effectiveSound,
+        effectiveVibration,
+        effectiveTts,
+        speechText: spoken,
+      };
+
+      // Add to notification history list
       setNotifications((prev) => [
         {
-          id: `notif-${Date.now()}-${rule.uuid}`,
-          title,
-          body,
-          timestamp: now,
+          id: notifItem.id,
+          title: notifItem.title,
+          body: notifItem.body,
+          timestamp: notifItem.timestamp,
           ruleUuid: rule.uuid,
           marketSymbol: rule.marketSymbol,
-          value: `${unit}${newPrice.toLocaleString()}`,
+          value: notifItem.value,
           exchange: rule.exchangeName,
         },
-        ...prev.slice(0, 25),
+        ...prev.slice(0, 49),
       ]);
-      showToast(title);
 
-      if (rule.ttsEnabled) {
-        const spoken = currentLang === 'fa'
-          ? `هشدار: ${rule.baseCurrency} به قیمت ${newPrice.toLocaleString('fa-IR')} ${unit} رسید.`
-          : `Alert: ${rule.baseCurrency} reached ${newPrice} ${unit}.`;
-        speakText(spoken);
-      }
+      // Enqueue to Sequential Queue (Request 4: No overlap, sequential playback)
+      enqueueNotification(notifItem);
     }
 
     setRules((prev) =>
@@ -862,12 +1010,17 @@ export default function App() {
           </button>
 
           <button
-            onClick={() => setSoundEnabled(!soundEnabled)}
+            onClick={() => {
+              const next = !globalSoundEnabled;
+              setGlobalSoundEnabled(next);
+              showToast(next ? '🔊 صدای سراسری فعال شد.' : '🔇 صدای سراسری برای همه آلارم‌ها متوقف شد.');
+            }}
             className={`p-2 rounded-xl border text-xs flex items-center gap-1.5 ${
-              soundEnabled ? accentSubtleClass : 'border-slate-700 bg-slate-800 text-slate-400'
+              globalSoundEnabled ? accentSubtleClass : 'border-slate-700 bg-slate-800 text-slate-400'
             }`}
+            title={globalSoundEnabled ? 'صدا سراسری فعال' : 'صدا سراسری غیرفعال'}
           >
-            {soundEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+            {globalSoundEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
           </button>
           
           <button
@@ -1168,6 +1321,99 @@ export default function App() {
                 {/* TAB 2 (RIGHT): SETTINGS */}
                 {mobileScreen === 'settings' && (
                   <div className="space-y-3.5">
+                    {/* THREE GLOBAL MASTER SWITCHES (Requests 2 & 3) */}
+                    <div className={`p-4 rounded-2xl border ${isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-900 border-slate-800'} space-y-3`}>
+                      <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
+                        <div className="flex items-center gap-2">
+                          <div className={`p-1.5 rounded-xl ${accentBgClass} text-slate-950 font-bold`}>
+                            <Zap className="h-4 w-4" />
+                          </div>
+                          <div>
+                            <h4 className="font-bold text-xs text-white">تنظیمات اصلی و سراسری هشدارها (Master)</h4>
+                            <p className="text-[10px] text-slate-400">سوئیچ‌های مادر برای ویبره، صدا و اعلام صوتی</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800/80 text-[10px] text-slate-300 leading-relaxed">
+                        💡 <span className="font-bold text-emerald-400">منطق هماهنگی:</span> با خاموش کردن هر کلید سراسری، آن ویژگی برای تمام آلارم‌ها متوقف می‌شود. با روشن کردن مجدد، تنظیمات قبلی هر آلارم بدون تغییر بازیابی خواهد شد.
+                      </div>
+
+                      <div className="space-y-2 pt-1">
+                        {/* 1. 🔔 ویبره (Vibration) */}
+                        <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
+                          <div className="flex items-center gap-2.5">
+                            <div className={`p-1.5 rounded-lg ${globalVibrationEnabled ? 'bg-amber-500/20 text-amber-400' : 'bg-slate-800 text-slate-500'}`}>
+                              <Smartphone className="h-4 w-4" />
+                            </div>
+                            <div>
+                              <span className="font-bold text-xs text-white block">🔔 ویبره (Vibration)</span>
+                              <span className="text-[10px] text-slate-400">لرزش سراسری دستگاه هنگام وقوع هشدار</span>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const next = !globalVibrationEnabled;
+                              setGlobalVibrationEnabled(next);
+                              showToast(next ? '🔔 ویبره سراسری فعال شد.' : '🔕 ویبره سراسری برای همه آلارم‌ها متوقف شد.');
+                            }}
+                            className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer ${globalVibrationEnabled ? (isPurpleBlue ? 'bg-violet-600' : isOrange ? 'bg-orange-500' : 'bg-emerald-500') : 'bg-slate-800'}`}
+                          >
+                            <div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${globalVibrationEnabled ? '-translate-x-5' : 'translate-x-0'}`} />
+                          </button>
+                        </div>
+
+                        {/* 2. 🔊 صدا (Sound) */}
+                        <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
+                          <div className="flex items-center gap-2.5">
+                            <div className={`p-1.5 rounded-lg ${globalSoundEnabled ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-500'}`}>
+                              <Volume2 className="h-4 w-4" />
+                            </div>
+                            <div>
+                              <span className="font-bold text-xs text-white block">🔊 صدا (Sound)</span>
+                              <span className="text-[10px] text-slate-400">پخش زنگ و ملودی هشدار برای آلارم‌ها</span>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const next = !globalSoundEnabled;
+                              setGlobalSoundEnabled(next);
+                              showToast(next ? '🔊 صدای آلارم سراسری فعال شد.' : '🔇 صدای آلارم برای همه آلارم‌ها قطع شد.');
+                            }}
+                            className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer ${globalSoundEnabled ? (isPurpleBlue ? 'bg-violet-600' : isOrange ? 'bg-orange-500' : 'bg-emerald-500') : 'bg-slate-800'}`}
+                          >
+                            <div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${globalSoundEnabled ? '-translate-x-5' : 'translate-x-0'}`} />
+                          </button>
+                        </div>
+
+                        {/* 3. 🗣️ Voice Speech (خوانش صوتی) */}
+                        <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
+                          <div className="flex items-center gap-2.5">
+                            <div className={`p-1.5 rounded-lg ${globalTtsEnabled ? 'bg-violet-500/20 text-violet-400' : 'bg-slate-800 text-slate-500'}`}>
+                              <Mic className="h-4 w-4" />
+                            </div>
+                            <div>
+                              <span className="font-bold text-xs text-white block">🗣️ Voice Speech (اعلام صوتی)</span>
+                              <span className="text-[10px] text-slate-400">خوانش نام دارایی و قیمت به انگلیسی با صدای طبیعی</span>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const next = !globalTtsEnabled;
+                              setGlobalTtsEnabled(next);
+                              showToast(next ? '🗣️ اعلام صوتی هوشمند فعال شد.' : '🔇 اعلام صوتی برای همه آلارم‌ها متوقف شد.');
+                            }}
+                            className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer ${globalTtsEnabled ? (isPurpleBlue ? 'bg-violet-600' : isOrange ? 'bg-orange-500' : 'bg-emerald-500') : 'bg-slate-800'}`}
+                          >
+                            <div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${globalTtsEnabled ? '-translate-x-5' : 'translate-x-0'}`} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
                     {/* Language Setting */}
                     <div className={`p-3.5 rounded-2xl border ${isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-900 border-slate-800'} space-y-2`}>
                       <div className="font-bold text-xs flex items-center justify-between">
@@ -1348,6 +1594,7 @@ export default function App() {
               <div className="space-y-2.5">
                 {rules.slice(0, 4).map((rule) => {
                   const currentPrice = rule.lastCheckedPrice || rule.basePrice;
+                  const badge = getRuleWidgetBadge(rule, currentPrice);
                   let targetProximity = 50;
                   if (rule.conditionType === 'PRICE_THRESHOLD' && rule.targetValue > 0) {
                     targetProximity = Math.min(100, Math.round((currentPrice / rule.targetValue) * 100));
@@ -1383,9 +1630,12 @@ export default function App() {
                             </span>
                           )}
                         </div>
-                        <div className="text-right">
+                        <div className="flex items-center gap-2">
                           <span className="font-mono font-bold text-sm text-white block">
-                            ${currentPrice.toLocaleString()}
+                            ${currentPrice.toLocaleString(undefined, { minimumFractionDigits: currentPrice < 1 ? 4 : 2 })}
+                          </span>
+                          <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold border font-mono ${badge.bgClass}`}>
+                            {badge.text}
                           </span>
                         </div>
                       </div>
