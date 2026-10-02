@@ -559,27 +559,44 @@ class _WatchlistPageState extends State<WatchlistPage> {
                             fontWeight: FontWeight.w900,
                             fontFamily: 'monospace',
                             color: rule.isActive
-                                ? (changePercent != null && changePercent >= 0 ? theme.colorScheme.primary : theme.colorScheme.onSurface)
+                                ? (changePercent != null && changePercent > 0.005
+                                    ? theme.colorScheme.primary
+                                    : (changePercent != null && changePercent < -0.005
+                                        ? AppTokens.negative
+                                        : theme.colorScheme.onSurface))
                                 : textMuted,
                           ),
                         ),
-                        if (changePercent != null)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-                            decoration: BoxDecoration(
-                              color: (changePercent >= 0 ? AppTokens.positive : AppTokens.negative).withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(5),
-                            ),
-                            child: Text(
-                              '${changePercent >= 0 ? '▲ +' : '▼ '}${changePercent.toStringAsFixed(2)}%',
-                              style: TextStyle(
-                                fontSize: 10.5,
-                                fontWeight: FontWeight.bold,
-                                fontFamily: 'monospace',
-                                color: changePercent >= 0 ? AppTokens.positive : AppTokens.negative,
+                        if (changePercent != null) ...[
+                          Builder(builder: (context) {
+                            final isZero = changePercent!.abs() < 0.005;
+                            final isPositive = changePercent! > 0.005;
+                            final badgeColor = isZero
+                                ? textMuted
+                                : (isPositive ? AppTokens.positive : AppTokens.negative);
+                            final badgeBg = isZero
+                                ? theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.6)
+                                : badgeColor.withValues(alpha: 0.12);
+                            final prefix = isZero ? '• ' : (isPositive ? '▲ +' : '▼ ');
+
+                            return Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                              decoration: BoxDecoration(
+                                color: badgeBg,
+                                borderRadius: BorderRadius.circular(5),
                               ),
-                            ),
-                          ),
+                              child: Text(
+                                '$prefix${changePercent.abs().toStringAsFixed(2)}%',
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.bold,
+                                  fontFamily: 'monospace',
+                                  color: badgeColor,
+                                ),
+                              ),
+                            );
+                          }),
+                        ],
                       ],
                     ),
                     const SizedBox(width: 6),

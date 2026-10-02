@@ -56,7 +56,7 @@ abstract class ConditionEvaluator {
       }
       return '📝 $customNote';
     }
-    return '📝 ${_formatVal(currentPrice, currencySymbol: rule.pair.counterCurrency)}';
+    return '';
   }
 
   /// 1. Price Threshold (One-shot):

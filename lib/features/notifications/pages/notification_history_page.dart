@@ -286,15 +286,17 @@ class _NotificationHistoryPageState extends State<NotificationHistoryPage> {
             const SizedBox(height: 4),
           ],
 
-          Text(
-            log.message,
-            style: TextStyle(
-              fontSize: 12,
-              color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
-              height: 1.35,
+          if (log.message.trim().isNotEmpty) ...[
+            Text(
+              log.message,
+              style: TextStyle(
+                fontSize: 12,
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
+                height: 1.35,
+              ),
             ),
-          ),
-          const SizedBox(height: AppTokens.space6),
+            const SizedBox(height: AppTokens.space6),
+          ],
 
           Row(
             children: [

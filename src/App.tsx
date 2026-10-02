@@ -99,7 +99,7 @@ interface NotificationItem {
 }
 
 type ExchangeCategoryType = 'all' | 'tier1' | 'aggregator' | 'middleEast' | 'asia' | 'europe' | 'americas';
-type ThemeModeType = 'dark-green' | 'light-green' | 'dark-orange' | 'light-orange' | 'dark-purple-blue' | 'light-purple-blue';
+type ThemeModeType = 'dark-green' | 'light-green' | 'dark-orange' | 'light-orange' | 'dark-purple-blue' | 'light-purple-blue' | 'dark-gold' | 'dark-sapphire';
 
 interface ExchangeInfo {
   id: string;
@@ -303,6 +303,9 @@ const INITIAL_RULES: AlertRule[] = [
     lastCheckedPrice: 83770.00,
     isActive: true,
     isTriggered: false,
+    soundEnabled: true,
+    vibrationEnabled: true,
+    ttsEnabled: true,
     triggerCount: 2,
     lastCheckedAt: new Date(Date.now() - 10000),
     createdAt: new Date(Date.now() - 3600000),
@@ -324,6 +327,9 @@ const INITIAL_RULES: AlertRule[] = [
     lastCheckedPrice: 4.28,
     isActive: true,
     isTriggered: false,
+    soundEnabled: true,
+    vibrationEnabled: false,
+    ttsEnabled: true,
     triggerCount: 1,
     lastCheckedAt: new Date(Date.now() - 18000),
     createdAt: new Date(Date.now() - 5400000),
@@ -345,6 +351,9 @@ const INITIAL_RULES: AlertRule[] = [
     lastCheckedPrice: 2735.40,
     isActive: true,
     isTriggered: false,
+    soundEnabled: false,
+    vibrationEnabled: true,
+    ttsEnabled: false,
     triggerCount: 1,
     lastCheckedAt: new Date(Date.now() - 25000),
     createdAt: new Date(Date.now() - 7200000),
@@ -438,7 +447,7 @@ export default function App() {
     {
       id: 'notif-2',
       title: '🔴 ETH/USDT -3.52% $3,120.00 ▼',
-      body: '📝 Support level broken',
+      body: '',
       timestamp: new Date(Date.now() - 180000),
       ruleUuid: 'rule-eth-crypto',
       marketSymbol: 'ETH/USDT',
@@ -711,8 +720,8 @@ export default function App() {
         const priceStr = `${unit}${newPrice.toLocaleString(undefined, { minimumFractionDigits: newPrice < 1 ? 4 : 2, maximumFractionDigits: 4 })}`;
         title = `${emoji} ${rule.marketSymbol} ${sign}${Math.abs(actualPercent).toFixed(2)}% ${priceStr} ${arrow}`;
         body = rule.customNote && rule.customNote.trim() 
-          ? (rule.customNote.startsWith('📝') ? rule.customNote : `📝 ${rule.customNote}`)
-          : `📝 ${priceStr}`;
+          ? (rule.customNote.startsWith('📝') ? rule.customNote.trim() : `📝 ${rule.customNote.trim()}`)
+          : '';
       }
     } else if (rule.conditionType === 'PRICE_THRESHOLD') {
       const priceStr = `${unit}${newPrice.toLocaleString(undefined, { minimumFractionDigits: newPrice < 1 ? 4 : 2, maximumFractionDigits: 4 })}`;
@@ -721,15 +730,15 @@ export default function App() {
         const pct = ((newPrice - rule.basePrice) / rule.basePrice) * 100;
         title = `🟢 ${rule.marketSymbol} +${Math.abs(pct).toFixed(2)}% ${priceStr} ▲`;
         body = rule.customNote && rule.customNote.trim() 
-          ? (rule.customNote.startsWith('📝') ? rule.customNote : `📝 ${rule.customNote}`)
-          : `📝 ${priceStr}`;
+          ? (rule.customNote.startsWith('📝') ? rule.customNote.trim() : `📝 ${rule.customNote.trim()}`)
+          : '';
       } else if (rule.direction === 'BELOW' && newPrice <= rule.targetValue) {
         triggered = true;
         const pct = ((newPrice - rule.basePrice) / rule.basePrice) * 100;
         title = `🔴 ${rule.marketSymbol} -${Math.abs(pct).toFixed(2)}% ${priceStr} ▼`;
         body = rule.customNote && rule.customNote.trim() 
-          ? (rule.customNote.startsWith('📝') ? rule.customNote : `📝 ${rule.customNote}`)
-          : `📝 ${priceStr}`;
+          ? (rule.customNote.startsWith('📝') ? rule.customNote.trim() : `📝 ${rule.customNote.trim()}`)
+          : '';
       }
     }
 
@@ -822,6 +831,29 @@ export default function App() {
     showToast('هشدار با موفقیت حذف شد');
   };
 
+  const handleToggleAlertFeedback = (uuid: string, type: 'sound' | 'vibration' | 'tts') => {
+    setRules((prev) =>
+      prev.map((r) => {
+        if (r.uuid === uuid) {
+          if (type === 'sound') {
+            const next = !(r.soundEnabled ?? true);
+            showToast(next ? `🔊 صدای زنگ برای ${r.baseCurrency} فعال شد.` : `🔇 صدای زنگ برای ${r.baseCurrency} خاموش شد.`);
+            return { ...r, soundEnabled: next };
+          } else if (type === 'vibration') {
+            const next = !(r.vibrationEnabled ?? true);
+            showToast(next ? `🔔 ویبره برای ${r.baseCurrency} فعال شد.` : `🔕 ویبره برای ${r.baseCurrency} خاموش شد.`);
+            return { ...r, vibrationEnabled: next };
+          } else if (type === 'tts') {
+            const next = !(r.ttsEnabled ?? true);
+            showToast(next ? `🗣️ اعلام صوتی برای ${r.baseCurrency} فعال شد.` : `🔇 اعلام صوتی برای ${r.baseCurrency} خاموش شد.`);
+            return { ...r, ttsEnabled: next };
+          }
+        }
+        return r;
+      })
+    );
+  };
+
   const handleManualCheck = async (rule: AlertRule) => {
     setCheckingRuleId(rule.uuid);
     setTimeout(() => {
@@ -880,6 +912,8 @@ export default function App() {
       isActive: true,
       isTriggered: false,
       triggerCount: 0,
+      soundEnabled: ruleSoundEnabled,
+      vibrationEnabled: ruleVibrationEnabled,
       ttsEnabled: ttsEnabled,
       createdAt: new Date(),
     };
@@ -920,6 +954,8 @@ export default function App() {
       isActive: true,
       isTriggered: false,
       triggerCount: 0,
+      soundEnabled: ruleSoundEnabled,
+      vibrationEnabled: ruleVibrationEnabled,
       ttsEnabled: ttsEnabled,
       createdAt: new Date(),
     };
@@ -947,21 +983,35 @@ export default function App() {
 
   const isOrange = appTheme.includes('orange');
   const isPurpleBlue = appTheme.includes('purple-blue');
+  const isGold = appTheme.includes('gold');
+  const isSapphire = appTheme.includes('sapphire');
   const isLight = appTheme.startsWith('light');
 
-  const accentClass = isPurpleBlue
+  const accentClass = isGold
+    ? 'text-amber-400'
+    : isSapphire
+    ? 'text-cyan-400'
+    : isPurpleBlue
     ? 'text-violet-400'
     : isOrange
     ? 'text-orange-400'
     : 'text-emerald-400';
 
-  const accentBgClass = isPurpleBlue
+  const accentBgClass = isGold
+    ? 'bg-gradient-to-r from-amber-400 via-amber-300 to-yellow-500 hover:brightness-110 text-slate-950 font-black shadow-lg shadow-amber-500/20'
+    : isSapphire
+    ? 'bg-gradient-to-r from-cyan-500 via-sky-500 to-blue-600 hover:brightness-110 text-white font-bold shadow-lg shadow-cyan-500/20'
+    : isPurpleBlue
     ? 'bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-bold'
     : isOrange
     ? 'bg-orange-500 hover:bg-orange-400 text-slate-950 font-bold'
     : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold';
 
-  const accentSubtleClass = isPurpleBlue
+  const accentSubtleClass = isGold
+    ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+    : isSapphire
+    ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-300'
+    : isPurpleBlue
     ? 'bg-violet-500/10 border-violet-500/20 text-violet-400'
     : isOrange
     ? 'bg-orange-500/10 border-orange-500/20 text-orange-400'
@@ -1136,22 +1186,14 @@ export default function App() {
                 {mobileScreen === 'alerts' && (
                   <div className="flex items-center gap-1.5">
                     <button
-                      onClick={() => setShowHomeWidgetModal(true)}
-                      className="p-1.5 rounded-xl border border-slate-700 bg-slate-900/90 text-slate-300 hover:text-white transition-all font-semibold flex items-center gap-1 text-[11px] px-2 shadow-sm cursor-pointer"
-                      title="پیش‌نمایش ویجت صفحه اصلی"
-                    >
-                      <LayoutGrid className="h-3.5 w-3.5 text-violet-400" />
-                      <span>ویجت</span>
-                    </button>
-                    <button
                       onClick={() => {
                         setCreatePath('NONE');
                         setShowCreateModal(true);
                       }}
-                      className={`p-1.5 rounded-xl ${accentBgClass} text-slate-950 transition-all font-bold flex items-center gap-1 text-[11px] px-2.5 shadow-md cursor-pointer`}
+                      className={`p-1.5 rounded-xl ${accentBgClass} text-slate-950 transition-all font-bold flex items-center gap-1.5 text-xs px-3 py-2 shadow-md cursor-pointer`}
                     >
-                      <Plus className="h-3.5 w-3.5" />
-                      <span>ایجاد هشدار</span>
+                      <Plus className="h-4 w-4" />
+                      <span>ایجاد هشدار جدید</span>
                     </button>
                   </div>
                 )}
@@ -1202,7 +1244,16 @@ export default function App() {
 
                         const isChecking = checkingRuleId === rule.uuid;
                         const displayP = rule.lastCheckedPrice ?? rule.basePrice;
-                        const changePct = rule.basePrice > 0 ? ((displayP - rule.basePrice) / rule.basePrice) * 100 : 0;
+                        
+                        // Market 24h Meta & Effective Percentage Calculation
+                        const marketMeta = rule.marketType === 'crypto'
+                          ? (cryptoPrices[rule.baseCurrency] || cryptoPrices.BTC)
+                          : (macroPrices[rule.baseCurrency] || macroPrices.US10Y);
+
+                        const deltaFromBase = rule.basePrice > 0 ? ((displayP - rule.basePrice) / rule.basePrice) * 100 : 0;
+                        const effectivePct = Math.abs(deltaFromBase) > 0.01 ? deltaFromBase : (marketMeta?.change24h ?? 0);
+                        const isZero = Math.abs(effectivePct) < 0.005;
+                        const isPositive = effectivePct > 0.005;
 
                         // Proximity Calculation (0 to 100%)
                         let targetProximity = 50;
@@ -1249,7 +1300,6 @@ export default function App() {
                                     <span className="px-1.5 py-0.2 rounded text-[9px] font-bold uppercase tracking-wider bg-slate-800 text-slate-300 border border-slate-700/60">
                                       {rule.exchangeName}
                                     </span>
-                                    {rule.ttsEnabled && <Volume2 className="h-3 w-3 text-violet-400" />}
                                   </div>
                                 </div>
                               </div>
@@ -1261,11 +1311,13 @@ export default function App() {
                                     {unit === '$' ? `$${displayP >= 1000 ? Math.round(displayP).toLocaleString() : (displayP < 1 ? displayP.toFixed(6) : displayP.toFixed(2))}` : `${displayP >= 1000 ? Math.round(displayP).toLocaleString() : displayP.toFixed(2)}${unit}`}
                                   </span>
                                   <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[10px] font-mono font-bold ${
-                                    changePct >= 0
+                                    isZero
+                                      ? 'bg-slate-800 text-slate-400'
+                                      : isPositive
                                       ? 'bg-emerald-500/15 text-emerald-400'
                                       : 'bg-rose-500/15 text-rose-400'
                                   }`}>
-                                    {changePct >= 0 ? '▲ +' : '▼ '}{changePct.toFixed(2)}%
+                                    {isZero ? '• ' : (isPositive ? '▲ +' : '▼ ')}{Math.abs(effectivePct).toFixed(2)}%
                                   </span>
                                 </div>
 
@@ -1310,6 +1362,96 @@ export default function App() {
                                   }`}
                                   style={{ width: `${Math.max(5, targetProximity)}%` }}
                                 />
+                              </div>
+                            </div>
+
+                            {/* Row 2.5: Interactive Feedback Action Badges (Sound / Vibration / Voice Speech) */}
+                            <div className="flex items-center justify-between text-[10px] my-2 pt-2 border-t border-slate-800/80">
+                              <span className="text-[10px] text-slate-500 font-semibold">پاسخ هشدار:</span>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                {/* Sound Pill */}
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleAlertFeedback(rule.uuid, 'sound')}
+                                  title={
+                                    !globalSoundEnabled
+                                      ? '⛔ صدای سراسری در تنظیمات قطع است (کلیک جهت تنظیم اختصاصی)'
+                                      : (rule.soundEnabled ?? true)
+                                      ? '🔊 صدای زنگ برای این هشدار فعال است'
+                                      : '🔇 صدای زنگ برای این هشدار خاموش است'
+                                  }
+                                  className={`px-2 py-0.5 rounded-lg flex items-center gap-1 font-mono text-[10px] transition-all cursor-pointer border ${
+                                    !globalSoundEnabled
+                                      ? 'bg-slate-900/90 border-slate-800 text-slate-500 opacity-60'
+                                      : (rule.soundEnabled ?? true)
+                                      ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-400 font-bold'
+                                      : 'bg-slate-900 border-slate-800 text-slate-500 hover:text-slate-400'
+                                  }`}
+                                >
+                                  <Volume2 className="h-3 w-3" />
+                                  <span>صدا</span>
+                                  {!globalSoundEnabled && (
+                                    <span className="text-[8px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 font-sans">
+                                      مادر ⛔
+                                    </span>
+                                  )}
+                                </button>
+
+                                {/* Vibration Pill */}
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleAlertFeedback(rule.uuid, 'vibration')}
+                                  title={
+                                    !globalVibrationEnabled
+                                      ? '⛔ ویبره سراسری در تنظیمات قطع است (کلیک جهت تنظیم اختصاصی)'
+                                      : (rule.vibrationEnabled ?? true)
+                                      ? '🔔 ویبره دستگاه برای این هشدار فعال است'
+                                      : '🔕 ویبره دستگاه برای این هشدار خاموش است'
+                                  }
+                                  className={`px-2 py-0.5 rounded-lg flex items-center gap-1 font-mono text-[10px] transition-all cursor-pointer border ${
+                                    !globalVibrationEnabled
+                                      ? 'bg-slate-900/90 border-slate-800 text-slate-500 opacity-60'
+                                      : (rule.vibrationEnabled ?? true)
+                                      ? 'bg-amber-500/15 border-amber-500/40 text-amber-400 font-bold'
+                                      : 'bg-slate-900 border-slate-800 text-slate-500 hover:text-slate-400'
+                                  }`}
+                                >
+                                  <Smartphone className="h-3 w-3" />
+                                  <span>ویبره</span>
+                                  {!globalVibrationEnabled && (
+                                    <span className="text-[8px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 font-sans">
+                                      مادر ⛔
+                                    </span>
+                                  )}
+                                </button>
+
+                                {/* TTS Voice Pill */}
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleAlertFeedback(rule.uuid, 'tts')}
+                                  title={
+                                    !globalTtsEnabled
+                                      ? '⛔ اعلام صوتی سراسری در تنظیمات قطع است (کلیک جهت تنظیم اختصاصی)'
+                                      : (rule.ttsEnabled ?? true)
+                                      ? '🗣️ اعلام صوتی برای این هشدار فعال است'
+                                      : '🔇 اعلام صوتی برای این هشدار خاموش است'
+                                  }
+                                  className={`px-2 py-0.5 rounded-lg flex items-center gap-1 font-mono text-[10px] transition-all cursor-pointer border ${
+                                    !globalTtsEnabled
+                                      ? 'bg-slate-900/90 border-slate-800 text-slate-500 opacity-60'
+                                      : (rule.ttsEnabled ?? true)
+                                      ? 'bg-violet-500/15 border-violet-500/40 text-violet-400 font-bold'
+                                      : 'bg-slate-900 border-slate-800 text-slate-500 hover:text-slate-400'
+                                  }`}
+                                >
+                                  <Mic className="h-3 w-3" />
+                                  <span>Voice</span>
+                                  {!globalTtsEnabled && (
+                                    <span className="text-[8px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 font-sans">
+                                      مادر ⛔
+                                    </span>
+                                  )}
+                                </button>
                               </div>
                             </div>
 
@@ -1359,7 +1501,9 @@ export default function App() {
                           <span className="font-bold text-xs">{notif.title}</span>
                           <span className="text-[10px] font-mono text-slate-400">{formatTimeAgo(notif.timestamp)}</span>
                         </div>
-                        <p className="text-[11px] text-slate-400 leading-relaxed">{notif.body}</p>
+                        {notif.body && notif.body.trim() && (
+                          <p className="text-[11px] text-slate-400 leading-relaxed">{notif.body}</p>
+                        )}
                         <div className="flex items-center gap-2 pt-1 text-[10px] font-mono text-slate-400">
                           <span>بازار: {notif.marketSymbol}</span>
                           <span>•</span>
@@ -1462,75 +1606,132 @@ export default function App() {
 
                       <div className="space-y-2 pt-1">
                         {/* 1. 🔔 ویبره (Vibration) */}
-                        <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
-                          <div className="flex items-center gap-2.5">
-                            <div className={`p-1.5 rounded-lg ${globalVibrationEnabled ? 'bg-amber-500/20 text-amber-400' : 'bg-slate-800 text-slate-500'}`}>
+                        <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800/80 flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className={`p-2 rounded-xl ${globalVibrationEnabled ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' : 'bg-slate-800 text-slate-500'}`}>
                               <Smartphone className="h-4 w-4" />
                             </div>
                             <div>
                               <span className="font-bold text-xs text-white block">🔔 ویبره (Vibration)</span>
-                              <span className="text-[10px] text-slate-400">لرزش سراسری دستگاه هنگام وقوع هشدار</span>
+                              <span className="text-[10px] text-slate-400 block">لرزش سراسری دستگاه هنگام وقوع هشدار</span>
+                              <span className={`inline-block mt-0.5 text-[9px] px-1.5 py-0.2 rounded font-mono font-bold ${
+                                globalVibrationEnabled
+                                  ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+                                  : 'bg-rose-500/15 text-rose-400 border border-rose-500/30'
+                              }`}>
+                                {globalVibrationEnabled
+                                  ? `🟢 فعال برای ${rules.filter(r => r.vibrationEnabled ?? true).length} از ${rules.length} هشدار`
+                                  : `⛔ قطع سراسری موقت (${rules.length} هشدار حفظ شده)`}
+                              </span>
                             </div>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const next = !globalVibrationEnabled;
-                              setGlobalVibrationEnabled(next);
-                              showToast(next ? '🔔 ویبره سراسری فعال شد.' : '🔕 ویبره سراسری برای همه آلارم‌ها متوقف شد.');
-                            }}
-                            className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer ${globalVibrationEnabled ? (isPurpleBlue ? 'bg-violet-600' : isOrange ? 'bg-orange-500' : 'bg-emerald-500') : 'bg-slate-800'}`}
-                          >
-                            <div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${globalVibrationEnabled ? '-translate-x-5' : 'translate-x-0'}`} />
-                          </button>
+                          <div dir="ltr" className="shrink-0">
+                            <button
+                              type="button"
+                              role="switch"
+                              aria-checked={globalVibrationEnabled}
+                              onClick={() => {
+                                const next = !globalVibrationEnabled;
+                                setGlobalVibrationEnabled(next);
+                                showToast(next ? '🔔 ویبره سراسری فعال شد.' : '🔕 ویبره سراسری برای همه آلارم‌ها متوقف شد.');
+                              }}
+                              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                globalVibrationEnabled ? (isPurpleBlue ? 'bg-violet-600' : isOrange ? 'bg-orange-500' : 'bg-emerald-500') : 'bg-slate-800'
+                              }`}
+                            >
+                              <span
+                                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                                  globalVibrationEnabled ? 'translate-x-5' : 'translate-x-0'
+                                }`}
+                              />
+                            </button>
+                          </div>
                         </div>
 
                         {/* 2. 🔊 صدا (Sound) */}
-                        <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
-                          <div className="flex items-center gap-2.5">
-                            <div className={`p-1.5 rounded-lg ${globalSoundEnabled ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-500'}`}>
+                        <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800/80 flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className={`p-2 rounded-xl ${globalSoundEnabled ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-slate-800 text-slate-500'}`}>
                               <Volume2 className="h-4 w-4" />
                             </div>
                             <div>
                               <span className="font-bold text-xs text-white block">🔊 صدا (Sound)</span>
-                              <span className="text-[10px] text-slate-400">پخش زنگ و ملودی هشدار برای آلارم‌ها</span>
+                              <span className="text-[10px] text-slate-400 block">پخش زنگ و ملودی هشدار برای آلارم‌ها</span>
+                              <span className={`inline-block mt-0.5 text-[9px] px-1.5 py-0.2 rounded font-mono font-bold ${
+                                globalSoundEnabled
+                                  ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                                  : 'bg-rose-500/15 text-rose-400 border border-rose-500/30'
+                              }`}>
+                                {globalSoundEnabled
+                                  ? `🟢 فعال برای ${rules.filter(r => r.soundEnabled ?? true).length} از ${rules.length} هشدار`
+                                  : `⛔ قطع سراسری موقت (${rules.length} هشدار حفظ شده)`}
+                              </span>
                             </div>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const next = !globalSoundEnabled;
-                              setGlobalSoundEnabled(next);
-                              showToast(next ? '🔊 صدای آلارم سراسری فعال شد.' : '🔇 صدای آلارم برای همه آلارم‌ها قطع شد.');
-                            }}
-                            className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer ${globalSoundEnabled ? (isPurpleBlue ? 'bg-violet-600' : isOrange ? 'bg-orange-500' : 'bg-emerald-500') : 'bg-slate-800'}`}
-                          >
-                            <div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${globalSoundEnabled ? '-translate-x-5' : 'translate-x-0'}`} />
-                          </button>
+                          <div dir="ltr" className="shrink-0">
+                            <button
+                              type="button"
+                              role="switch"
+                              aria-checked={globalSoundEnabled}
+                              onClick={() => {
+                                const next = !globalSoundEnabled;
+                                setGlobalSoundEnabled(next);
+                                showToast(next ? '🔊 صدای آلارم سراسری فعال شد.' : '🔇 صدای آلارم برای همه آلارم‌ها قطع شد.');
+                              }}
+                              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                globalSoundEnabled ? (isPurpleBlue ? 'bg-violet-600' : isOrange ? 'bg-orange-500' : 'bg-emerald-500') : 'bg-slate-800'
+                              }`}
+                            >
+                              <span
+                                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                                  globalSoundEnabled ? 'translate-x-5' : 'translate-x-0'
+                                }`}
+                              />
+                            </button>
+                          </div>
                         </div>
 
                         {/* 3. 🗣️ Voice Speech (خوانش صوتی) */}
-                        <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
-                          <div className="flex items-center gap-2.5">
-                            <div className={`p-1.5 rounded-lg ${globalTtsEnabled ? 'bg-violet-500/20 text-violet-400' : 'bg-slate-800 text-slate-500'}`}>
+                        <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800/80 flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className={`p-2 rounded-xl ${globalTtsEnabled ? 'bg-violet-500/20 text-violet-400 border border-violet-500/30' : 'bg-slate-800 text-slate-500'}`}>
                               <Mic className="h-4 w-4" />
                             </div>
                             <div>
                               <span className="font-bold text-xs text-white block">🗣️ Voice Speech (اعلام صوتی)</span>
-                              <span className="text-[10px] text-slate-400">خوانش نام دارایی و قیمت به انگلیسی با صدای طبیعی</span>
+                              <span className="text-[10px] text-slate-400 block">خوانش نام دارایی و قیمت به انگلیسی با صدای طبیعی</span>
+                              <span className={`inline-block mt-0.5 text-[9px] px-1.5 py-0.2 rounded font-mono font-bold ${
+                                globalTtsEnabled
+                                  ? 'bg-violet-500/15 text-violet-300 border border-violet-500/30'
+                                  : 'bg-rose-500/15 text-rose-400 border border-rose-500/30'
+                              }`}>
+                                {globalTtsEnabled
+                                  ? `🟢 فعال برای ${rules.filter(r => r.ttsEnabled ?? true).length} از ${rules.length} هشدار`
+                                  : `⛔ قطع سراسری موقت (${rules.length} هشدار حفظ شده)`}
+                              </span>
                             </div>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const next = !globalTtsEnabled;
-                              setGlobalTtsEnabled(next);
-                              showToast(next ? '🗣️ اعلام صوتی هوشمند فعال شد.' : '🔇 اعلام صوتی برای همه آلارم‌ها متوقف شد.');
-                            }}
-                            className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer ${globalTtsEnabled ? (isPurpleBlue ? 'bg-violet-600' : isOrange ? 'bg-orange-500' : 'bg-emerald-500') : 'bg-slate-800'}`}
-                          >
-                            <div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${globalTtsEnabled ? '-translate-x-5' : 'translate-x-0'}`} />
-                          </button>
+                          <div dir="ltr" className="shrink-0">
+                            <button
+                              type="button"
+                              role="switch"
+                              aria-checked={globalTtsEnabled}
+                              onClick={() => {
+                                const next = !globalTtsEnabled;
+                                setGlobalTtsEnabled(next);
+                                showToast(next ? '🗣️ اعلام صوتی هوشمند فعال شد.' : '🔇 اعلام صوتی برای همه آلارم‌ها متوقف شد.');
+                              }}
+                              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                globalTtsEnabled ? (isPurpleBlue ? 'bg-violet-600' : isOrange ? 'bg-orange-500' : 'bg-emerald-500') : 'bg-slate-800'
+                              }`}
+                            >
+                              <span
+                                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                                  globalTtsEnabled ? 'translate-x-5' : 'translate-x-0'
+                                }`}
+                              />
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -1562,10 +1763,12 @@ export default function App() {
                     <div className={`p-3.5 rounded-2xl border ${isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-900 border-slate-800'} space-y-2.5`}>
                       <div className="flex items-center gap-2 font-bold text-xs">
                         <Palette className={`h-4 w-4 ${accentClass}`} />
-                        <span>پوسته و تم رنگی (۶ حالت)</span>
+                        <span>پوسته و تم رنگی (۸ حالت، شامل تم‌های جدید لوکس)</span>
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         {[
+                          { id: 'dark-gold', name: '👑 تیتانیوم طلایی اشرافی (لوکس)', bg: '#09090b', border: '#F59E0B' },
+                          { id: 'dark-sapphire', name: '💎 یاقوتی و پلاتینیوم (رویال)', bg: '#030712', border: '#38BDF8' },
                           { id: 'dark-green', name: 'دارک سبز (پیش‌فرض)', bg: '#020617', border: '#10B981' },
                           { id: 'light-green', name: 'لایت سبز', bg: '#F8FAFC', border: '#059669' },
                           { id: 'dark-purple-blue', name: 'دارک بنفش آبی 💜💙', bg: '#0B0D1B', border: '#8B5CF6' },
@@ -1578,7 +1781,7 @@ export default function App() {
                             onClick={() => setAppTheme(t.id as any)}
                             className={`p-2.5 rounded-xl border text-right text-[11px] flex items-center gap-2 font-semibold transition-all ${
                               appTheme === t.id
-                                ? (isPurpleBlue ? 'border-violet-500 bg-violet-500/15' : isOrange ? 'border-orange-500 bg-orange-500/15' : 'border-emerald-500 bg-emerald-500/15')
+                                ? (isGold ? 'border-amber-400 bg-amber-500/15' : isSapphire ? 'border-cyan-400 bg-cyan-500/15' : isPurpleBlue ? 'border-violet-500 bg-violet-500/15' : isOrange ? 'border-orange-500 bg-orange-500/15' : 'border-emerald-500 bg-emerald-500/15')
                                 : 'border-slate-700 bg-slate-950/50'
                             }`}
                           >
