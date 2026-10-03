@@ -23,6 +23,7 @@ class _ServerStatusButtonState extends State<ServerStatusButton> {
   int? _latencyMs;
   int? _activeServerAlerts;
   int? _totalServerAlerts;
+  String? _lastError;
   Timer? _pingTimer;
 
   @override
@@ -59,6 +60,7 @@ class _ServerStatusButtonState extends State<ServerStatusButton> {
             _latencyMs = stopwatch.elapsedMilliseconds;
             _activeServerAlerts = data['active_alerts'] as int?;
             _totalServerAlerts = data['total_alerts'] as int?;
+            _lastError = null;
           });
         }
       } else {
@@ -66,14 +68,20 @@ class _ServerStatusButtonState extends State<ServerStatusButton> {
           setState(() {
             _status = ServerConnectionStatus.offline;
             _latencyMs = null;
+            _lastError = 'HTTP Status: ${res.statusCode}';
           });
         }
       }
-    } catch (_) {
+    } catch (e) {
       if (mounted) {
         setState(() {
           _status = ServerConnectionStatus.offline;
           _latencyMs = null;
+          _lastError = e.toString().contains('TimeoutException')
+              ? 'تایم‌اوت شبکه (عدم دسترسی به پورت 8000 هاست)'
+              : (e.toString().contains('Cleartext')
+                  ? 'مجوز HTTP غیرفعال بود'
+                  : 'خطای اتصال: $e');
         });
       }
     }
@@ -205,6 +213,15 @@ class _ServerStatusButtonState extends State<ServerStatusButton> {
                           value: _activeServerAlerts != null ? '$_activeServerAlerts عدد' : '---',
                           icon: Icons.notifications_active_rounded,
                         ),
+                        if (_lastError != null && _status == ServerConnectionStatus.offline) ...[
+                          const Divider(height: 18),
+                          _buildInfoRow(
+                            theme: theme,
+                            label: isFa ? 'علت عدم اتصال:' : 'Reason:',
+                            value: _lastError!,
+                            icon: Icons.warning_amber_rounded,
+                          ),
+                        ],
                       ],
                     ),
                   ),
