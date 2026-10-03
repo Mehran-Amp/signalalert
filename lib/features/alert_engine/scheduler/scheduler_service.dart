@@ -41,31 +41,18 @@ class SchedulerService {
         _notificationRepository = notificationRepository,
         _settingsService = settingsService;
 
-  /// Starts the fine-grained tick scheduler
+  /// Starts the scheduler (Server-Authoritative Engine Mode: Background polling delegated to Python Server)
   void start() {
     _tickTimer?.cancel();
-    // Run an initial tick immediately
-    _runTick();
-    // 1-second tick loop to support sub-minute intervals (5s, 10s, 30s, etc.)
-    _tickTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      _runTick();
-    });
+    // In Server-Authoritative Architecture, background polling & FCM push notifications
+    // are handled 100% centrally by the Python server engine to eliminate duplicate alerts
+    // and maximize phone battery efficiency.
   }
 
   /// Evaluates all due alert rules against REST market prices
   Future<void> _runTick() async {
-    final now = DateTime.now();
-
-    // Query active rules from repository
-    final allRules = _alertRuleRepository.allRules.where((r) => r.isActive).toList();
-    final dueRules = allRules.where((rule) => rule.isDue(now) && !_evaluatingRuleUuids.contains(rule.uuid)).toList();
-
-    for (final rule in dueRules) {
-      _evaluatingRuleUuids.add(rule.uuid);
-      _evaluateSingleRule(rule, now).whenComplete(() {
-        _evaluatingRuleUuids.remove(rule.uuid);
-      });
-    }
+    // Local background tick suppressed in Server-Authoritative Mode.
+    // Price checks and notifications are handled centrally on Python Server.
   }
 
   Future<bool> _evaluateSingleRule(AlertRule rule, DateTime now) async {

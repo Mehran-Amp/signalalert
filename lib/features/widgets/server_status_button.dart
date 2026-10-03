@@ -91,10 +91,93 @@ class _ServerStatusButtonState extends State<ServerStatusButton> {
     }
   }
 
+  String _getFormattedAlertCount(int? count, String lang) {
+    if (count == null) return '---';
+    switch (lang) {
+      case 'fa':
+        return '$count عدد';
+      case 'ar':
+        return '$count تنبيه';
+      case 'ckb':
+        return '$count دانە';
+      case 'tr':
+        return '$count uyarı';
+      default:
+        return '$count alerts';
+    }
+  }
+
   void _showServerDetailSheet(BuildContext context) {
     final theme = Theme.of(context);
-    final isFa = widget.lang == 'fa' || widget.lang == 'ar' || widget.lang == 'ckb';
-    final urlController = TextEditingController(text: ServerAlertService.baseUrl);
+    final lang = widget.lang;
+
+    String sheetTitle;
+    String statusOnline;
+    String statusChecking;
+    String statusOffline;
+    String pingLabel;
+    String alertsLabel;
+    String reasonLabel;
+    String recheckBtn;
+    String closeBtn;
+
+    switch (lang) {
+      case 'fa':
+        sheetTitle = 'وضعیت اتصال سرور';
+        statusOnline = 'متصل و فعال (پایش آنلاین)';
+        statusChecking = 'در حال بررسی اتصال...';
+        statusOffline = 'قطع ارتباط با سرور';
+        pingLabel = 'زمان پاسخگویی (Ping):';
+        alertsLabel = 'هشدارهای فعال سرور:';
+        reasonLabel = 'علت عدم اتصال:';
+        recheckBtn = 'بررسی مجدد';
+        closeBtn = 'بستن';
+        break;
+      case 'ar':
+        sheetTitle = 'حالة الاتصال بالسيرفر';
+        statusOnline = 'متصل ونشط (مراقبة مباشرة)';
+        statusChecking = 'جاري فحص الاتصال...';
+        statusOffline = 'غير متصل بالسيرفر';
+        pingLabel = 'زمن الاستجابة (Ping):';
+        alertsLabel = 'التنبيهات النشطة بالسيرفر:';
+        reasonLabel = 'سبب عدم الاتصال:';
+        recheckBtn = 'إعادة الفحص';
+        closeBtn = 'إغلاق';
+        break;
+      case 'ckb':
+        sheetTitle = 'دۆخی پەیوەندی سێرڤەر';
+        statusOnline = 'پەیوەستکراوە و چالاکە';
+        statusChecking = 'لە حالەتی پشکنین دایە...';
+        statusOffline = 'پەیوەندی پچڕاوە';
+        pingLabel = 'کاتی وەڵامدانەوە (Ping):';
+        alertsLabel = 'ئاگادارییە چالاکەکان:';
+        reasonLabel = 'هۆکاری نەبەستنەوە:';
+        recheckBtn = 'پشکنینەوە';
+        closeBtn = 'داخستن';
+        break;
+      case 'tr':
+        sheetTitle = 'Sunucu Bağlantı Durumu';
+        statusOnline = 'Bağlı ve Aktif';
+        statusChecking = 'Kontrol ediliyor...';
+        statusOffline = 'Bağlantı Kesildi';
+        pingLabel = 'Tepki Süresi (Ping):';
+        alertsLabel = 'Sunucudaki Aktif Uyarılar:';
+        reasonLabel = 'Neden:';
+        recheckBtn = 'Yeniden Kontrol Et';
+        closeBtn = 'Kapat';
+        break;
+      default:
+        sheetTitle = 'Server Connection Status';
+        statusOnline = 'Connected & Active';
+        statusChecking = 'Checking Connection...';
+        statusOffline = 'Server Disconnected';
+        pingLabel = 'Response Time (Ping):';
+        alertsLabel = 'Active Alerts on Server:';
+        reasonLabel = 'Reason:';
+        recheckBtn = 'Recheck';
+        closeBtn = 'Close';
+        break;
+    }
 
     showModalBottomSheet(
       context: context,
@@ -158,7 +241,7 @@ class _ServerStatusButtonState extends State<ServerStatusButton> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              isFa ? 'وضعیت اتصال به سرور پایتون' : 'Python Server Connection Status',
+                              sheetTitle,
                               style: TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 15,
@@ -168,10 +251,10 @@ class _ServerStatusButtonState extends State<ServerStatusButton> {
                             const SizedBox(height: 2),
                             Text(
                               _status == ServerConnectionStatus.online
-                                  ? (isFa ? 'متصل و فعال (پایش آنلاین)' : 'Connected & Online')
+                                  ? statusOnline
                                   : (_status == ServerConnectionStatus.checking
-                                      ? (isFa ? 'در حال بررسی اتصال...' : 'Checking connection...')
-                                      : (isFa ? 'قطع ارتباط با سرور' : 'Disconnected')),
+                                      ? statusChecking
+                                      : statusOffline),
                               style: TextStyle(
                                 fontSize: 12,
                                 color: _status == ServerConnectionStatus.online
@@ -187,7 +270,7 @@ class _ServerStatusButtonState extends State<ServerStatusButton> {
                   ),
                   const SizedBox(height: 20),
 
-                  // Info Cards
+                  // Info Card
                   Container(
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
@@ -199,29 +282,22 @@ class _ServerStatusButtonState extends State<ServerStatusButton> {
                       children: [
                         _buildInfoRow(
                           theme: theme,
-                          label: isFa ? 'آدرس سرور:' : 'Server Address:',
-                          value: ServerAlertService.baseUrl,
-                          icon: Icons.dns_rounded,
-                        ),
-                        const Divider(height: 18),
-                        _buildInfoRow(
-                          theme: theme,
-                          label: isFa ? 'زمان پاسخگویی (Ping):' : 'Response Time:',
+                          label: pingLabel,
                           value: _latencyMs != null ? '$_latencyMs ms' : '---',
                           icon: Icons.speed_rounded,
                         ),
                         const Divider(height: 18),
                         _buildInfoRow(
                           theme: theme,
-                          label: isFa ? 'هشدارهای فعال روی سرور:' : 'Active Alerts on Server:',
-                          value: _activeServerAlerts != null ? '$_activeServerAlerts عدد' : '---',
+                          label: alertsLabel,
+                          value: _getFormattedAlertCount(_activeServerAlerts, lang),
                           icon: Icons.notifications_active_rounded,
                         ),
                         if (_lastError != null && _status == ServerConnectionStatus.offline) ...[
                           const Divider(height: 18),
                           _buildInfoRow(
                             theme: theme,
-                            label: isFa ? 'علت عدم اتصال:' : 'Reason:',
+                            label: reasonLabel,
                             value: _lastError!,
                             icon: Icons.warning_amber_rounded,
                           ),
@@ -232,46 +308,18 @@ class _ServerStatusButtonState extends State<ServerStatusButton> {
 
                   const SizedBox(height: 20),
 
-                  // Edit Server URL Input
-                  Text(
-                    isFa ? 'تغییر آدرس سرور پایتون (Server IP / Domain):' : 'Update Server Address:',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: urlController,
-                    style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurface),
-                    decoration: InputDecoration(
-                      hintText: 'https://aisocialfeed.com',
-                      prefixIcon: Icon(Icons.link_rounded, size: 20, color: theme.colorScheme.onSurface.withValues(alpha: 0.5)),
-                      filled: true,
-                      fillColor: theme.colorScheme.surface,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: theme.dividerColor),
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  // Action Buttons
+                  // Clean Action Buttons (Recheck & Close)
                   Row(
                     children: [
                       Expanded(
                         child: OutlinedButton.icon(
                           onPressed: () async {
-                            final newUrl = urlController.text.trim();
-                            if (newUrl.isNotEmpty) {
-                              ServerAlertService.setBaseUrl(newUrl);
-                            }
                             await _checkServerHealth();
                             setSheetState(() {});
                           },
                           icon: const Icon(Icons.refresh_rounded, size: 18),
                           label: Text(
-                            isFa ? 'بررسی مجدد' : 'Recheck',
+                            recheckBtn,
                             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                           ),
                           style: OutlinedButton.styleFrom(
@@ -284,16 +332,11 @@ class _ServerStatusButtonState extends State<ServerStatusButton> {
                       Expanded(
                         child: ElevatedButton.icon(
                           onPressed: () {
-                            final newUrl = urlController.text.trim();
-                            if (newUrl.isNotEmpty) {
-                              ServerAlertService.setBaseUrl(newUrl);
-                              _checkServerHealth();
-                            }
                             Navigator.of(context).pop();
                           },
-                          icon: const Icon(Icons.check_rounded, size: 18),
+                          icon: const Icon(Icons.close_rounded, size: 18),
                           label: Text(
-                            isFa ? 'ذخیره و بستن' : 'Save & Close',
+                            closeBtn,
                             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                           ),
                           style: ElevatedButton.styleFrom(
