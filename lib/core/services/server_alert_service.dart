@@ -114,4 +114,24 @@ class ServerAlertService {
     }
     return false;
   }
+
+  /// Fetch live price via Python server proxy for filtered exchanges (Binance, MEXC, Yahoo Finance, etc.)
+  static Future<double?> fetchPriceViaServer(String exchange, String symbol) async {
+    try {
+      final sanitizedSym = symbol.replaceAll('/', '').replaceAll(' ', '');
+      final url = Uri.parse('$_baseUrl/api/price/${exchange.toLowerCase()}/$sanitizedSym');
+      final response = await http.get(url).timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data is Map && data.containsKey('price') && data['price'] is num) {
+          final p = (data['price'] as num).toDouble();
+          if (p > 0) return p;
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ Error proxying price via server ($exchange / $symbol): $e');
+    }
+    return null;
+  }
 }

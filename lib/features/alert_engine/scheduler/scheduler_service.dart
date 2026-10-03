@@ -9,6 +9,7 @@ import '../models/alert_rule.dart';
 import '../repositories/json_alert_rule_repository.dart';
 import 'condition_evaluator.dart';
 import '../../../core/services/native_widget_sync_service.dart';
+import '../../../core/services/server_alert_service.dart';
 import '../../../core/services/tts_service.dart';
 
 /// Personal Price-Alert Polling Scheduler Service.
@@ -25,6 +26,12 @@ class SchedulerService {
   Timer? _tickTimer;
   final Set<String> _evaluatingRuleUuids = {};
   final Map<String, (MarketTicker, DateTime)> _recentTickers = {};
+
+  static const Set<String> _filteredExchanges = {
+    'binance', 'kucoin', 'okx', 'bybit', 'mexc', 'gateio', 'bingx',
+    'bitget', 'coinbase', 'kraken', 'lbank', 'xt', 'toobit', 'kcex',
+    'ourbit', 'global_stocks', 'stocks', 'macro', 'forex', 'bonds'
+  };
 
   final _triggeredController = StreamController<AlertRule>.broadcast();
   Stream<AlertRule> get onRuleTriggered => _triggeredController.stream;
@@ -67,26 +74,65 @@ class SchedulerService {
     }
   }
 
-  Future<bool> _evaluateSingleRule(AlertRule rule, DateTime now) async {
-    final exchange = _exchangeRegistry.get(rule.exchangeId);
-    if (exchange == null) return false;
+  Future<MarketTicker?> _getLiveTicker(AlertRule rule, DateTime now) async {
+    final cacheKey = '${rule.exchangeId}:${rule.pair.marketSymbol}';
+    final cached = _recentTickers[cacheKey];
+    if (cached != null && now.difference(cached.$2).inSeconds < 2) {
+      return cached.$1;
+    }
 
-    try {
-      // 1. Fetch current price & volume via pure REST (with short 2-second in-memory dedup)
-      final cacheKey = '${rule.exchangeId}:${rule.pair.marketSymbol}';
-      MarketTicker ticker;
-      final cached = _recentTickers[cacheKey];
-      if (cached != null && now.difference(cached.$2).inSeconds < 2) {
-        ticker = cached.$1;
-      } else {
-        ticker = await exchange.fetchTicker(rule.pair);
-        if (ticker.lastPrice > 0) {
-          _recentTickers[cacheKey] = (ticker, now);
-        }
+    // 1. If rule was determined to prefer server proxy (during alert creation), go straight to server proxy!
+    if (rule.preferServerProxy) {
+      final serverPrice = await ServerAlertService.fetchPriceViaServer(rule.exchangeId, rule.pair.marketSymbol);
+      if (serverPrice != null && serverPrice > 0) {
+        final t = MarketTicker(
+          baseCurrency: rule.baseCurrency,
+          counterCurrency: rule.counterCurrency,
+          lastPrice: serverPrice,
+          timestamp: now,
+        );
+        _recentTickers[cacheKey] = (t, now);
+        return t;
       }
+    }
+
+    // 2. Otherwise try local direct fetch first (5-second timeout for weak internet)
+    final exchange = _exchangeRegistry.get(rule.exchangeId);
+    if (exchange != null) {
+      try {
+        final localTicker = await exchange.fetchTicker(rule.pair).timeout(const Duration(seconds: 5));
+        if (localTicker.lastPrice > 0) {
+          _recentTickers[cacheKey] = (localTicker, now);
+          return localTicker;
+        }
+      } catch (_) {
+        // Direct local fetch failed or timed out
+      }
+    }
+
+    // 3. Fallback: Query server proxy if local fetch failed
+    final serverPrice = await ServerAlertService.fetchPriceViaServer(rule.exchangeId, rule.pair.marketSymbol);
+    if (serverPrice != null && serverPrice > 0) {
+      final t = MarketTicker(
+        baseCurrency: rule.baseCurrency,
+        counterCurrency: rule.counterCurrency,
+        lastPrice: serverPrice,
+        timestamp: now,
+      );
+      _recentTickers[cacheKey] = (t, now);
+      return t;
+    }
+
+    return null;
+  }
+
+  Future<bool> _evaluateSingleRule(AlertRule rule, DateTime now) async {
+    try {
+      // 1. Fetch current price & volume via smart dual-route (Server proxy for filtered exchanges, local for domestic)
+      final ticker = await _getLiveTicker(rule, now);
 
       // Never process non-positive or corrupted prices
-      if (ticker.lastPrice <= 0) return false;
+      if (ticker == null || ticker.lastPrice <= 0) return false;
 
       // 2. Evaluate condition synchronously (pure functions, zero I/O)
       final result = ConditionEvaluator.evaluate(

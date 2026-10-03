@@ -101,6 +101,7 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
   bool _soundEnabled = true;
   bool _ttsEnabled = false;
   bool _vibrationEnabled = true;
+  bool _preferServerProxy = false;
 
   @override
   void initState() {
@@ -297,15 +298,38 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
       _isLoadingPrice = true;
     });
 
+    // 1. Try local direct fetch first with 5-second timeout (for weak Iranian internet)
     try {
       final snapshot = await widget.registry.fetchSnapshotFrom(
         _selectedExchange!.id,
         _selectedPair!,
-      );
+      ).timeout(const Duration(seconds: 5));
+
       if (snapshot != null && snapshot.price > 0 && mounted) {
         setState(() {
           _currentPrice = snapshot.price;
           _targetPriceController.text = _formatSmartNumber(snapshot.price);
+          _preferServerProxy = false; // Local direct fetch working
+          _isLoadingPrice = false;
+        });
+        return;
+      }
+    } catch (_) {
+      // Local fetch failed (or exchange API is filtered/blocked by ISP)
+    }
+
+    // 2. Fallback: Query via server proxy (if ISP filtered)
+    try {
+      final serverPrice = await ServerAlertService.fetchPriceViaServer(
+        _selectedExchange!.id,
+        _selectedPair!.marketSymbol,
+      );
+
+      if (serverPrice != null && serverPrice > 0 && mounted) {
+        setState(() {
+          _currentPrice = serverPrice;
+          _targetPriceController.text = _formatSmartNumber(serverPrice);
+          _preferServerProxy = true; // Route marked to use server proxy
           _isLoadingPrice = false;
         });
         return;
@@ -458,6 +482,7 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
         soundEnabled: _soundEnabled,
         ttsEnabled: _ttsEnabled,
         vibrationEnabled: _vibrationEnabled,
+        preferServerProxy: _preferServerProxy,
         basePrice: _currentPrice ?? widget.initialRule!.basePrice,
         lastCheckedPrice: _currentPrice ?? widget.initialRule!.lastCheckedPrice,
       );
@@ -492,6 +517,7 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
         soundEnabled: _soundEnabled,
         ttsEnabled: _ttsEnabled,
         vibrationEnabled: _vibrationEnabled,
+        preferServerProxy: _preferServerProxy,
         currentPrice: _currentPrice,
       );
       await widget.repository.saveRule(newRule);

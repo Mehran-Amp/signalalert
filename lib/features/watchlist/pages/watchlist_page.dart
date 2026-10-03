@@ -75,6 +75,36 @@ class _WatchlistPageState extends State<WatchlistPage> {
         return;
       }
 
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            content: Row(
+              children: [
+                SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: theme.colorScheme.primary),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    isFa
+                        ? 'در حال استعلام هوشمند قیمت‌ها (با سرور پشتیبان)... لطفا شکیبا باشید.'
+                        : 'Smart fetching live prices via exchange & server proxy...',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: theme.colorScheme.surfaceContainerHighest,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+
       int successCount = 0;
       for (final rule in activeRules) {
         final ok = await scheduler.checkRuleNow(rule);
@@ -89,8 +119,8 @@ class _WatchlistPageState extends State<WatchlistPage> {
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             content: Text(
               isFa
-                  ? 'بروزرسانی همگانی انجام شد ($successCount از ${activeRules.length} نماد بروز شدند)'
-                  : 'Refreshed $successCount of ${activeRules.length} symbols successfully.',
+                  ? 'بروزرسانی دقیق نرخ‌ها انجام شد ($successCount از ${activeRules.length} نماد با موفقیت به‌روزرسانی شدند)'
+                  : 'Successfully verified $successCount of ${activeRules.length} symbols.',
             ),
             backgroundColor: theme.colorScheme.primary,
             duration: const Duration(seconds: 2),

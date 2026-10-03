@@ -350,3 +350,18 @@ def delete_alert(alert_id: str):
     save_alerts_to_disk(ALERTS_DB)
     print(f"🗑️ [API] Deleted Alert {alert_id}")
     return {"status": "deleted", "id": alert_id}
+
+@app.get("/api/price/{exchange}/{symbol}")
+async def get_live_price(exchange: str, symbol: str):
+    async with httpx.AsyncClient() as client:
+        price = await fetch_price_async(client, exchange, symbol)
+        if price is not None and price > 0:
+            return {
+                "status": "ok",
+                "exchange": exchange,
+                "symbol": symbol,
+                "price": price,
+                "timestamp": time.time()
+            }
+        else:
+            raise HTTPException(status_code=502, detail="Unable to fetch price from market source")

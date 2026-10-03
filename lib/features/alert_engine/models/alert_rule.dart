@@ -106,6 +106,9 @@ class AlertRule extends Equatable {
   /// Whether vibration is enabled for this alert
   final bool vibrationEnabled;
 
+  /// Whether to prefer server proxy over direct local fetch (determined during creation)
+  final bool preferServerProxy;
+
   /// Whether this alert is actively checked by the scheduler
   final bool isActive;
 
@@ -205,6 +208,7 @@ class AlertRule extends Equatable {
     this.soundEnabled = true,
     this.ttsEnabled = false,
     this.vibrationEnabled = true,
+    this.preferServerProxy = false,
     this.isActive = true,
     this.isTriggered = false,
     this.cooldownUntil,
@@ -238,6 +242,7 @@ class AlertRule extends Equatable {
     bool soundEnabled = true,
     bool ttsEnabled = false,
     bool vibrationEnabled = true,
+    bool preferServerProxy = false,
     DateTime? cooldownUntil,
     int triggerCount = 0,
   }) {
@@ -275,6 +280,7 @@ class AlertRule extends Equatable {
       soundEnabled: soundEnabled,
       ttsEnabled: ttsEnabled,
       vibrationEnabled: vibrationEnabled,
+      preferServerProxy: preferServerProxy,
       isActive: true,
       isTriggered: false,
       cooldownUntil: cooldownUntil,
@@ -315,6 +321,7 @@ class AlertRule extends Equatable {
     bool? soundEnabled,
     bool? ttsEnabled,
     bool? vibrationEnabled,
+    bool? preferServerProxy,
     bool? isActive,
     bool? isTriggered,
     DateTime? cooldownUntil,
@@ -350,6 +357,7 @@ class AlertRule extends Equatable {
       soundEnabled: soundEnabled ?? this.soundEnabled,
       ttsEnabled: ttsEnabled ?? this.ttsEnabled,
       vibrationEnabled: vibrationEnabled ?? this.vibrationEnabled,
+      preferServerProxy: preferServerProxy ?? this.preferServerProxy,
       basePrice: basePrice ?? this.basePrice,
       lastCheckedPrice: lastCheckedPrice ?? this.lastCheckedPrice,
       baseVolume: baseVolume ?? this.baseVolume,
@@ -391,6 +399,7 @@ class AlertRule extends Equatable {
         'soundEnabled': soundEnabled,
         'ttsEnabled': ttsEnabled,
         'vibrationEnabled': vibrationEnabled,
+        'preferServerProxy': preferServerProxy,
         'isActive': isActive,
         'isTriggered': isTriggered,
         'cooldownUntil': cooldownUntil?.toIso8601String(),
@@ -436,6 +445,7 @@ class AlertRule extends Equatable {
         soundEnabled: json['soundEnabled'] as bool? ?? true,
         ttsEnabled: json['ttsEnabled'] as bool? ?? false,
         vibrationEnabled: json['vibrationEnabled'] as bool? ?? true,
+        preferServerProxy: json['preferServerProxy'] as bool? ?? false,
         isActive: json['isActive'] as bool? ?? true,
         isTriggered: json['isTriggered'] as bool? ?? false,
         cooldownUntil: json['cooldownUntil'] != null
@@ -482,6 +492,7 @@ class AlertRule extends Equatable {
         soundEnabled,
         ttsEnabled,
         vibrationEnabled,
+        preferServerProxy,
         isActive,
         isTriggered,
         cooldownUntil,
