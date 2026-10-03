@@ -112,8 +112,7 @@ class BitcoinCheckerApp extends StatelessWidget {
           child: AnimatedBuilder(
             animation: settingsService,
             builder: (context, _) {
-              final isLight = settingsService.settings.themePalette == AppThemePalette.lightGreen ||
-                  settingsService.settings.themePalette == AppThemePalette.lightOrange;
+              final isLight = settingsService.settings.themePalette.name.startsWith('light');
               final lang = settingsService.settings.language;
               final isRtl = AppStrings.isRtl(lang);
               return MaterialApp(

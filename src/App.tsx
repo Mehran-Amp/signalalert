@@ -107,7 +107,7 @@ interface NotificationItem {
 }
 
 type ExchangeCategoryType = 'all' | 'tier1' | 'aggregator' | 'middleEast' | 'asia' | 'europe' | 'americas';
-type ThemeModeType = 'dark-green' | 'light-green' | 'dark-orange' | 'light-orange' | 'dark-purple-blue' | 'light-purple-blue' | 'dark-gold' | 'dark-sapphire';
+type ThemeModeType = 'dark-green' | 'light-green' | 'dark-orange' | 'light-orange' | 'dark-purple-blue' | 'light-purple-blue' | 'dark-gold' | 'light-gold' | 'dark-sapphire' | 'light-sapphire';
 
 interface ExchangeInfo {
   id: string;
@@ -2406,16 +2406,18 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Themes (4 Palettes) */}
+                    {/* Themes (10 Palettes) */}
                     <div className={`p-3.5 rounded-2xl border ${isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-900 border-slate-800'} space-y-2.5`}>
                       <div className="flex items-center gap-2 font-bold text-xs">
                         <Palette className={`h-4 w-4 ${accentClass}`} />
-                        <span>پوسته و تم رنگی (۸ حالت، شامل تم‌های جدید لوکس)</span>
+                        <span>پوسته و تم رنگی (۱۰ حالت، شامل لایت/دارک تم‌های لوکس)</span>
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         {[
-                          { id: 'dark-gold', name: '👑 تیتانیوم طلایی اشرافی (لوکس)', bg: '#09090b', border: '#F59E0B' },
-                          { id: 'dark-sapphire', name: '💎 یاقوتی و پلاتینیوم (رویال)', bg: '#030712', border: '#38BDF8' },
+                          { id: 'dark-gold', name: '👑 تیتانیوم طلایی (دارک)', bg: '#09090b', border: '#F59E0B' },
+                          { id: 'light-gold', name: '👑 تیتانیوم طلایی (لایت)', bg: '#FAF9F5', border: '#D97706' },
+                          { id: 'dark-sapphire', name: '💎 یاقوتی رویال (دارک)', bg: '#030712', border: '#38BDF8' },
+                          { id: 'light-sapphire', name: '💎 یاقوتی رویال (لایت)', bg: '#F0F7FF', border: '#0284C7' },
                           { id: 'dark-green', name: 'دارک سبز (پیش‌فرض)', bg: '#020617', border: '#10B981' },
                           { id: 'light-green', name: 'لایت سبز', bg: '#F8FAFC', border: '#059669' },
                           { id: 'dark-purple-blue', name: 'دارک بنفش آبی 💜💙', bg: '#0B0D1B', border: '#8B5CF6' },

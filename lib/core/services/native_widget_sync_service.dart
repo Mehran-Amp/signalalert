@@ -187,6 +187,17 @@ class NativeWidgetSyncService {
           'price': 0xFFFBBF24,
           'isDark': 1,
         };
+      case AppThemePalette.lightGold:
+        return {
+          'bg': 0xFFFAF9F5,
+          'surface': 0xFFFFFFFF,
+          'primary': 0xFFD97706,
+          'textPrimary': 0xFF18181B,
+          'textSecondary': 0xFF71717A,
+          'border': 0xFFFDE68A,
+          'price': 0xFFB45309,
+          'isDark': 0,
+        };
       case AppThemePalette.darkSapphire:
         return {
           'bg': 0xFF030712,
@@ -197,6 +208,17 @@ class NativeWidgetSyncService {
           'border': 0x4D38BDF8,
           'price': 0xFF38BDF8,
           'isDark': 1,
+        };
+      case AppThemePalette.lightSapphire:
+        return {
+          'bg': 0xFFF0F7FF,
+          'surface': 0xFFFFFFFF,
+          'primary': 0xFF0284C7,
+          'textPrimary': 0xFF0F172A,
+          'textSecondary': 0xFF475569,
+          'border': 0xFFBAE6FD,
+          'price': 0xFF0369A1,
+          'isDark': 0,
         };
     }
   }
