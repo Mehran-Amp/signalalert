@@ -163,6 +163,8 @@ async def check_alerts_job():
     if not ready_alerts:
         return
 
+    print(f"⏰ [Worker] Checking prices for {len(ready_alerts)} active alert(s)...")
+
     # Group unique (exchange, symbol) pairs to minimize HTTP requests
     unique_pairs = list({(a.exchange, a.symbol) for a in ready_alerts})
 
@@ -217,6 +219,7 @@ async def startup_event():
 
 @app.get("/")
 def read_root():
+    print("🌐 [API] Health check requested.")
     return {
         "status": "online",
         "engine": "SignalAlert Enterprise Engine v2.0",
@@ -242,16 +245,19 @@ def create_alert(alert_in: AlertCreate):
     )
     ALERTS_DB.append(new_alert)
     save_alerts_to_disk(ALERTS_DB)
-    print(f"➕ Alert Created: {new_alert.symbol} ({new_alert.check_interval_seconds}s interval)")
+    print(f"📩 [API] New Alert Created: {new_alert.symbol} ({new_alert.exchange}) | Target: {new_alert.target_price} | Interval: {new_alert.check_interval_seconds}s")
     return new_alert
 
 @app.get("/api/alerts/{user_id}", response_model=List[Alert])
 def get_user_alerts(user_id: str):
-    return [a for a in ALERTS_DB if a.user_id == user_id]
+    user_alerts = [a for a in ALERTS_DB if a.user_id == user_id]
+    print(f"📖 [API] Fetching alerts for user {user_id}: {len(user_alerts)} alert(s) found.")
+    return user_alerts
 
 @app.delete("/api/alerts/{alert_id}")
 def delete_alert(alert_id: str):
     global ALERTS_DB
     ALERTS_DB = [a for a in ALERTS_DB if a.id != alert_id]
     save_alerts_to_disk(ALERTS_DB)
+    print(f"🗑️ [API] Deleted Alert {alert_id}")
     return {"status": "deleted", "id": alert_id}

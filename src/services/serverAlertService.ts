@@ -20,7 +20,7 @@ export interface ServerAlertResponse extends AlertPayload {
   created_at: string;
 }
 
-let BASE_URL = 'http://server360:8000';
+let BASE_URL = 'http://server60.webtook.com:8000';
 
 export const setServerBaseUrl = (url: string) => {
   if (url) {
