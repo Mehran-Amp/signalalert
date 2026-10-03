@@ -46,6 +46,7 @@ class Alert(AlertCreate):
     is_active: bool = True
     created_at: str
     last_checked_at: float = 0.0
+    last_triggered_at: float = 0.0
 
 DB_FILE = "alerts_data.json"
 
@@ -87,36 +88,119 @@ scheduler = AsyncIOScheduler()
 # 4. Asynchronous High-Performance Price Engine (httpx Async)
 # -------------------------------------------------------------------
 async def fetch_price_async(client: httpx.AsyncClient, exchange: str, symbol: str) -> Optional[float]:
-    """Non-blocking async HTTP fetcher with connection pooling"""
+    """Non-blocking async HTTP fetcher with connection pooling and multi-source fallbacks"""
     ex = exchange.lower()
-    sym = symbol.upper()
+    sym = symbol.upper().replace('/', '').replace(' ', '')
+
     try:
-        if ex == 'nobitex':
-            url = f"https://api.nobitex.ir/v2/orderbook/{sym}"
-            res = await client.get(url, timeout=4.0)
-            if res.status_code == 200:
-                data = res.json()
-                if 'bids' in data and len(data['bids']) > 0:
-                    return float(data['bids'][0][0])
+        # 1. IRANIAN EXCHANGES (Nobitex, Wallex, Tabdeal, Ramzinex, Tetherland, etc.)
+        if ex in ['nobitex', 'wallex', 'tabdeal', 'ramzinex', 'tetherland', 'abantether', 'bitbarg', 'sarmayex', 'exir']:
+            # Normalize symbol for Iranian APIs (e.g. USDTTMN -> USDTIRT or usdt-rls)
+            nobitex_sym = sym
+            if sym in ['USDTTMN', 'USDTIRT', 'USDT']:
+                nobitex_sym = 'USDTIRT'
+            elif sym.endswith('TMN'):
+                nobitex_sym = sym[:-3] + 'IRT'
+            elif sym.endswith('IRT'):
+                nobitex_sym = sym
 
-        elif ex in ['wallex', 'tabdeal', 'ramzinex', 'tetherland']:
-            # Fallback or direct endpoints
-            url = f"https://api.nobitex.ir/v2/orderbook/{sym}"
-            res = await client.get(url, timeout=4.0)
-            if res.status_code == 200:
-                data = res.json()
-                if 'bids' in data and len(data['bids']) > 0:
-                    return float(data['bids'][0][0])
+            # Try Nobitex Orderbook
+            try:
+                url = f"https://api.nobitex.ir/v2/orderbook/{nobitex_sym}"
+                res = await client.get(url, timeout=5.0, headers={'User-Agent': 'Mozilla/5.0'})
+                if res.status_code == 200:
+                    data = res.json()
+                    if 'bids' in data and len(data['bids']) > 0:
+                        return float(data['bids'][0][0])
+            except Exception:
+                pass
 
-        else:
-            # Binance & Global Crypto
-            url = f"https://api.binance.com/api/v3/ticker/price?symbol={sym}"
+            # Try Nobitex Market Stats
+            try:
+                url = "https://api.nobitex.ir/market/stats"
+                res = await client.get(url, timeout=5.0, headers={'User-Agent': 'Mozilla/5.0'})
+                if res.status_code == 200:
+                    data = res.json()
+                    if 'stats' in data:
+                        stats = data['stats']
+                        for k, v in stats.items():
+                            clean_k = k.upper().replace('-', '').replace('RLS', 'TMN').replace('IRT', 'TMN')
+                            if clean_k == sym or k.upper().replace('-', '') == nobitex_sym:
+                                if 'latestPrice' in v:
+                                    val = float(v['latestPrice'])
+                                    return val / 10.0 if k.endswith('-rls') else val
+            except Exception:
+                pass
+
+            # Try Wallex API fallback
+            try:
+                url = "https://api.wallex.ir/v1/markets"
+                res = await client.get(url, timeout=5.0, headers={'User-Agent': 'Mozilla/5.0'})
+                if res.status_code == 200:
+                    data = res.json()
+                    if 'result' in data and 'symbols' in data['result']:
+                        symbols = data['result']['symbols']
+                        for s_key, s_data in symbols.items():
+                            if s_key.upper().replace('-', '') == sym or s_key.upper() == sym:
+                                return float(s_data['stats']['lastPrice'])
+            except Exception:
+                pass
+
+        # 2. GLOBAL MACRO / FOREX / US BONDS / STOCKS (e.g. DX-Y.NYB, US10Y, EUR/USD, NVDA, GOLD)
+        elif ex in ['global_stocks', 'stocks', 'macro', 'forex', 'bonds', 'wallstreet'] or '-' in sym or 'NYB' in sym or '10Y' in sym:
+            yf_symbol = sym
+            if 'DX-Y' in sym or 'DXY' in sym:
+                yf_symbol = 'DX-Y.NYB'
+            elif 'US10Y' in sym or '10Y' in sym or 'TNX' in sym:
+                yf_symbol = '^TNX'
+            elif 'EURUSD' in sym or 'EUR/USD' in sym:
+                yf_symbol = 'EURUSD=X'
+            elif 'GBPUSD' in sym:
+                yf_symbol = 'GBPUSD=X'
+            elif 'USDJPY' in sym:
+                yf_symbol = 'USDJPY=X'
+            elif 'GOLD' in sym or 'XAU' in sym:
+                yf_symbol = 'GC=F'
+
+            try:
+                url = f"https://query1.finance.yahoo.com/v8/finance/chart/{yf_symbol}?interval=1m&range=1d"
+                res = await client.get(url, timeout=5.0, headers={'User-Agent': 'Mozilla/5.0'})
+                if res.status_code == 200:
+                    data = res.json()
+                    if 'chart' in data and 'result' in data['chart'] and data['chart']['result']:
+                        meta = data['chart']['result'][0]['meta']
+                        price = meta.get('regularMarketPrice')
+                        if price and float(price) > 0:
+                            return float(price)
+            except Exception:
+                pass
+
+        # 3. GLOBAL CRYPTO (Binance, MEXC, KuCoin, Gate.io, OKX, Bybit)
+        crypto_sym = sym
+        if not crypto_sym.endswith('USDT') and not crypto_sym.endswith('BUSD') and not crypto_sym.endswith('BTC'):
+            crypto_sym = crypto_sym + 'USDT'
+
+        # Try Binance
+        try:
+            url = f"https://api.binance.com/api/v3/ticker/price?symbol={crypto_sym}"
             res = await client.get(url, timeout=4.0)
             if res.status_code == 200:
                 return float(res.json()['price'])
+        except Exception:
+            pass
+
+        # Try MEXC
+        try:
+            url = f"https://api.mexc.com/api/v3/ticker/price?symbol={crypto_sym}"
+            res = await client.get(url, timeout=4.0)
+            if res.status_code == 200:
+                return float(res.json()['price'])
+        except Exception:
+            pass
 
     except Exception as e:
-        print(f"❌ Error fetching {sym} from {exchange}: {e}")
+        print(f"⚠️ [Worker] Unable to resolve price for {symbol} on {exchange} ({e})")
+
     return None
 
 # -------------------------------------------------------------------
@@ -195,15 +279,19 @@ async def check_alerts_job():
             triggered = True
 
         if triggered:
-            print(f"🔔 [ALERT TRIGGERED] {alert.symbol} @ {current_price} (Target: {alert.target_price})")
-            send_fcm_notification(
-                fcm_token=alert.fcm_token,
-                title=f"🚨 هشدار قیمت {alert.symbol}",
-                body=f"قیمت {alert.symbol} در صرافی {alert.exchange.capitalize()} به {current_price:,.2f} رسید!",
-                data_payload={"alert_id": alert.id, "symbol": alert.symbol, "price": str(current_price)}
-            )
-            alert.is_active = False
-            updated = True
+            # Check cooldown so we don't spam FCM push faster than alert's check_interval_seconds
+            last_trig = getattr(alert, 'last_triggered_at', 0.0)
+            if (current_time - last_trig) >= alert.check_interval_seconds:
+                print(f"🔔 [ALERT TRIGGERED & FCM PUSH SENT] {alert.symbol} @ {current_price} (Target: {alert.target_price})")
+                send_fcm_notification(
+                    fcm_token=alert.fcm_token,
+                    title=f"🚨 هشدار قیمت {alert.symbol}",
+                    body=f"قیمت {alert.symbol} در صرافی {alert.exchange.capitalize()} به {current_price:,.2f} رسید!",
+                    data_payload={"alert_id": alert.id, "symbol": alert.symbol, "price": str(current_price)}
+                )
+                alert.last_triggered_at = current_time
+                alert.is_active = True # Keep active for 24/7 background monitoring
+                updated = True
 
     if updated:
         save_alerts_to_disk(ALERTS_DB)
@@ -241,7 +329,8 @@ def create_alert(alert_in: AlertCreate):
         note=alert_in.note,
         is_active=True,
         created_at=datetime.utcnow().isoformat(),
-        last_checked_at=0.0
+        last_checked_at=0.0,
+        last_triggered_at=0.0
     )
     ALERTS_DB.append(new_alert)
     save_alerts_to_disk(ALERTS_DB)

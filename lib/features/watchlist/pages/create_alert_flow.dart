@@ -422,6 +422,20 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
         ? _customNoteController.text.trim()
         : null;
 
+    // Calculate real effective target price for server (never send 0.0 for percent change rules)
+    double effectiveTargetPrice;
+    if (_conditionType == AlertConditionType.percentChange) {
+      final p = percent ?? 2.5;
+      final baseP = _currentPrice ?? 1.0;
+      if (_direction == AlertDirection.below) {
+        effectiveTargetPrice = baseP * (1.0 - (p / 100.0));
+      } else {
+        effectiveTargetPrice = baseP * (1.0 + (p / 100.0));
+      }
+    } else {
+      effectiveTargetPrice = targetPrice ?? upperTargetPrice ?? lowerTargetPrice ?? _currentPrice ?? 0.0;
+    }
+
     if (widget.initialRule != null) {
       final updatedRule = widget.initialRule!.copyWith(
         baseCurrency: pair.baseCurrency,
@@ -453,7 +467,7 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
         userId: 'user_default',
         exchange: exchangeId,
         symbol: pair.marketSymbol,
-        targetPrice: targetPrice ?? upperTargetPrice ?? 0.0,
+        targetPrice: effectiveTargetPrice,
         condition: _direction == AlertDirection.below ? 'BELOW' : 'ABOVE',
         checkIntervalSeconds: intervalSeconds,
         note: customNote,
@@ -486,7 +500,7 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
         userId: 'user_default',
         exchange: exchangeId,
         symbol: pair.marketSymbol,
-        targetPrice: targetPrice ?? upperTargetPrice ?? 0.0,
+        targetPrice: effectiveTargetPrice,
         condition: _direction == AlertDirection.below ? 'BELOW' : 'ABOVE',
         checkIntervalSeconds: intervalSeconds,
         note: customNote,
