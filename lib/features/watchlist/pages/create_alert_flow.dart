@@ -14,6 +14,7 @@ import '../../exchanges/stocks/global_stocks_exchange.dart';
 import '../../settings/services/settings_service.dart';
 import '../../settings/services/sound_manager.dart';
 import '../../../core/services/tts_service.dart';
+import '../../../core/services/server_alert_service.dart';
 import '../../../core/utils/symbol_filter_helper.dart';
 
 enum CheckUnit { seconds, minutes, hours }
@@ -447,6 +448,16 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
         lastCheckedPrice: _currentPrice ?? widget.initialRule!.lastCheckedPrice,
       );
       await widget.repository.saveRule(updatedRule);
+      // Sync to Python Alert Engine
+      ServerAlertService.createAlertOnServer(
+        userId: 'user_default',
+        exchange: exchangeId,
+        symbol: pair.marketSymbol,
+        targetPrice: targetPrice ?? upperTargetPrice ?? 0.0,
+        condition: _direction == AlertDirection.below ? 'BELOW' : 'ABOVE',
+        checkIntervalSeconds: intervalSeconds,
+        note: customNote,
+      );
     } else {
       final newRule = AlertRule.create(
         pair: pair,
@@ -470,6 +481,16 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
         currentPrice: _currentPrice,
       );
       await widget.repository.saveRule(newRule);
+      // Sync to Python Alert Engine
+      ServerAlertService.createAlertOnServer(
+        userId: 'user_default',
+        exchange: exchangeId,
+        symbol: pair.marketSymbol,
+        targetPrice: targetPrice ?? upperTargetPrice ?? 0.0,
+        condition: _direction == AlertDirection.below ? 'BELOW' : 'ABOVE',
+        checkIntervalSeconds: intervalSeconds,
+        note: customNote,
+      );
     }
 
     if (mounted) {
