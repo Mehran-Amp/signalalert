@@ -102,6 +102,16 @@ class _ServerStatusButtonState extends State<ServerStatusButton> {
         return '$count دانە';
       case 'tr':
         return '$count uyarı';
+      case 'ru':
+        return '$count оповещений';
+      case 'es':
+        return '$count alertas';
+      case 'fr':
+        return '$count alertes';
+      case 'de':
+        return '$count Warnmeldungen';
+      case 'zh':
+        return '$count 项警报';
       default:
         return '$count alerts';
     }
@@ -137,6 +147,7 @@ class _ServerStatusButtonState extends State<ServerStatusButton> {
         recheckBtn = 'بررسی مجدد';
         closeBtn = 'بستن';
         break;
+
       case 'ar':
         sheetTitle = 'حالة الاتصال بالسيرفر';
         statusOnline = 'متصل ونشط (مراقبة مباشرة)';
@@ -150,9 +161,10 @@ class _ServerStatusButtonState extends State<ServerStatusButton> {
         recheckBtn = 'إعادة الفحص';
         closeBtn = 'إغلاق';
         break;
+
       case 'ckb':
         sheetTitle = 'دۆخی پەیوەندی سێرڤەر';
-        statusOnline = 'پەیوەستکراوە و چالاکە';
+        statusOnline = 'پەیوەستکراوە و چالاکە (چاودێری ئۆنلاین)';
         statusChecking = 'لە حالەتی پشکنین دایە...';
         statusOffline = 'پەیوەندی پچڕاوە';
         pingLabel = 'کاتی وەڵامدانەوە (Ping):';
@@ -163,11 +175,12 @@ class _ServerStatusButtonState extends State<ServerStatusButton> {
         recheckBtn = 'پشکنینەوە';
         closeBtn = 'داخستن';
         break;
+
       case 'tr':
         sheetTitle = 'Sunucu Bağlantı Durumu';
-        statusOnline = 'Bağlı ve Aktif';
-        statusChecking = 'Kontrol ediliyor...';
-        statusOffline = 'Bağlantı Kesildi';
+        statusOnline = 'Bağlı ve Aktif (Canlı İzleme)';
+        statusChecking = 'Bağlantı kontrol ediliyor...';
+        statusOffline = 'Sunucu Bağlantısı Kesildi';
         pingLabel = 'Tepki Süresi (Ping):';
         alertsLabel = 'Sunucudaki Aktif Uyarılar:';
         reasonLabel = 'Neden:';
@@ -176,6 +189,78 @@ class _ServerStatusButtonState extends State<ServerStatusButton> {
         recheckBtn = 'Yeniden Kontrol Et';
         closeBtn = 'Kapat';
         break;
+
+      case 'ru':
+        sheetTitle = 'Статус Подключения к Серверу';
+        statusOnline = 'Подключено и Активно';
+        statusChecking = 'Проверка соединения...';
+        statusOffline = 'Соединение Потеряно';
+        pingLabel = 'Время Отклика (Ping):';
+        alertsLabel = 'Активные Оповещения на Сервере:';
+        reasonLabel = 'Причина Ошибки:';
+        supportTitle = 'Поддержка и Устойчивость Серверов';
+        supportDesc = 'Круглосуточный стабильный мониторинг и регулярные обновления зависят от вашей легальной покупки приложения. Ваша поддержка обеспечивает непрерывную работу сервиса.';
+        recheckBtn = 'Проверить Снова';
+        closeBtn = 'Закрыть';
+        break;
+
+      case 'es':
+        sheetTitle = 'Estado de Conexión del Servidor';
+        statusOnline = 'Conectado y Activo';
+        statusChecking = 'Verificando conexión...';
+        statusOffline = 'Servidor Desconectado';
+        pingLabel = 'Tiempo de Respuesta (Ping):';
+        alertsLabel = 'Alertas Activas en Servidor:';
+        reasonLabel = 'Causa del Error:';
+        supportTitle = 'Sostenibilidad y Soporte del Servidor';
+        supportDesc = 'El monitoreo estable 24/7 y las actualizaciones continuas dependen de la adquisición legal de esta aplicación. Su apoyo mantiene nuestros servidores en línea y actualizados.';
+        recheckBtn = 'Recomprobar';
+        closeBtn = 'Cerrar';
+        break;
+
+      case 'fr':
+        sheetTitle = 'État de Connexion au Serveur';
+        statusOnline = 'Connecté et Actif';
+        statusChecking = 'Vérification de la connexion...';
+        statusOffline = 'Serveur Déconnecté';
+        pingLabel = 'Temps de Réponse (Ping):';
+        alertsLabel = 'Alertes Actives sur le Serveur:';
+        reasonLabel = 'Raison de l\'erreur:';
+        supportTitle = 'Support et Durabilité du Serveur';
+        supportDesc = 'La surveillance stable 24/7 et les mises à jour régulières dépendent de l\'achat légal de cette application. Votre soutien garantit un service toujours en ligne.';
+        recheckBtn = 'Vérifier à Nouveau';
+        closeBtn = 'Fermer';
+        break;
+
+      case 'de':
+        sheetTitle = 'Server-Verbindungsstatus';
+        statusOnline = 'Verbunden und Aktiv';
+        statusChecking = 'Verbindung wird geprüft...';
+        statusOffline = 'Server Getrennt';
+        pingLabel = 'Antwortzeit (Ping):';
+        alertsLabel = 'Aktive Server-Warnmeldungen:';
+        reasonLabel = 'Ursache:';
+        supportTitle = 'Support & Server-Nachhaltigkeit';
+        supportDesc = 'Die stabile 24/7-Überwachung und fortlaufende Updates hängen vom legalen Erwerb dieser App ab. Ihre Unterstützung hält unsere Server dauerhaft online.';
+        recheckBtn = 'Erneut Prüfen';
+        closeBtn = 'Schließen';
+        break;
+
+      case 'zh':
+        sheetTitle = '服务器连接状态';
+        statusOnline = '已连接并正常运行';
+        statusChecking = '正在检查连接...';
+        statusOffline = '服务器已断开连接';
+        pingLabel = '响应时间 (Ping):';
+        alertsLabel = '服务器活跃警报:';
+        reasonLabel = '错误原因:';
+        supportTitle = '支持与服务器持续运行';
+        supportDesc = '24/7 全天候稳定监控与持续更新依赖于您合法购买此应用。您的支持是保持服务器在线与更新的根本保障。';
+        recheckBtn = '重新检查';
+        closeBtn = '关闭';
+        break;
+
+      case 'en':
       default:
         sheetTitle = 'Server Connection Status';
         statusOnline = 'Connected & Active';
