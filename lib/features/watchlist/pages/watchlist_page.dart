@@ -11,6 +11,7 @@ import '../../alert_engine/scheduler/scheduler_service.dart';
 import '../../exchanges/registry/exchange_registry.dart';
 import '../../settings/services/settings_service.dart';
 import '../../widgets/alert_home_widget.dart';
+import '../../widgets/server_status_button.dart';
 import 'create_alert_flow.dart';
 
 /// The Main Screen of Alarmer: Personal Price Alerts.
@@ -249,15 +250,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
           ],
         ),
         actions: [
-          IconButton(
-            icon: Icon(
-              Icons.widgets_outlined,
-              size: 22,
-              color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
-            ),
-            tooltip: lang == 'fa' ? 'پیش‌نمایش ویجت صفحه اصلی' : 'Home Widget Preview',
-            onPressed: () => _showHomeWidgetSheet(context, repository, lang, theme),
-          ),
+          ServerStatusButton(lang: lang),
           IconButton(
             icon: _isRefreshingAll
                 ? SizedBox(
