@@ -10,6 +10,7 @@ class EvaluationResult {
   final double? newBaseVolume;
   final bool newIsActive;
   final bool newIsTriggered;
+  final DateTime? cooldownUntil;
 
   const EvaluationResult({
     required this.isTriggered,
@@ -19,6 +20,7 @@ class EvaluationResult {
     this.newBaseVolume,
     this.newIsActive = true,
     this.newIsTriggered = false,
+    this.cooldownUntil,
   });
 
   static const notTriggered = EvaluationResult(isTriggered: false);
@@ -32,6 +34,10 @@ abstract class ConditionEvaluator {
     required double currentPrice,
     double? currentVolume,
   }) {
+    if (rule.isInCooldown) {
+      return EvaluationResult.notTriggered;
+    }
+
     switch (rule.conditionType) {
       case AlertConditionType.priceThreshold:
         return _evaluatePriceThreshold(rule, currentPrice);
@@ -59,11 +65,77 @@ abstract class ConditionEvaluator {
     return '';
   }
 
-  /// 1. Price Threshold (One-shot):
+  /// 1. Price Threshold (One-shot or Both Way Channel):
   static EvaluationResult _evaluatePriceThreshold(
     AlertRule rule,
     double currentPrice,
   ) {
+    // A. Both Way Mode: Range / Channel Breakout
+    if (rule.direction == AlertDirection.bothSides) {
+      final upper = rule.upperTargetPrice;
+      final lower = rule.lowerTargetPrice;
+
+      final isDualActive = rule.bothWayBehavior == BothWayBehavior.dualActive;
+      final newActive = isDualActive;
+      final newTriggered = !isDualActive;
+      final cooldown = isDualActive
+          ? DateTime.now().add(Duration(seconds: rule.checkIntervalSeconds > 30 ? rule.checkIntervalSeconds : 30))
+          : null;
+
+      if (upper != null && upper > 0 && currentPrice >= upper) {
+        // Upper breakout hit (e.g. Resistance reached)
+        double percentDiff = 0.0;
+        if (rule.basePrice != null && rule.basePrice! > 0) {
+          percentDiff = ((currentPrice - rule.basePrice!) / rule.basePrice!) * 100.0;
+        } else {
+          percentDiff = ((currentPrice - upper) / upper) * 100.0;
+        }
+
+        final pctStr = '+${percentDiff.abs().toStringAsFixed(2)}%';
+        final formattedPrice = _formatVal(currentPrice, currencySymbol: rule.pair.counterCurrency);
+        final note = (rule.upperNote != null && rule.upperNote!.trim().isNotEmpty)
+            ? (rule.upperNote!.trim().startsWith('📝') ? rule.upperNote!.trim() : '📝 ${rule.upperNote!.trim()}')
+            : _buildBodyText(rule, currentPrice);
+
+        return EvaluationResult(
+          isTriggered: true,
+          title: '🟢 ${rule.pair.displayName} $pctStr $formattedPrice ▲',
+          message: note,
+          newIsActive: newActive,
+          newIsTriggered: newTriggered,
+          newBasePrice: currentPrice,
+          cooldownUntil: cooldown,
+        );
+      } else if (lower != null && lower > 0 && currentPrice <= lower) {
+        // Lower breakdown hit (e.g. Support broken)
+        double percentDiff = 0.0;
+        if (rule.basePrice != null && rule.basePrice! > 0) {
+          percentDiff = ((currentPrice - rule.basePrice!) / rule.basePrice!) * 100.0;
+        } else {
+          percentDiff = ((currentPrice - lower) / lower) * 100.0;
+        }
+
+        final pctStr = '-${percentDiff.abs().toStringAsFixed(2)}%';
+        final formattedPrice = _formatVal(currentPrice, currencySymbol: rule.pair.counterCurrency);
+        final note = (rule.lowerNote != null && rule.lowerNote!.trim().isNotEmpty)
+            ? (rule.lowerNote!.trim().startsWith('📝') ? rule.lowerNote!.trim() : '📝 ${rule.lowerNote!.trim()}')
+            : _buildBodyText(rule, currentPrice);
+
+        return EvaluationResult(
+          isTriggered: true,
+          title: '🔴 ${rule.pair.displayName} $pctStr $formattedPrice ▼',
+          message: note,
+          newIsActive: newActive,
+          newIsTriggered: newTriggered,
+          newBasePrice: currentPrice,
+          cooldownUntil: cooldown,
+        );
+      }
+
+      return EvaluationResult.notTriggered;
+    }
+
+    // B. Single Direction Mode (Above or Below)
     final target = rule.targetPrice ?? 0.0;
     if (target <= 0.0) return EvaluationResult.notTriggered;
 
@@ -72,13 +144,6 @@ abstract class ConditionEvaluator {
       triggered = currentPrice >= target;
     } else if (rule.direction == AlertDirection.below) {
       triggered = currentPrice <= target;
-    } else {
-      triggered = (rule.basePrice != null && rule.basePrice! < target && currentPrice >= target) ||
-          (rule.basePrice != null && rule.basePrice! > target && currentPrice <= target) ||
-          (currentPrice == target);
-      if (!triggered && rule.basePrice == null) {
-        triggered = currentPrice >= target;
-      }
     }
 
     if (!triggered) return EvaluationResult.notTriggered;
@@ -90,15 +155,7 @@ abstract class ConditionEvaluator {
       percentDiff = ((currentPrice - target) / target) * 100.0;
     }
 
-    final bool isUpward;
-    if (rule.direction == AlertDirection.above) {
-      isUpward = true;
-    } else if (rule.direction == AlertDirection.below) {
-      isUpward = false;
-    } else {
-      isUpward = percentDiff >= 0;
-    }
-
+    final isUpward = rule.direction == AlertDirection.above;
     final emoji = isUpward ? '🟢' : '🔴';
     final arrow = isUpward ? '▲' : '▼';
     final sign = isUpward ? '+' : '-';
@@ -145,13 +202,15 @@ abstract class ConditionEvaluator {
     final pctStr = '$sign${actualPercent.abs().toStringAsFixed(2)}%';
     final formattedPrice = _formatVal(currentPrice, currencySymbol: rule.pair.counterCurrency);
 
+    final isBothSides = rule.direction == AlertDirection.bothSides;
+
     return EvaluationResult(
       isTriggered: true,
       title: '$emoji ${rule.pair.displayName} $pctStr $formattedPrice $arrow',
       message: _buildBodyText(rule, currentPrice),
       newBasePrice: currentPrice, // Update baseline for next cycle to latest price!
-      newIsActive: true,          // Stays active forever until paused
-      newIsTriggered: false,
+      newIsActive: isBothSides,   // Only Both Way stays active (🔄 Active); Above & Below close!
+      newIsTriggered: !isBothSides, // Above & Below close with ✅ Done; Both Way does not get Done
     );
   }
 

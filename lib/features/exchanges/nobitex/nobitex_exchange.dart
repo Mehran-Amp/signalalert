@@ -11,11 +11,12 @@ import '../base/models/price_snapshot.dart';
 /// Direct REST API integration with multi-gateway fallback pipeline.
 class NobitexExchange implements Exchange {
   final Dio _dio;
+  static final Map<String, MarketTicker> _lastKnownLiveTickers = {};
 
   NobitexExchange({Dio? dio})
       : _dio = dio ??
             Dio(BaseOptions(
-              baseUrl: 'https://api.nobitex.ir',
+              baseUrl: 'https://apiv2.nobitex.ir',
               connectTimeout: const Duration(seconds: 6),
               receiveTimeout: const Duration(seconds: 6),
               headers: {
@@ -28,7 +29,7 @@ class NobitexExchange implements Exchange {
   String get id => 'nobitex';
 
   @override
-  String get name => 'Nobitex (نوبیتکس)';
+  String get name => 'Nobitex';
 
   @override
   ExchangeCategory get category => ExchangeCategory.middleEast;
@@ -37,7 +38,7 @@ class NobitexExchange implements Exchange {
   String get countryBadge => '🇮🇷 Iran';
 
   @override
-  String get defaultCounterCurrency => 'USDT';
+  String get defaultCounterCurrency => 'TMN';
 
   @override
   Future<List<CurrencyPair>> fetchCurrencyPairs() async {
@@ -62,8 +63,8 @@ class NobitexExchange implements Exchange {
 
         if (pairs.isNotEmpty) {
           pairs.sort((a, b) {
-            if (a.counterCurrency == 'USDT' && b.counterCurrency != 'USDT') return -1;
-            if (a.counterCurrency != 'USDT' && b.counterCurrency == 'USDT') return 1;
+            if (a.counterCurrency == 'TMN' && b.counterCurrency != 'TMN') return -1;
+            if (a.counterCurrency != 'TMN' && b.counterCurrency == 'TMN') return 1;
             return a.baseCurrency.compareTo(b.baseCurrency);
           });
           return pairs;
@@ -71,9 +72,9 @@ class NobitexExchange implements Exchange {
       }
     } catch (_) {}
 
-    // Complete Nobitex cryptos in both USDT and TMN
+    // Complete Nobitex cryptos in both TMN and USDT
     return CryptoCatalogData.buildPairs(
-      quoteCurrencies: ['USDT', 'TMN'],
+      quoteCurrencies: ['TMN', 'USDT'],
       symbolFormatter: (b, q) => '${b.toLowerCase()}-${q == "TMN" ? "rls" : q.toLowerCase()}',
     );
   }
@@ -94,6 +95,8 @@ class NobitexExchange implements Exchange {
     final src = pair.baseCurrency.toLowerCase();
     final pairKey = '$src-$dst';
 
+    final cacheKey = '${pair.baseCurrency}_${pair.counterCurrency}'.toUpperCase();
+
     // 1. Direct Nobitex Stats Call
     try {
       final response = await _dio.post(
@@ -107,19 +110,28 @@ class NobitexExchange implements Exchange {
 
       if (data != null) {
         var price = double.tryParse(data['latest']?.toString() ?? '0') ?? 0.0;
-        if (dst == 'rls' && price > 0) {
-          price = price / 10.0; // Rials to Tomans
+        var high = double.tryParse(data['dayHigh']?.toString() ?? '0') ?? 0.0;
+        var low = double.tryParse(data['dayLow']?.toString() ?? '0') ?? 0.0;
+
+        if (dst == 'rls') {
+          if (price > 0) price /= 10.0; // Rials to Tomans
+          if (high > 0) high /= 10.0;
+          if (low > 0) low /= 10.0;
         }
 
         if (price > 0) {
           final vol = double.tryParse(data['volumeSrc']?.toString() ?? '0') ?? 0.0;
-          return MarketTicker(
+          final ticker = MarketTicker(
             exchangeId: id,
             pair: pair,
             lastPrice: price,
+            high24h: high > 0 ? high : null,
+            low24h: low > 0 ? low : null,
             volume24h: vol,
             timestamp: DateTime.now(),
           );
+          _lastKnownLiveTickers[cacheKey] = ticker;
+          return ticker;
         }
       }
     } catch (_) {}
@@ -132,15 +144,22 @@ class NobitexExchange implements Exchange {
       );
 
       if (estimatedPrice > 0) {
-        return MarketTicker(
+        final ticker = MarketTicker(
           exchangeId: id,
           pair: pair,
           lastPrice: estimatedPrice,
           volume24h: 0.0,
           timestamp: DateTime.now(),
         );
+        _lastKnownLiveTickers[cacheKey] = ticker;
+        return ticker;
       }
     } catch (_) {}
+
+    // 3. Persistent Last Known Live Ticker (Preserves authentic online price when offline)
+    if (_lastKnownLiveTickers.containsKey(cacheKey)) {
+      return _lastKnownLiveTickers[cacheKey]!;
+    }
 
     throw Exception('Live price for ${pair.displayName} is currently loading...');
   }

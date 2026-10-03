@@ -10,6 +10,7 @@ import '../base/models/price_snapshot.dart';
 /// Wallex Exchange Adapter (Popular Iranian Crypto Exchange)
 class WallexExchange implements Exchange {
   final Dio _dio;
+  static final Map<String, MarketTicker> _lastKnownLiveTickers = {};
 
   WallexExchange({Dio? dio})
       : _dio = dio ??
@@ -27,7 +28,7 @@ class WallexExchange implements Exchange {
   String get id => 'wallex';
 
   @override
-  String get name => 'Wallex (والکس)';
+  String get name => 'Wallex';
 
   @override
   ExchangeCategory get category => ExchangeCategory.middleEast;
@@ -88,6 +89,8 @@ class WallexExchange implements Exchange {
 
   @override
   Future<MarketTicker> fetchTicker(CurrencyPair pair) async {
+    final cacheKey = '${pair.baseCurrency}_${pair.counterCurrency}'.toUpperCase();
+
     // 1. Direct Wallex API call
     try {
       final response = await _dio.get('/markets');
@@ -105,13 +108,15 @@ class WallexExchange implements Exchange {
           final vol = double.tryParse(stats?['24h_volume']?.toString() ?? '0') ?? 0.0;
 
           if (price > 0) {
-            return MarketTicker(
+            final ticker = MarketTicker(
               exchangeId: id,
               pair: pair,
               lastPrice: price,
               volume24h: vol,
               timestamp: DateTime.now(),
             );
+            _lastKnownLiveTickers[cacheKey] = ticker;
+            return ticker;
           }
         }
       }
@@ -125,15 +130,22 @@ class WallexExchange implements Exchange {
       );
 
       if (estimatedPrice > 0) {
-        return MarketTicker(
+        final ticker = MarketTicker(
           exchangeId: id,
           pair: pair,
           lastPrice: estimatedPrice,
           volume24h: 0.0,
           timestamp: DateTime.now(),
         );
+        _lastKnownLiveTickers[cacheKey] = ticker;
+        return ticker;
       }
     } catch (_) {}
+
+    // 3. Persistent Last Known Live Ticker (Preserves authentic online price when offline)
+    if (_lastKnownLiveTickers.containsKey(cacheKey)) {
+      return _lastKnownLiveTickers[cacheKey]!;
+    }
 
     throw Exception('Live price for ${pair.displayName} is currently loading...');
   }

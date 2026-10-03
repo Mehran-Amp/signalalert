@@ -10,16 +10,17 @@ import '../base/models/price_snapshot.dart';
 /// Direct REST API integration with real-time live price endpoints.
 class BitbargExchange implements Exchange {
   final Dio _dio;
+  static final Map<String, MarketTicker> _lastKnownLiveTickers = {};
 
   BitbargExchange({Dio? dio})
       : _dio = dio ??
             Dio(BaseOptions(
-              baseUrl: 'https://api.bitbarg.me',
+              baseUrl: 'https://api.bitbarg.com',
               connectTimeout: const Duration(seconds: 8),
               receiveTimeout: const Duration(seconds: 8),
               headers: {
                 'Accept': 'application/json',
-                'User-Agent': 'Mozilla/5.0 (Alarmer/1.0)',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
               },
             ));
 
@@ -27,7 +28,7 @@ class BitbargExchange implements Exchange {
   String get id => 'bitbarg';
 
   @override
-  String get name => 'Bitbarg (بیت‌برگ)';
+  String get name => 'Bitbarg';
 
   @override
   ExchangeCategory get category => ExchangeCategory.middleEast;
@@ -41,14 +42,17 @@ class BitbargExchange implements Exchange {
   @override
   Future<List<CurrencyPair>> fetchCurrencyPairs() async {
     try {
-      final response = await _dio.get('/api/v1/currencies');
+      final response = await _dio.get('/api/v1/currencies?page=1&page_size=200');
       final data = response.data;
-      if (data is Map && data['data'] is List) {
-        final list = data['data'] as List;
+      final list = (data is Map && data['result']?['items'] is List)
+          ? data['result']['items'] as List
+          : (data is Map && data['data'] is List ? data['data'] as List : null);
+
+      if (list != null && list.isNotEmpty) {
         final pairs = <CurrencyPair>[];
         for (final item in list) {
           if (item is Map) {
-            final coin = (item['symbol'] ?? item['en_name'] ?? '').toString().toUpperCase();
+            final coin = (item['coin'] ?? item['symbol'] ?? item['enName'] ?? item['en_name'] ?? '').toString().toUpperCase();
             if (coin.isNotEmpty) {
               pairs.add(CurrencyPair(
                 baseCurrency: coin,
@@ -94,67 +98,64 @@ class BitbargExchange implements Exchange {
   @override
   Future<MarketTicker> fetchTicker(CurrencyPair pair) async {
     final coin = pair.baseCurrency.toUpperCase();
+    final cacheKey = '${pair.baseCurrency}_${pair.counterCurrency}'.toUpperCase();
 
+    // 1. Direct Bitbarg REST API
     try {
-      final response = await _dio.get('/api/v1/currencies');
+      final response = await _dio.get('/api/v1/currencies?search=$coin');
       final data = response.data;
-      if (data is Map && data['data'] is List) {
-        final list = data['data'] as List;
-        for (final item in list) {
-          if (item is Map && item['symbol']?.toString().toUpperCase() == coin) {
-            final buyPriceTmn = double.tryParse(item['price']?.toString() ?? item['buy_price']?.toString() ?? '0') ?? 0.0;
-            final usdtPrice = double.tryParse(item['usdt_price']?.toString() ?? '0') ?? 0.0;
-            
-            final finalPrice = (pair.counterCurrency == 'USDT')
-                ? (usdtPrice > 0 ? usdtPrice : buyPriceTmn / 100000.0)
-                : buyPriceTmn;
+      final list = (data is Map && data['result']?['items'] is List)
+          ? data['result']['items'] as List
+          : (data is Map && data['data'] is List ? data['data'] as List : null);
 
-            if (finalPrice > 0) {
-              return MarketTicker(
+      if (list != null) {
+        for (final item in list) {
+          if (item is Map && ((item['coin'] ?? item['symbol'])?.toString().toUpperCase() == coin)) {
+            final usdPrice = double.tryParse(item['price']?.toString() ?? '0') ?? 0.0;
+            if (usdPrice > 0) {
+              double finalPrice = usdPrice;
+              if (pair.counterCurrency == 'TMN' || pair.counterCurrency == 'IRT') {
+                final rate = await IranMarketGateway.getLiveUsdtTomanRate();
+                finalPrice = usdPrice * rate;
+              }
+              final ticker = MarketTicker(
                 exchangeId: id,
                 pair: pair,
                 lastPrice: finalPrice,
-                volume24h: double.tryParse(item['volume_24h']?.toString() ?? '0') ?? 0.0,
+                volume24h: 0.0,
                 timestamp: DateTime.now(),
               );
+              _lastKnownLiveTickers[cacheKey] = ticker;
+              return ticker;
             }
           }
         }
       }
     } catch (_) {}
 
-    // Fallback: query Wallex/Nobitex
+    // 2. Multi-Gateway Fallback (Nobitex/Wallex/Binance)
     try {
-      if (pair.counterCurrency == 'TMN' || pair.counterCurrency == 'IRT') {
-        final wallexRes = await Dio().get('https://api.wallex.ir/v1/markets');
-        final symbols = wallexRes.data?['result']?['symbols'] as Map<String, dynamic>?;
-        final data = symbols?['${pair.baseCurrency.toUpperCase()}TMN'] as Map<String, dynamic>?;
-        final p = double.tryParse(data?['stats']?['lastPrice']?.toString() ?? '0') ?? 0.0;
-        final v = double.tryParse(data?['stats']?['24h_volume']?.toString() ?? '0') ?? 0.0;
-        if (p > 0) {
-          return MarketTicker(
-            exchangeId: id,
-            pair: pair,
-            lastPrice: p,
-            volume24h: v,
-            timestamp: DateTime.now(),
-          );
-        }
-      } else {
-        final binRes = await Dio().get('https://api.binance.com/api/v3/ticker/24hr?symbol=${pair.baseCurrency}USDT');
-        final p = double.tryParse(binRes.data['lastPrice']?.toString() ?? '0') ?? 0.0;
-        final v = double.tryParse(binRes.data['quoteVolume']?.toString() ?? '0') ?? 0.0;
-        if (p > 0) {
-          return MarketTicker(
-            exchangeId: id,
-            pair: pair,
-            lastPrice: p,
-            volume24h: v,
-            timestamp: DateTime.now(),
-          );
-        }
+      final estimatedPrice = await IranMarketGateway.getEstimatedPrice(
+        baseCoin: pair.baseCurrency,
+        quoteCurrency: pair.counterCurrency,
+      );
+      if (estimatedPrice > 0) {
+        final ticker = MarketTicker(
+          exchangeId: id,
+          pair: pair,
+          lastPrice: estimatedPrice,
+          volume24h: 0.0,
+          timestamp: DateTime.now(),
+        );
+        _lastKnownLiveTickers[cacheKey] = ticker;
+        return ticker;
       }
     } catch (_) {}
+
+    // 3. Persistent Last Known Live Ticker (Preserves authentic online price when offline)
+    if (_lastKnownLiveTickers.containsKey(cacheKey)) {
+      return _lastKnownLiveTickers[cacheKey]!;
+    }
 
     throw Exception('Connection error: Unable to fetch live price for ${pair.displayName} on Bitbarg');
   }

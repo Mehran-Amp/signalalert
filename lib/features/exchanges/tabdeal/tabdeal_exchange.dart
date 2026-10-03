@@ -10,16 +10,17 @@ import '../base/models/price_snapshot.dart';
 /// Direct REST API integration with real-time live price endpoints.
 class TabdealExchange implements Exchange {
   final Dio _dio;
+  static final Map<String, MarketTicker> _lastKnownLiveTickers = {};
 
   TabdealExchange({Dio? dio})
       : _dio = dio ??
             Dio(BaseOptions(
-              baseUrl: 'https://api.tabdeal.org',
+              baseUrl: 'https://api1.tabdeal.org',
               connectTimeout: const Duration(seconds: 8),
               receiveTimeout: const Duration(seconds: 8),
               headers: {
                 'Accept': 'application/json',
-                'User-Agent': 'Mozilla/5.0 (Alarmer/1.0)',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
               },
             ));
 
@@ -27,7 +28,7 @@ class TabdealExchange implements Exchange {
   String get id => 'tabdeal';
 
   @override
-  String get name => 'Tabdeal (تبدیل)';
+  String get name => 'Tabdeal';
 
   @override
   ExchangeCategory get category => ExchangeCategory.middleEast;
@@ -41,22 +42,22 @@ class TabdealExchange implements Exchange {
   @override
   Future<List<CurrencyPair>> fetchCurrencyPairs() async {
     try {
-      final response = await _dio.get('/r/plots/market/information/');
+      final response = await _dio.get('/r/api/v1/exchangeInfo');
       final data = response.data;
       if (data is List && data.isNotEmpty) {
         final pairs = <CurrencyPair>[];
         for (final item in data) {
           if (item is Map) {
-            final symbol = (item['symbol'] ?? item['name'] ?? '').toString();
-            final parts = symbol.split('_');
-            if (parts.length == 2) {
-              final base = parts[0].toUpperCase();
-              final rawCounter = parts[1].toUpperCase();
-              final counter = (rawCounter == 'IRT' || rawCounter == 'RLS') ? 'TMN' : rawCounter;
+            final base = item['baseAsset']?.toString().toUpperCase() ?? '';
+            final rawQuote = item['quoteAsset']?.toString().toUpperCase() ?? '';
+            final symbol = item['symbol']?.toString().toUpperCase() ?? '';
+            final counter = (rawQuote == 'IRT' || rawQuote == 'RLS') ? 'TMN' : rawQuote;
+
+            if (base.isNotEmpty && counter.isNotEmpty) {
               pairs.add(CurrencyPair(
                 baseCurrency: base,
                 counterCurrency: counter,
-                marketSymbol: symbol,
+                marketSymbol: symbol.isNotEmpty ? symbol : '$base/$counter',
               ));
             }
           }
@@ -91,67 +92,75 @@ class TabdealExchange implements Exchange {
 
   @override
   Future<MarketTicker> fetchTicker(CurrencyPair pair) async {
+    final cacheKey = '${pair.baseCurrency}_${pair.counterCurrency}'.toUpperCase();
     final quoteSymbol = pair.counterCurrency.toUpperCase() == 'TMN' ? 'IRT' : pair.counterCurrency.toUpperCase();
-    final tabdealSymbol = '${pair.baseCurrency.toUpperCase()}_$quoteSymbol';
+    final tabdealSymbol = '${pair.baseCurrency.toUpperCase()}$quoteSymbol';
 
+    // 1. Direct Tabdeal Trades / Depth API
     try {
-      final response = await _dio.get('/r/plots/market/information/');
+      final response = await _dio.get('/r/api/v1/trades?symbol=$tabdealSymbol');
       final data = response.data;
-      if (data is List) {
-        for (final item in data) {
-          if (item is Map && (item['symbol']?.toString().toUpperCase() == tabdealSymbol ||
-              item['name']?.toString().toUpperCase() == tabdealSymbol)) {
-            final p = double.tryParse(item['last_price']?.toString() ?? item['price']?.toString() ?? item['last']?.toString() ?? '0') ?? 0.0;
-            final v = double.tryParse(item['volume_24h']?.toString() ?? item['volume']?.toString() ?? '0') ?? 0.0;
-            if (p > 0) {
-              return MarketTicker(
-                exchangeId: id,
-                pair: pair,
-                lastPrice: p,
-                volume24h: v,
-                timestamp: DateTime.now(),
-              );
-            }
-          }
-        }
-      }
-    } catch (_) {}
-
-    // Tabdeal fallback: query Nobitex/Wallex or Binance for rate estimation
-    try {
-      if (pair.counterCurrency == 'TMN' || pair.counterCurrency == 'IRT') {
-        final nobiRes = await Dio().post(
-          'https://api.nobitex.ir/market/stats',
-          data: {'srcCurrency': pair.baseCurrency.toLowerCase(), 'dstCurrency': 'rls'},
-        );
-        final stats = nobiRes.data?['stats'] as Map<String, dynamic>?;
-        final data = stats?['${pair.baseCurrency.toLowerCase()}-rls'] as Map<String, dynamic>?;
-        final rlsPrice = double.tryParse(data?['latest']?.toString() ?? '0') ?? 0.0;
-        if (rlsPrice > 0) {
-          return MarketTicker(
-            exchangeId: id,
-            pair: pair,
-            lastPrice: rlsPrice / 10.0, // Rials to Tomans
-            volume24h: double.tryParse(data?['volumeSrc']?.toString() ?? '0') ?? 0.0,
-            timestamp: DateTime.now(),
-          );
-        }
-      } else {
-        final binanceSymbol = '${pair.baseCurrency}USDT'.toUpperCase();
-        final binRes = await Dio().get('https://api.binance.com/api/v3/ticker/24hr?symbol=$binanceSymbol');
-        final p = double.tryParse(binRes.data['lastPrice']?.toString() ?? '0') ?? 0.0;
-        final v = double.tryParse(binRes.data['quoteVolume']?.toString() ?? '0') ?? 0.0;
+      if (data is List && data.isNotEmpty && data[0] is Map) {
+        final latestTrade = data[0];
+        final p = double.tryParse(latestTrade['price']?.toString() ?? '0') ?? 0.0;
+        final q = double.tryParse(latestTrade['qty']?.toString() ?? '0') ?? 0.0;
         if (p > 0) {
-          return MarketTicker(
+          final ticker = MarketTicker(
             exchangeId: id,
             pair: pair,
             lastPrice: p,
-            volume24h: v,
+            volume24h: q,
             timestamp: DateTime.now(),
           );
+          _lastKnownLiveTickers[cacheKey] = ticker;
+          return ticker;
         }
       }
     } catch (_) {}
+
+    // 1b. Try Tabdeal Depth Orderbook
+    try {
+      final depthRes = await _dio.get('/r/api/v1/depth?symbol=$tabdealSymbol');
+      final bids = depthRes.data?['bids'] as List?;
+      if (bids != null && bids.isNotEmpty && bids[0] is List) {
+        final p = double.tryParse(bids[0][0]?.toString() ?? '0') ?? 0.0;
+        if (p > 0) {
+          final ticker = MarketTicker(
+            exchangeId: id,
+            pair: pair,
+            lastPrice: p,
+            volume24h: 0.0,
+            timestamp: DateTime.now(),
+          );
+          _lastKnownLiveTickers[cacheKey] = ticker;
+          return ticker;
+        }
+      }
+    } catch (_) {}
+
+    // 2. High-Precision IranMarketGateway Fallback
+    try {
+      final estimatedPrice = await IranMarketGateway.getEstimatedPrice(
+        baseCoin: pair.baseCurrency,
+        quoteCurrency: pair.counterCurrency,
+      );
+      if (estimatedPrice > 0) {
+        final ticker = MarketTicker(
+          exchangeId: id,
+          pair: pair,
+          lastPrice: estimatedPrice,
+          volume24h: 0.0,
+          timestamp: DateTime.now(),
+        );
+        _lastKnownLiveTickers[cacheKey] = ticker;
+        return ticker;
+      }
+    } catch (_) {}
+
+    // 3. Persistent Last Known Live Ticker (Preserves authentic online price when offline)
+    if (_lastKnownLiveTickers.containsKey(cacheKey)) {
+      return _lastKnownLiveTickers[cacheKey]!;
+    }
 
     throw Exception('Connection error: Unable to fetch live price for ${pair.displayName} on Tabdeal');
   }

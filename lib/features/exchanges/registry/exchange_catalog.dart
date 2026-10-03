@@ -20,8 +20,10 @@ import '../mexc/mexc_exchange.dart';
 import '../nobitex/nobitex_exchange.dart';
 import '../okx/okx_exchange.dart';
 import '../ourbit/ourbit_exchange.dart';
+import '../ramzinex/ramzinex_exchange.dart';
 import '../stocks/global_stocks_exchange.dart';
 import '../tabdeal/tabdeal_exchange.dart';
+import '../tetherland/tetherland_exchange.dart';
 import '../toobit/toobit_exchange.dart';
 import '../wallex/wallex_exchange.dart';
 import '../xt/xt_exchange.dart';
@@ -37,31 +39,23 @@ class ExchangeCatalog {
       // --- IRANIAN & MIDDLE EAST EXCHANGES (Full Tomans & Tether Catalog) ---
       NobitexExchange(),
       WallexExchange(),
+      RamzinexExchange(),
       TabdealExchange(),
       BitbargExchange(),
+      TetherlandExchange(),
       IranianExchangeAdapter(
         id: 'abantether',
-        name: 'AbanTether (آبان‌تتر)',
-        defaultCounterCurrency: 'TMN',
-      ),
-      IranianExchangeAdapter(
-        id: 'ramzinex',
-        name: 'Ramzinex (رمزینکس)',
-        defaultCounterCurrency: 'TMN',
-      ),
-      IranianExchangeAdapter(
-        id: 'tetherland',
-        name: 'TetherLand (تترلند)',
+        name: 'AbanTether',
         defaultCounterCurrency: 'TMN',
       ),
       IranianExchangeAdapter(
         id: 'sarmayex',
-        name: 'Sarmayex (سرمایکس)',
+        name: 'Sarmayex',
         defaultCounterCurrency: 'TMN',
       ),
       IranianExchangeAdapter(
         id: 'exir',
-        name: 'Exir (اکسیر)',
+        name: 'Exir',
         defaultCounterCurrency: 'TMN',
       ),
 
@@ -283,5 +277,14 @@ class ExchangeCatalog {
       CoinMarketCapExchange(),
       CoinGeckoExchange(),
     ];
+
+    // Strictly sort all exchanges alphabetically A-Z by English name
+    exchanges.sort((a, b) {
+      if (a.id == 'global_stocks') return -1;
+      if (b.id == 'global_stocks') return 1;
+      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    });
+
+    return exchanges;
   }
 }

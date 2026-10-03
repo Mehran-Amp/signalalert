@@ -57,9 +57,16 @@ interface AlertRule {
   marketSymbol: string;
   assetCategory: 'crypto' | 'stock' | 'forex' | 'bond' | 'commodity' | 'index';
   checkIntervalSeconds: number;
-  conditionType: 'PERCENT_CHANGE' | 'PRICE_THRESHOLD';
+  conditionType: 'PERCENT_CHANGE' | 'PRICE_THRESHOLD' | 'VOLUME_SURGE';
   direction: 'BOTH' | 'ABOVE' | 'BELOW';
+  bothWayBehavior?: 'OCO' | 'DUAL_ACTIVE';
   targetValue: number;
+  upperTargetPrice?: number;
+  upperNote?: string;
+  lowerTargetPrice?: number;
+  lowerNote?: string;
+  volumePercent?: number;
+  baseVolume?: number;
   basePrice: number;
   lastCheckedPrice?: number;
   isActive: boolean;
@@ -68,6 +75,7 @@ interface AlertRule {
   soundEnabled?: boolean;
   vibrationEnabled?: boolean;
   ttsEnabled?: boolean;
+  cooldownUntil?: Date;
   lastCheckedAt?: Date;
   lastTriggeredAt?: Date;
   triggerCount: number;
@@ -107,84 +115,103 @@ interface ExchangeInfo {
   category: ExchangeCategoryType;
   countryBadge: string;
   defaultCounter: string;
+  availableCounters?: string[];
   pairsCount: number;
   pairsList: string[];
 }
 
-// === 1. COMPLETE 40+ EXCHANGES CATALOG ===
-const ALL_EXCHANGES: ExchangeInfo[] = [
-  // --- TIER 1 GLOBAL ---
-  { id: 'binance', name: 'Binance (بایننس)', category: 'tier1', countryBadge: '🌐 Global #1', defaultCounter: 'USDT', pairsCount: 1420, pairsList: ['BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'POL', 'RENDER', 'S', 'PEPE', 'DOGE', 'ADA', 'AVAX', 'NEAR', 'SUI', 'LINK', 'DOT'] },
-  { id: 'coinbase', name: 'Coinbase (کوین‌بیس)', category: 'tier1', countryBadge: '🇺🇸 USA', defaultCounter: 'USD', pairsCount: 520, pairsList: ['BTC', 'ETH', 'SOL', 'ADA', 'DOGE', 'AVAX', 'LINK', 'NEAR', 'DOT'] },
-  { id: 'kraken', name: 'Kraken (کراکن)', category: 'tier1', countryBadge: '🇺🇸 USA / EU', defaultCounter: 'USD', pairsCount: 430, pairsList: ['BTC', 'ETH', 'SOL', 'XRP', 'ADA', 'DOT', 'DOGE', 'LTC'] },
-  { id: 'kucoin', name: 'KuCoin (کوکوین)', category: 'tier1', countryBadge: '🌐 Global', defaultCounter: 'USDT', pairsCount: 890, pairsList: ['BTC', 'ETH', 'SOL', 'PEPE', 'RENDER', 'S', 'TON', 'SUI', 'POL'] },
-  { id: 'okx', name: 'OKX (اوکی‌اکس)', category: 'tier1', countryBadge: '🌐 Global', defaultCounter: 'USDT', pairsCount: 680, pairsList: ['BTC', 'ETH', 'SOL', 'OKB', 'XRP', 'DOGE', 'ADA', 'TON'] },
-  { id: 'bybit', name: 'Bybit (بای‌بیت)', category: 'tier1', countryBadge: '🇦🇪 UAE / Global', defaultCounter: 'USDT', pairsCount: 760, pairsList: ['BTC', 'ETH', 'SOL', 'MNT', 'XRP', 'DOGE', 'SUI', 'PEPE'] },
-  { id: 'bitfinex', name: 'Bitfinex (بیت‌فینکس)', category: 'tier1', countryBadge: '🇭🇰 Hong Kong', defaultCounter: 'USD', pairsCount: 380, pairsList: ['BTC', 'ETH', 'SOL', 'XRP', 'LTC', 'EOS'] },
-  { id: 'bitstamp', name: 'Bitstamp (بیت‌استمپ)', category: 'tier1', countryBadge: '🇱🇺 Luxembourg', defaultCounter: 'USD', pairsCount: 220, pairsList: ['BTC', 'ETH', 'XRP', 'LTC', 'BCH', 'ADA'] },
-  { id: 'gateio', name: 'Gate.io (گیت‌آی‌او)', category: 'tier1', countryBadge: '🌐 Global', defaultCounter: 'USDT', pairsCount: 1900, pairsList: ['BTC', 'ETH', 'GT', 'SOL', 'PEPE', 'POL', 'RENDER', 'S'] },
-  { id: 'mexc', name: 'MEXC Global (ام‌ای‌ایکس‌سی)', category: 'tier1', countryBadge: '🌐 Global', defaultCounter: 'USDT', pairsCount: 2100, pairsList: ['BTC', 'ETH', 'MX', 'SOL', 'PEPE', 'SUI', 'TON'] },
-  { id: 'huobi', name: 'HTX / Huobi (هوبی)', category: 'tier1', countryBadge: '🌐 Global', defaultCounter: 'USDT', pairsCount: 750, pairsList: ['BTC', 'ETH', 'HT', 'SOL', 'TRX', 'XRP'] },
-  { id: 'bitget', name: 'Bitget (بیت‌گت)', category: 'tier1', countryBadge: '🇸🇬 Singapore', defaultCounter: 'USDT', pairsCount: 820, pairsList: ['BTC', 'ETH', 'BGB', 'SOL', 'XRP', 'DOGE'] },
-  { id: 'gemini', name: 'Gemini (جمینای)', category: 'tier1', countryBadge: '🇺🇸 USA', defaultCounter: 'USD', pairsCount: 180, pairsList: ['BTC', 'ETH', 'SOL', 'DOGE', 'LINK', 'LTC'] },
-  { id: 'poloniex', name: 'Poloniex (پلونیکس)', category: 'tier1', countryBadge: '🌐 Global', defaultCounter: 'USDT', pairsCount: 450, pairsList: ['BTC', 'ETH', 'TRX', 'SOL', 'DOGE', 'XRP'] },
-  { id: 'bingx', name: 'BingX (بینگ‌ایکس)', category: 'tier1', countryBadge: '🌐 Global', defaultCounter: 'USDT', pairsCount: 720, pairsList: ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE', 'PEPE'] },
-
-  // --- AGGREGATORS ---
-  { id: 'coingecko', name: 'CoinGecko (کوین‌گکو - ۱۰,۰۰۰+ کوین)', category: 'aggregator', countryBadge: '📊 Global Index', defaultCounter: 'USD', pairsCount: 10450, pairsList: ['BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'DOGE', 'ADA', 'POL', 'RENDER', 'S', 'PEPE', 'SHIB', 'NEAR', 'SUI', 'APT', 'AVAX'] },
-  { id: 'coinmarketcap', name: 'CoinMarketCap (کوین‌مارکت‌کپ)', category: 'aggregator', countryBadge: '📊 Global Index', defaultCounter: 'USD', pairsCount: 9800, pairsList: ['BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'DOGE', 'TON', 'ADA', 'TRX', 'AVAX'] },
-  { id: 'cryptocompare', name: 'CryptoCompare', category: 'aggregator', countryBadge: '📊 Aggregator', defaultCounter: 'USD', pairsCount: 6500, pairsList: ['BTC', 'ETH', 'SOL', 'XRP', 'ADA', 'DOT', 'LTC'] },
-
-  // --- IRAN & MIDDLE EAST ---
-  { id: 'nobitex', name: 'Nobitex (نوبیتکس)', category: 'middleEast', countryBadge: '🇮🇷 Iran', defaultCounter: 'USDT', pairsCount: 95, pairsList: ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE', 'ADA', 'TON', 'TRX', 'SHIB', 'POL', 'LTC'] },
-  { id: 'wallex', name: 'Wallex (والکس)', category: 'middleEast', countryBadge: '🇮🇷 Iran', defaultCounter: 'USDT', pairsCount: 82, pairsList: ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE', 'ADA', 'TON', 'TRX', 'SHIB', 'DOT'] },
-  { id: 'tabdeal', name: 'Tabdeal (تبدیل)', category: 'middleEast', countryBadge: '🇮🇷 Iran', defaultCounter: 'USDT', pairsCount: 78, pairsList: ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE', 'ADA', 'TRX', 'PEPE'] },
-  { id: 'coinex', name: 'CoinEx (کوینکس)', category: 'middleEast', countryBadge: '🌐 Middle East Friendly', defaultCounter: 'USDT', pairsCount: 920, pairsList: ['BTC', 'ETH', 'CET', 'SOL', 'XRP', 'DOGE', 'ADA', 'PEPE'] },
-
-  // --- ASIA & PACIFIC ---
-  { id: 'upbit', name: 'Upbit (آپ‌بیت)', category: 'asia', countryBadge: '🇰🇷 South Korea', defaultCounter: 'KRW', pairsCount: 310, pairsList: ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE', 'ADA', 'ETC'] },
-  { id: 'bithumb', name: 'Bithumb (بیت‌هامب)', category: 'asia', countryBadge: '🇰🇷 South Korea', defaultCounter: 'KRW', pairsCount: 290, pairsList: ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE', 'ADA'] },
-  { id: 'bitflyer', name: 'bitFlyer (بیت‌فلایر)', category: 'asia', countryBadge: '🇯🇵 Japan', defaultCounter: 'JPY', pairsCount: 85, pairsList: ['BTC', 'ETH', 'XRP', 'MONA', 'LTC'] },
-  { id: 'zaif', name: 'Zaif (زایف)', category: 'asia', countryBadge: '🇯🇵 Japan', defaultCounter: 'JPY', pairsCount: 45, pairsList: ['BTC', 'ETH', 'ZAIF', 'XEM', 'MONA'] },
-  { id: 'wazirx', name: 'WazirX (وزیرکس)', category: 'asia', countryBadge: '🇮🇳 India', defaultCounter: 'INR', pairsCount: 240, pairsList: ['BTC', 'ETH', 'WRX', 'SOL', 'XRP', 'DOGE'] },
-  { id: 'indodax', name: 'Indodax (ایندوداکس)', category: 'asia', countryBadge: '🇮🇩 Indonesia', defaultCounter: 'IDR', pairsCount: 210, pairsList: ['BTC', 'ETH', 'USDT', 'DOGE', 'XRP'] },
-  { id: 'bitkub', name: 'Bitkub (بیت‌کوب)', category: 'asia', countryBadge: '🇹🇭 Thailand', defaultCounter: 'THB', pairsCount: 110, pairsList: ['BTC', 'ETH', 'KUB', 'SOL', 'DOGE'] },
-
-  // --- EUROPE ---
-  { id: 'bitvavo', name: 'Bitvavo (بیت‌واوو)', category: 'europe', countryBadge: '🇳🇱 Netherlands', defaultCounter: 'EUR', pairsCount: 240, pairsList: ['BTC', 'ETH', 'SOL', 'ADA', 'XRP', 'DOGE'] },
-  { id: 'bitpanda', name: 'Bitpanda (بیت‌پاندا)', category: 'europe', countryBadge: '🇦🇹 Austria', defaultCounter: 'EUR', pairsCount: 320, pairsList: ['BTC', 'ETH', 'BEST', 'SOL', 'ADA'] },
-  { id: 'bitcoinde', name: 'Bitcoin.de', category: 'europe', countryBadge: '🇩🇪 Germany', defaultCounter: 'EUR', pairsCount: 35, pairsList: ['BTC', 'ETH', 'BCH', 'LTC'] },
-  { id: 'paymium', name: 'Paymium (پیمیوم)', category: 'europe', countryBadge: '🇫🇷 France', defaultCounter: 'EUR', pairsCount: 20, pairsList: ['BTC', 'ETH', 'EUR'] },
-  { id: 'exmo', name: 'EXMO (اکسمو)', category: 'europe', countryBadge: '🇬🇧 United Kingdom', defaultCounter: 'USD', pairsCount: 160, pairsList: ['BTC', 'ETH', 'EXM', 'SOL', 'XRP'] },
-
-  // --- AMERICAS & OTHERS ---
-  { id: 'mercadobitcoin', name: 'Mercado Bitcoin', category: 'americas', countryBadge: '🇧🇷 Brazil', defaultCounter: 'BRL', pairsCount: 210, pairsList: ['BTC', 'ETH', 'SOL', 'XRP', 'ADA'] },
-  { id: 'foxbit', name: 'Foxbit (فاکس‌بیت)', category: 'americas', countryBadge: '🇧🇷 Brazil', defaultCounter: 'BRL', pairsCount: 140, pairsList: ['BTC', 'ETH', 'SOL', 'DOGE'] },
-  { id: 'bitso', name: 'Bitso (بیتسو)', category: 'americas', countryBadge: '🇲🇽 Mexico', defaultCounter: 'MXN', pairsCount: 95, pairsList: ['BTC', 'ETH', 'SOL', 'XRP'] },
-  { id: 'ndax', name: 'NDAX (ان‌دی‌ایکس)', category: 'americas', countryBadge: '🇨🇦 Canada', defaultCounter: 'CAD', pairsCount: 65, pairsList: ['BTC', 'ETH', 'SOL', 'ADA', 'DOGE'] },
-  { id: 'luno', name: 'Luno (لونو)', category: 'americas', countryBadge: '🇿🇦 South Africa', defaultCounter: 'ZAR', pairsCount: 45, pairsList: ['BTC', 'ETH', 'XRP', 'SOL', 'ADA'] },
-  { id: 'valr', name: 'VALR (والر)', category: 'americas', countryBadge: '🇿🇦 South Africa', defaultCounter: 'ZAR', pairsCount: 90, pairsList: ['BTC', 'ETH', 'SOL', 'XRP'] },
+const IRANIAN_POPULAR_PAIRS = [
+  'BTC', 'ETH', 'SOL', 'USDT', 'XRP', 'DOGE', 'TON', 'PEPE', 'SHIB', 'SUI',
+  'NEAR', 'TRX', 'ADA', 'AVAX', 'LINK', 'NOT', 'FLOKI', 'BONK', 'FET', 'APT',
+  'BCH', 'LTC', 'POL', 'RENDER', 'ATOM', 'ARB', 'OP', 'KAS', 'TIA', 'DOT',
+  'WIF', 'HMSTR', 'CATI', 'DOGS', 'TURBO', 'BABYDOGE', 'AAVE', 'CRV', 'UNI', 'ICP',
+  'XLM', 'TAO', 'ETC', 'XMR', 'HBAR', 'FIL', 'VET', 'INJ', 'SEI', 'S',
+  'ALGO', 'RUNE', 'STX', 'THETA', 'EOS', 'EGLD', 'NEO', 'IOTA', 'QNT', 'STRK',
+  'BLUR', 'IMX', 'LDO', 'MANTA', 'METIS', 'ZRO', 'BLAST', 'ZK', 'DYM', 'SAGA',
+  'GALA', 'SAND', 'MANA', 'AXS', 'BEAM', 'RON', 'PIXEL', 'CHZ', 'PENDLE', 'ENA',
+  'JUP', 'ENS', 'DYDX', 'ONDO', 'OM', 'HNT', 'JASMY', 'BAT', 'QTUM', 'XEC',
+  'ZEN', 'RVN', 'CKB', 'ONE', 'WLD', 'ARKM', 'IO', 'GRASS', 'ATH', 'GLM'
 ];
 
-const CRYPTO_COIN_METAS: Record<string, { name: string; nameFa: string; icon: string; currentPrice: number; change24h: number }> = {
-  BTC: { name: 'Bitcoin', nameFa: 'بیت‌کوین', icon: 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png', currentPrice: 83770.00, change24h: 1.2 },
-  ETH: { name: 'Ethereum', nameFa: 'اتریوم', icon: 'https://assets.coingecko.com/coins/images/279/small/ethereum.png', currentPrice: 2689.50, change24h: -0.8 },
-  SOL: { name: 'Solana', nameFa: 'سولانا', icon: 'https://assets.coingecko.com/coins/images/4128/small/solana.png', currentPrice: 120.10, change24h: 2.4 },
-  BNB: { name: 'BNB', nameFa: 'بایننس کوین', icon: 'https://assets.coingecko.com/coins/images/825/small/bnb-icon2_2x.png', currentPrice: 770.60, change24h: 0.9 },
-  XRP: { name: 'XRP', nameFa: 'ریپل', icon: 'https://assets.coingecko.com/coins/images/44/small/xrp-symbol-white-128.png', currentPrice: 1.51, change24h: 3.1 },
-  DOGE: { name: 'Dogecoin', nameFa: 'دوج‌کوین', icon: 'https://assets.coingecko.com/coins/images/5/small/dogecoin.png', currentPrice: 0.22, change24h: 2.8 },
-  ADA: { name: 'Cardano', nameFa: 'کاردانو', icon: 'https://assets.coingecko.com/coins/images/975/small/cardano.png', currentPrice: 0.68, change24h: 1.5 },
-  AVAX: { name: 'Avalanche', nameFa: 'آوالانچ', icon: 'https://assets.coingecko.com/coins/images/12559/small/Avalanche_Circle_RedWhite_Trans.png', currentPrice: 28.40, change24h: -1.2 },
-  POL: { name: 'Polygon (POL)', nameFa: 'پالیگان (POL)', icon: 'https://assets.coingecko.com/coins/images/4713/small/polygon.png', currentPrice: 0.28, change24h: 1.8 },
-  RENDER: { name: 'Render (RENDER)', nameFa: 'رندر (هوش مصنوعی)', icon: 'https://assets.coingecko.com/coins/images/11636/small/rndr.png', currentPrice: 2.07, change24h: 4.2 },
-  S: { name: 'Sonic (S)', nameFa: 'سونیک (فانتوم سابق)', icon: 'https://assets.coingecko.com/coins/images/4001/small/Fantom_round.png', currentPrice: 0.58, change24h: 5.6 },
-  PEPE: { name: 'Pepe', nameFa: 'پپه‌کوین', icon: 'https://assets.coingecko.com/coins/images/29850/small/pepe-token.png', currentPrice: 0.0000098, change24h: 6.8 },
-  TON: { name: 'Toncoin', nameFa: 'تن‌کوین (تلگرام)', icon: 'https://assets.coingecko.com/coins/images/17980/small/ton_symbol.png', currentPrice: 4.95, change24h: 1.1 },
-  SUI: { name: 'Sui', nameFa: 'سویی', icon: 'https://assets.coingecko.com/coins/images/26375/small/sui-ocean-square.png', currentPrice: 2.15, change24h: 3.7 },
-  NEAR: { name: 'NEAR Protocol', nameFa: 'نیر پروتکل', icon: 'https://assets.coingecko.com/coins/images/10365/small/near.png', currentPrice: 4.80, change24h: 0.6 },
-  LINK: { name: 'Chainlink', nameFa: 'چین‌لینک', icon: 'https://assets.coingecko.com/coins/images/877/small/chainlink-new-logo.png', currentPrice: 13.40, change24h: 2.1 },
-  DOT: { name: 'Polkadot', nameFa: 'پولکادات', icon: 'https://assets.coingecko.com/coins/images/12171/small/polkadot.png', currentPrice: 4.60, change24h: -0.4 },
-  LTC: { name: 'Litecoin', nameFa: 'لایت‌کوین', icon: 'https://assets.coingecko.com/coins/images/2/small/litecoin.png', currentPrice: 88.20, change24h: 0.7 },
+// === 1. COMPLETE 40+ EXCHANGES CATALOG (Sorted Alphabetically A-Z by English Name) ===
+const ALL_EXCHANGES: ExchangeInfo[] = [
+  { id: 'abantether', name: 'AbanTether', category: 'middleEast', countryBadge: '🇮🇷 Iran', defaultCounter: 'TMN', availableCounters: ['TMN', 'USDT'], pairsCount: 1000, pairsList: IRANIAN_POPULAR_PAIRS },
+  { id: 'binance', name: 'Binance', category: 'tier1', countryBadge: '🌐 Global #1', defaultCounter: 'USDT', availableCounters: ['USDT', 'BTC', 'ETH'], pairsCount: 1420, pairsList: ['BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'POL', 'RENDER', 'S', 'PEPE', 'DOGE', 'ADA', 'AVAX', 'NEAR', 'SUI', 'LINK', 'DOT'] },
+  { id: 'bingx', name: 'BingX', category: 'tier1', countryBadge: '🌐 Global', defaultCounter: 'USDT', availableCounters: ['USDT'], pairsCount: 720, pairsList: ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE', 'PEPE'] },
+  { id: 'bitbarg', name: 'Bitbarg', category: 'middleEast', countryBadge: '🇮🇷 Iran', defaultCounter: 'TMN', availableCounters: ['TMN', 'USDT'], pairsCount: 420, pairsList: IRANIAN_POPULAR_PAIRS },
+  { id: 'bitcoinde', name: 'Bitcoin.de', category: 'europe', countryBadge: '🇩🇪 Germany', defaultCounter: 'EUR', pairsCount: 35, pairsList: ['BTC', 'ETH', 'BCH', 'LTC'] },
+  { id: 'bitfinex', name: 'Bitfinex', category: 'tier1', countryBadge: '🇭🇰 Hong Kong', defaultCounter: 'USD', availableCounters: ['USD', 'USDT'], pairsCount: 380, pairsList: ['BTC', 'ETH', 'SOL', 'XRP', 'LTC', 'EOS'] },
+  { id: 'bitflyer', name: 'bitFlyer', category: 'asia', countryBadge: '🇯🇵 Japan', defaultCounter: 'JPY', pairsCount: 85, pairsList: ['BTC', 'ETH', 'XRP', 'MONA', 'LTC'] },
+  { id: 'bitget', name: 'Bitget', category: 'tier1', countryBadge: '🇸🇬 Singapore', defaultCounter: 'USDT', availableCounters: ['USDT'], pairsCount: 820, pairsList: ['BTC', 'ETH', 'BGB', 'SOL', 'XRP', 'DOGE'] },
+  { id: 'bithumb', name: 'Bithumb', category: 'asia', countryBadge: '🇰🇷 South Korea', defaultCounter: 'KRW', pairsCount: 290, pairsList: ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE', 'ADA'] },
+  { id: 'bitkub', name: 'Bitkub', category: 'asia', countryBadge: '🇹🇭 Thailand', defaultCounter: 'THB', pairsCount: 110, pairsList: ['BTC', 'ETH', 'KUB', 'SOL', 'DOGE'] },
+  { id: 'bitpanda', name: 'Bitpanda', category: 'europe', countryBadge: '🇦🇹 Austria', defaultCounter: 'EUR', pairsCount: 320, pairsList: ['BTC', 'ETH', 'BEST', 'SOL', 'ADA'] },
+  { id: 'bitso', name: 'Bitso', category: 'americas', countryBadge: '🇲🇽 Mexico', defaultCounter: 'MXN', pairsCount: 95, pairsList: ['BTC', 'ETH', 'SOL', 'XRP'] },
+  { id: 'bitstamp', name: 'Bitstamp', category: 'tier1', countryBadge: '🇱🇺 Luxembourg', defaultCounter: 'USD', availableCounters: ['USD', 'EUR'], pairsCount: 220, pairsList: ['BTC', 'ETH', 'XRP', 'LTC', 'BCH', 'ADA'] },
+  { id: 'bitvavo', name: 'Bitvavo', category: 'europe', countryBadge: '🇳🇱 Netherlands', defaultCounter: 'EUR', pairsCount: 240, pairsList: ['BTC', 'ETH', 'SOL', 'ADA', 'XRP', 'DOGE'] },
+  { id: 'bybit', name: 'Bybit', category: 'tier1', countryBadge: '🇦🇪 UAE / Global', defaultCounter: 'USDT', availableCounters: ['USDT', 'USDC'], pairsCount: 760, pairsList: ['BTC', 'ETH', 'SOL', 'MNT', 'XRP', 'DOGE', 'SUI', 'PEPE'] },
+  { id: 'coinbase', name: 'Coinbase', category: 'tier1', countryBadge: '🇺🇸 USA', defaultCounter: 'USD', availableCounters: ['USD', 'USDC'], pairsCount: 520, pairsList: ['BTC', 'ETH', 'SOL', 'ADA', 'DOGE', 'AVAX', 'LINK', 'NEAR', 'DOT'] },
+  { id: 'coinex', name: 'CoinEx', category: 'middleEast', countryBadge: '🌐 Middle East Friendly', defaultCounter: 'USDT', availableCounters: ['USDT', 'USDC'], pairsCount: 920, pairsList: ['BTC', 'ETH', 'CET', 'SOL', 'XRP', 'DOGE', 'ADA', 'PEPE'] },
+  { id: 'coingecko', name: 'CoinGecko', category: 'aggregator', countryBadge: '📊 Global Index', defaultCounter: 'USD', availableCounters: ['USD', 'USDT'], pairsCount: 10450, pairsList: ['BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'DOGE', 'ADA', 'POL', 'RENDER', 'S', 'PEPE', 'SHIB', 'NEAR', 'SUI', 'APT', 'AVAX'] },
+  { id: 'coinmarketcap', name: 'CoinMarketCap', category: 'aggregator', countryBadge: '📊 Global Index', defaultCounter: 'USD', availableCounters: ['USD', 'USDT'], pairsCount: 9800, pairsList: ['BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'DOGE', 'TON', 'ADA', 'TRX', 'AVAX'] },
+  { id: 'cryptocompare', name: 'CryptoCompare', category: 'aggregator', countryBadge: '📊 Aggregator', defaultCounter: 'USD', availableCounters: ['USD', 'USDT'], pairsCount: 6500, pairsList: ['BTC', 'ETH', 'SOL', 'XRP', 'ADA', 'DOT', 'LTC'] },
+  { id: 'exmo', name: 'EXMO', category: 'europe', countryBadge: '🇬🇧 United Kingdom', defaultCounter: 'USD', pairsCount: 160, pairsList: ['BTC', 'ETH', 'EXM', 'SOL', 'XRP'] },
+  { id: 'foxbit', name: 'Foxbit', category: 'americas', countryBadge: '🇧🇷 Brazil', defaultCounter: 'BRL', pairsCount: 140, pairsList: ['BTC', 'ETH', 'SOL', 'DOGE'] },
+  { id: 'gateio', name: 'Gate.io', category: 'tier1', countryBadge: '🌐 Global', defaultCounter: 'USDT', availableCounters: ['USDT', 'BTC'], pairsCount: 1900, pairsList: ['BTC', 'ETH', 'GT', 'SOL', 'PEPE', 'POL', 'RENDER', 'S'] },
+  { id: 'gemini', name: 'Gemini', category: 'tier1', countryBadge: '🇺🇸 USA', defaultCounter: 'USD', availableCounters: ['USD'], pairsCount: 180, pairsList: ['BTC', 'ETH', 'SOL', 'DOGE', 'LINK', 'LTC'] },
+  { id: 'huobi', name: 'HTX / Huobi', category: 'tier1', countryBadge: '🌐 Global', defaultCounter: 'USDT', availableCounters: ['USDT'], pairsCount: 750, pairsList: ['BTC', 'ETH', 'HT', 'SOL', 'TRX', 'XRP'] },
+  { id: 'indodax', name: 'Indodax', category: 'asia', countryBadge: '🇮🇩 Indonesia', defaultCounter: 'IDR', pairsCount: 210, pairsList: ['BTC', 'ETH', 'USDT', 'DOGE', 'XRP'] },
+  { id: 'kraken', name: 'Kraken', category: 'tier1', countryBadge: '🇺🇸 USA / EU', defaultCounter: 'USD', availableCounters: ['USD', 'EUR'], pairsCount: 430, pairsList: ['BTC', 'ETH', 'SOL', 'XRP', 'ADA', 'DOT', 'DOGE', 'LTC'] },
+  { id: 'kucoin', name: 'KuCoin', category: 'tier1', countryBadge: '🌐 Global', defaultCounter: 'USDT', availableCounters: ['USDT', 'BTC'], pairsCount: 890, pairsList: ['BTC', 'ETH', 'SOL', 'PEPE', 'RENDER', 'S', 'TON', 'SUI', 'POL'] },
+  { id: 'luno', name: 'Luno', category: 'americas', countryBadge: '🇿🇦 South Africa', defaultCounter: 'ZAR', pairsCount: 45, pairsList: ['BTC', 'ETH', 'XRP', 'SOL', 'ADA'] },
+  { id: 'mercadobitcoin', name: 'Mercado Bitcoin', category: 'americas', countryBadge: '🇧🇷 Brazil', defaultCounter: 'BRL', pairsCount: 210, pairsList: ['BTC', 'ETH', 'SOL', 'XRP', 'ADA'] },
+  { id: 'mexc', name: 'MEXC Global', category: 'tier1', countryBadge: '🌐 Global', defaultCounter: 'USDT', availableCounters: ['USDT', 'USDC'], pairsCount: 2100, pairsList: ['BTC', 'ETH', 'MX', 'SOL', 'PEPE', 'SUI', 'TON'] },
+  { id: 'ndax', name: 'NDAX', category: 'americas', countryBadge: '🇨🇦 Canada', defaultCounter: 'CAD', pairsCount: 65, pairsList: ['BTC', 'ETH', 'SOL', 'ADA', 'DOGE'] },
+  { id: 'nobitex', name: 'Nobitex', category: 'middleEast', countryBadge: '🇮🇷 Iran', defaultCounter: 'TMN', availableCounters: ['TMN', 'USDT'], pairsCount: 531, pairsList: IRANIAN_POPULAR_PAIRS },
+  { id: 'okx', name: 'OKX', category: 'tier1', countryBadge: '🌐 Global', defaultCounter: 'USDT', availableCounters: ['USDT', 'USD'], pairsCount: 680, pairsList: ['BTC', 'ETH', 'SOL', 'OKB', 'XRP', 'DOGE', 'ADA', 'TON'] },
+  { id: 'paymium', name: 'Paymium', category: 'europe', countryBadge: '🇫🇷 France', defaultCounter: 'EUR', pairsCount: 20, pairsList: ['BTC', 'ETH', 'EUR'] },
+  { id: 'poloniex', name: 'Poloniex', category: 'tier1', countryBadge: '🌐 Global', defaultCounter: 'USDT', availableCounters: ['USDT'], pairsCount: 450, pairsList: ['BTC', 'ETH', 'TRX', 'SOL', 'DOGE', 'XRP'] },
+  { id: 'ramzinex', name: 'Ramzinex', category: 'middleEast', countryBadge: '🇮🇷 Iran', defaultCounter: 'TMN', availableCounters: ['TMN', 'USDT'], pairsCount: 631, pairsList: IRANIAN_POPULAR_PAIRS },
+  { id: 'sarmayex', name: 'Sarmayex', category: 'middleEast', countryBadge: '🇮🇷 Iran', defaultCounter: 'TMN', availableCounters: ['TMN', 'USDT'], pairsCount: 120, pairsList: IRANIAN_POPULAR_PAIRS.slice(0, 40) },
+  { id: 'tabdeal', name: 'Tabdeal', category: 'middleEast', countryBadge: '🇮🇷 Iran', defaultCounter: 'TMN', availableCounters: ['TMN', 'USDT'], pairsCount: 1047, pairsList: IRANIAN_POPULAR_PAIRS },
+  { id: 'tetherland', name: 'TetherLand', category: 'middleEast', countryBadge: '🇮🇷 Iran', defaultCounter: 'TMN', availableCounters: ['TMN', 'USDT'], pairsCount: 150, pairsList: ['USDT', 'BTC', 'ETH', 'SOL', 'TON', 'XRP', 'DOGE', 'TRX', 'SHIB', 'PEPE', 'ADA', 'AVAX', 'NEAR', 'SUI', 'LINK', 'DOT', 'LTC'] },
+  { id: 'upbit', name: 'Upbit', category: 'asia', countryBadge: '🇰🇷 South Korea', defaultCounter: 'KRW', pairsCount: 310, pairsList: ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE', 'ADA', 'ETC'] },
+  { id: 'valr', name: 'VALR', category: 'americas', countryBadge: '🇿🇦 South Africa', defaultCounter: 'ZAR', pairsCount: 90, pairsList: ['BTC', 'ETH', 'SOL', 'XRP'] },
+  { id: 'wallex', name: 'Wallex', category: 'middleEast', countryBadge: '🇮🇷 Iran', defaultCounter: 'TMN', availableCounters: ['TMN', 'USDT'], pairsCount: 373, pairsList: IRANIAN_POPULAR_PAIRS },
+  { id: 'wazirx', name: 'WazirX', category: 'asia', countryBadge: '🇮🇳 India', defaultCounter: 'INR', pairsCount: 240, pairsList: ['BTC', 'ETH', 'WRX', 'SOL', 'XRP', 'DOGE'] },
+  { id: 'zaif', name: 'Zaif', category: 'asia', countryBadge: '🇯🇵 Japan', defaultCounter: 'JPY', pairsCount: 45, pairsList: ['BTC', 'ETH', 'ZAIF', 'XEM', 'MONA'] },
+];
+
+export interface CryptoCoinMeta {
+  name: string;
+  nameFa: string;
+  icon: string;
+  currentPrice: number;
+  change24h: number;
+  high24h: number;
+  low24h: number;
+  volume24h: number;
+}
+
+const CRYPTO_COIN_METAS: Record<string, CryptoCoinMeta> = {
+  BTC: { name: 'Bitcoin', nameFa: 'بیت‌کوین', icon: 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png', currentPrice: 83770.00, change24h: 1.2, high24h: 84950.00, low24h: 82100.00, volume24h: 28400000000 },
+  ETH: { name: 'Ethereum', nameFa: 'اتریوم', icon: 'https://assets.coingecko.com/coins/images/279/small/ethereum.png', currentPrice: 2689.50, change24h: -0.8, high24h: 2740.00, low24h: 2615.00, volume24h: 14200000000 },
+  SOL: { name: 'Solana', nameFa: 'سولانا', icon: 'https://assets.coingecko.com/coins/images/4128/small/solana.png', currentPrice: 120.10, change24h: 2.4, high24h: 124.50, low24h: 116.80, volume24h: 3800000000 },
+  BNB: { name: 'BNB', nameFa: 'بایننس کوین', icon: 'https://assets.coingecko.com/coins/images/825/small/bnb-icon2_2x.png', currentPrice: 770.60, change24h: 0.9, high24h: 782.00, low24h: 755.00, volume24h: 1100000000 },
+  XRP: { name: 'XRP', nameFa: 'ریپل', icon: 'https://assets.coingecko.com/coins/images/44/small/xrp-symbol-white-128.png', currentPrice: 1.51, change24h: 3.1, high24h: 1.58, low24h: 1.45, volume24h: 2400000000 },
+  DOGE: { name: 'Dogecoin', nameFa: 'دوج‌کوین', icon: 'https://assets.coingecko.com/coins/images/5/small/dogecoin.png', currentPrice: 0.22, change24h: 2.8, high24h: 0.235, low24h: 0.208, volume24h: 1650000000 },
+  ADA: { name: 'Cardano', nameFa: 'کاردانو', icon: 'https://assets.coingecko.com/coins/images/975/small/cardano.png', currentPrice: 0.68, change24h: 1.5, high24h: 0.71, low24h: 0.65, volume24h: 720000000 },
+  AVAX: { name: 'Avalanche', nameFa: 'آوالانچ', icon: 'https://assets.coingecko.com/coins/images/12559/small/Avalanche_Circle_RedWhite_Trans.png', currentPrice: 28.40, change24h: -1.2, high24h: 29.80, low24h: 27.50, volume24h: 480000000 },
+  POL: { name: 'Polygon (POL)', nameFa: 'پالیگان (POL)', icon: 'https://assets.coingecko.com/coins/images/4713/small/polygon.png', currentPrice: 0.28, change24h: 1.8, high24h: 0.295, low24h: 0.268, volume24h: 210000000 },
+  RENDER: { name: 'Render (RENDER)', nameFa: 'رندر (هوش مصنوعی)', icon: 'https://assets.coingecko.com/coins/images/11636/small/rndr.png', currentPrice: 2.07, change24h: 4.2, high24h: 2.18, low24h: 1.95, volume24h: 180000000 },
+  S: { name: 'Sonic (S)', nameFa: 'سونیک (فانتوم سابق)', icon: 'https://assets.coingecko.com/coins/images/4001/small/Fantom_round.png', currentPrice: 0.58, change24h: 5.6, high24h: 0.62, low24h: 0.54, volume24h: 120000000 },
+  PEPE: { name: 'Pepe', nameFa: 'پپه‌کوین', icon: 'https://assets.coingecko.com/coins/images/29850/small/pepe-token.png', currentPrice: 0.0000098, change24h: 6.8, high24h: 0.0000105, low24h: 0.0000091, volume24h: 890000000 },
+  TON: { name: 'Toncoin', nameFa: 'تن‌کوین (تلگرام)', icon: 'https://assets.coingecko.com/coins/images/17980/small/ton_symbol.png', currentPrice: 4.95, change24h: 1.1, high24h: 5.12, low24h: 4.82, volume24h: 310000000 },
+  SUI: { name: 'Sui', nameFa: 'سویی', icon: 'https://assets.coingecko.com/coins/images/26375/small/sui-ocean-square.png', currentPrice: 2.15, change24h: 3.7, high24h: 2.28, low24h: 2.04, volume24h: 640000000 },
+  NEAR: { name: 'NEAR Protocol', nameFa: 'نیر پروتکل', icon: 'https://assets.coingecko.com/coins/images/10365/small/near.png', currentPrice: 4.80, change24h: 0.6, high24h: 4.98, low24h: 4.65, volume24h: 290000000 },
+  LINK: { name: 'Chainlink', nameFa: 'چین‌لینک', icon: 'https://assets.coingecko.com/coins/images/877/small/chainlink-new-logo.png', currentPrice: 13.40, change24h: 2.1, high24h: 13.90, low24h: 12.95, volume24h: 350000000 },
+  DOT: { name: 'Polkadot', nameFa: 'پولکادات', icon: 'https://assets.coingecko.com/coins/images/12171/small/polkadot.png', currentPrice: 4.60, change24h: -0.4, high24h: 4.75, low24h: 4.48, volume24h: 195000000 },
+  LTC: { name: 'Litecoin', nameFa: 'لایت‌کوین', icon: 'https://assets.coingecko.com/coins/images/2/small/litecoin.png', currentPrice: 88.20, change24h: 0.7, high24h: 91.50, low24h: 86.40, volume24h: 420000000 },
 };
 
 // === 2. MACRO ASSETS (US 10Y BONDS, FOREX, STOCKS, GOLD, OIL) ===
@@ -218,19 +245,41 @@ const MACRO_ASSETS: Record<string, MacroAssetMeta> = {
   NVDA: { symbol: 'NVDA', name: 'NVIDIA Corporation', nameFa: 'سهام انویدیا (NVIDIA)', category: 'stock', marketName: 'NASDAQ', icon: 'https://companiesmarketcap.com/img/company-logos/64/NVDA.png', currentPrice: 138.25, unit: '$', change24h: 3.4 },
   AAPL: { symbol: 'AAPL', name: 'Apple Inc.', nameFa: 'سهام اپل (Apple)', category: 'stock', marketName: 'NASDAQ', icon: 'https://companiesmarketcap.com/img/company-logos/64/AAPL.png', currentPrice: 228.50, unit: '$', change24h: 1.1 },
   MSFT: { symbol: 'MSFT', name: 'Microsoft Corporation', nameFa: 'سهام مایکروسافت (Microsoft)', category: 'stock', marketName: 'NASDAQ', icon: 'https://companiesmarketcap.com/img/company-logos/64/MSFT.png', currentPrice: 428.10, unit: '$', change24h: 0.8 },
-  TSLA: { symbol: 'TSLA', name: 'Tesla Inc.', nameFa: 'سهام تسلا (Tesla)', category: 'stock', marketName: 'NASDAQ', icon: 'https://companiesmarketcap.com/img/company-logos/64/TSLA.png', currentPrice: 255.40, unit: '$', change24h: -1.9 },
   AMZN: { symbol: 'AMZN', name: 'Amazon.com Inc.', nameFa: 'سهام آمازون (Amazon)', category: 'stock', marketName: 'NASDAQ', icon: 'https://companiesmarketcap.com/img/company-logos/64/AMZN.png', currentPrice: 186.70, unit: '$', change24h: 1.5 },
   GOOGL: { symbol: 'GOOGL', name: 'Alphabet Inc. (Google)', nameFa: 'سهام گوگل (آلفابت)', category: 'stock', marketName: 'NASDAQ', icon: 'https://companiesmarketcap.com/img/company-logos/64/GOOGL.png', currentPrice: 165.30, unit: '$', change24h: 0.4 },
   META: { symbol: 'META', name: 'Meta Platforms (Facebook)', nameFa: 'سهام متا (فیسبوک)', category: 'stock', marketName: 'NASDAQ', icon: 'https://companiesmarketcap.com/img/company-logos/64/META.png', currentPrice: 585.20, unit: '$', change24h: 2.1 },
   PLTR: { symbol: 'PLTR', name: 'Palantir Technologies', nameFa: 'سهام پالانتیر (Palantir)', category: 'stock', marketName: 'NYSE', icon: 'https://companiesmarketcap.com/img/company-logos/64/PLTR.png', currentPrice: 44.10, unit: '$', change24h: 5.6 },
   BRKB: { symbol: 'BRK.B', name: 'Berkshire Hathaway', nameFa: 'برکشایر هاتاوی (وارن بافت)', category: 'stock', marketName: 'NYSE', icon: 'https://companiesmarketcap.com/img/company-logos/64/BRK-B.png', currentPrice: 462.10, unit: '$', change24h: 0.5 },
 
-  // Commercial Space, Aerospace & Starlink
-  SPACEX: { symbol: 'SPACEX', name: 'SpaceX (Starlink & Space Exploration)', nameFa: 'اسپیس‌ایکس (فناوری‌های فضایی، استارشیپ و استارلینک ایلان ماسک)', category: 'stock', marketName: 'Pre-IPO Benchmark', icon: 'https://cdn-icons-png.flaticon.com/512/3209/3209994.png', currentPrice: 112.00, unit: '$', change24h: 4.8 },
+  // Commercial Space, Aerospace & Elon Musk Ventures
+  TSLA: { symbol: 'TSLA', name: 'Tesla Inc.', nameFa: 'سهام تسلا (خودروهای برقی، هوش مصنوعی، ربات اپتیموس و انرژی ایلان ماسک)', category: 'stock', marketName: 'NASDAQ', icon: 'https://companiesmarketcap.com/img/company-logos/64/TSLA.png', currentPrice: 255.40, unit: '$', change24h: -1.9 },
+  SPACEX: { symbol: 'SPACEX', name: 'SpaceX (Starship & Space Exploration)', nameFa: 'اسپیس‌ایکس (فناوری‌های فضایی، استارشیپ و ماموریت‌های مریخ ایلان ماسک)', category: 'stock', marketName: 'Pre-IPO Benchmark', icon: 'https://cdn-icons-png.flaticon.com/512/3209/3209994.png', currentPrice: 112.00, unit: '$', change24h: 4.8 },
+  STARLINK: { symbol: 'STARLINK', name: 'Starlink (SpaceX Satellite Constellation)', nameFa: 'استارلینک (شبکه اینترنت ماهواره‌ای جهانی ایلان ماسک)', category: 'stock', marketName: 'Pre-IPO Benchmark', icon: 'https://cdn-icons-png.flaticon.com/512/3209/3209994.png', currentPrice: 85.00, unit: '$', change24h: 3.9 },
+  XAI: { symbol: 'XAI', name: 'xAI (Grok AI & Colossus)', nameFa: 'شرکت هوش مصنوعی xAI (خالق Grok و سوپرکامپیوتر کلوسوس ایلان ماسک)', category: 'stock', marketName: 'Pre-IPO Benchmark', icon: 'https://cdn-icons-png.flaticon.com/512/12222/12222560.png', currentPrice: 45.00, unit: '$', change24h: 6.5 },
+  X_CORP: { symbol: 'X_CORP', name: 'X Corp (Twitter - Everything App)', nameFa: 'ایکس / توییتر سابق (شبکه اجتماعی جهانی و اپلیکیشن همه‌کاره ایلان ماسک)', category: 'stock', marketName: 'Pre-IPO Benchmark', icon: 'https://cdn-icons-png.flaticon.com/512/5969/5969020.png', currentPrice: 38.50, unit: '$', change24h: 2.1 },
+  NEURALINK: { symbol: 'NEURALINK', name: 'Neuralink (Brain-Computer Interface)', nameFa: 'نورالینک (تراشه رابط مغز و رایانه و تله‌پاتی ایلان ماسک)', category: 'stock', marketName: 'Pre-IPO Benchmark', icon: 'https://cdn-icons-png.flaticon.com/512/8649/8649607.png', currentPrice: 55.00, unit: '$', change24h: 5.2 },
+  BORING: { symbol: 'BORING', name: 'The Boring Company (Hyperloop & Tunneling)', nameFa: 'بورینگ کمپانی (تونل‌های زیرزمینی حمل‌ونقل سریع هایپرلوپ ایلان ماسک)', category: 'stock', marketName: 'Pre-IPO Benchmark', icon: 'https://cdn-icons-png.flaticon.com/512/2830/2830284.png', currentPrice: 22.00, unit: '$', change24h: 1.4 },
+  DOGE_MUSK: { symbol: 'DOGE', name: 'Dogecoin (Elon Musk Ecosystem Crypto)', nameFa: 'دوج‌کوین (رمزارز محبوب و رسمی اکوسیستم تسلا و پلتفرم ایکس)', category: 'stock', marketName: 'Musk Ecosystem', icon: 'https://assets.coingecko.com/coins/images/5/standard/dogecoin.png', currentPrice: 0.165, unit: '$', change24h: 7.8 },
   DXYZ: { symbol: 'DXYZ', name: 'Destiny Tech100 (SpaceX & OpenAI ETF)', nameFa: 'صندوق سرنوشت ۱۰۰ (سبد سهام عمومی اسپیس‌ایکس و اوپن‌ای‌آی)', category: 'stock', marketName: 'NYSE', icon: 'https://cdn-icons-png.flaticon.com/512/3209/3209994.png', currentPrice: 18.50, unit: '$', change24h: 6.2 },
   RKLB: { symbol: 'RKLB', name: 'Rocket Lab USA', nameFa: 'راکت لب (پرتاب‌های فضایی مداری تجاری و ماهواره‌های ناسا)', category: 'stock', marketName: 'NASDAQ', icon: 'https://companiesmarketcap.com/img/company-logos/64/RKLB.png', currentPrice: 10.45, unit: '$', change24h: 3.1 },
   ASTS: { symbol: 'ASTS', name: 'AST SpaceMobile', nameFa: 'ای‌اس‌تی اسپیس‌موبایل (شبکه پهن‌باند ماهواره‌ای به گوشی هوشمند)', category: 'stock', marketName: 'NASDAQ', icon: 'https://companiesmarketcap.com/img/company-logos/64/ASTS.png', currentPrice: 26.80, unit: '$', change24h: 8.5 },
   BA: { symbol: 'BA', name: 'The Boeing Company', nameFa: 'بوئینگ (غول هواپیماسازی، فضاپیما و کپسول فضایی استارلاینر)', category: 'stock', marketName: 'NYSE', icon: 'https://companiesmarketcap.com/img/company-logos/64/BA.png', currentPrice: 155.20, unit: '$', change24h: -0.8 },
+
+  // Critical Semiconductors & Hardware (MSN Money Titans)
+  TSM: { symbol: 'TSM', name: 'Taiwan Semiconductor Manufacturing (TSMC)', nameFa: 'تی‌اس‌ام‌سی (سازنده انحصاری تراشه‌های پیشرفته جهان)', category: 'stock', marketName: 'NYSE', icon: 'https://companiesmarketcap.com/img/company-logos/64/TSM.png', currentPrice: 195.40, unit: '$', change24h: 2.8 },
+  ASML: { symbol: 'ASML', name: 'ASML Holding N.V.', nameFa: 'ای‌اس‌ام‌ال هلند (انحصار ۱۰۰٪ ماشین‌آلات لیتوگرافی فرابنفش چاپ تراشه)', category: 'stock', marketName: 'NASDAQ', icon: 'https://companiesmarketcap.com/img/company-logos/64/ASML.png', currentPrice: 712.50, unit: '$', change24h: 1.9 },
+  AMD: { symbol: 'AMD', name: 'Advanced Micro Devices Inc.', nameFa: 'ای‌ام‌دی (پردازنده‌های هوش مصنوعی و کارت‌های گرافیک)', category: 'stock', marketName: 'NASDAQ', icon: 'https://companiesmarketcap.com/img/company-logos/64/AMD.png', currentPrice: 156.80, unit: '$', change24h: 2.3 },
+  AVGO: { symbol: 'AVGO', name: 'Broadcom Inc.', nameFa: 'برودکام (غول تراشه‌های شبکه و هوش مصنوعی اختصاصی)', category: 'stock', marketName: 'NASDAQ', icon: 'https://companiesmarketcap.com/img/company-logos/64/AVGO.png', currentPrice: 178.60, unit: '$', change24h: 3.1 },
+
+  // Luxury & Prestige Conglomerates
+  LVMH: { symbol: 'MC.PA', name: 'LVMH Moët Hennessy Louis Vuitton', nameFa: 'ال‌وی‌ام‌اچ فرانسه (لویی ویتون، دیور، تیفانی، بولگاری - پادشاه برندهای لوکس)', category: 'stock', marketName: 'Euronext Paris', icon: 'https://companiesmarketcap.com/img/company-logos/64/MC.PA.png', currentPrice: 635.80, unit: '€', change24h: 1.2 },
+  HERMES: { symbol: 'RMS.PA', name: 'Hermès International', nameFa: 'هرمس فرانسه (گران‌قیمت‌ترین خانه مد، کیف برکین و چرم دست‌ساز)', category: 'stock', marketName: 'Euronext Paris', icon: 'https://companiesmarketcap.com/img/company-logos/64/RMS.PA.png', currentPrice: 2085.00, unit: '€', change24h: 0.8 },
+  PORSCHE: { symbol: 'P911.DE', name: 'Porsche AG', nameFa: 'پورشه آلمان (سوپراسپرت‌های لوکس اشتوتگارت)', category: 'stock', marketName: 'XETRA', icon: 'https://companiesmarketcap.com/img/company-logos/64/P911.DE.png', currentPrice: 68.40, unit: '€', change24h: 1.5 },
+
+  // Regional Forex & Middle East (MSN Money FX)
+  USDT_TMN: { symbol: 'USDT/TMN', name: 'Tether / Iranian Toman', nameFa: 'تتر به تومان ایران (نرخ لحظه‌ای بازار آزاد تهران)', category: 'forex', marketName: 'Tehran Free Market', icon: 'https://cdn-icons-png.flaticon.com/512/323/323310.png', currentPrice: 69400, unit: 'تومان', change24h: 0.4 },
+  USD_AED: { symbol: 'USD/AED', name: 'US Dollar / UAE Dirham', nameFa: 'دلار آمریکا به درهم امارات (USD/AED)', category: 'forex', marketName: 'Forex Major', icon: 'https://cdn-icons-png.flaticon.com/512/323/323310.png', currentPrice: 3.6725, unit: 'AED', change24h: 0.01 },
+  USD_CNY: { symbol: 'USD/CNY', name: 'US Dollar / Chinese Yuan', nameFa: 'دلار آمریکا به یوان چین (USD/CNY)', category: 'forex', marketName: 'Forex Major', icon: 'https://cdn-icons-png.flaticon.com/512/323/323310.png', currentPrice: 7.1420, unit: '¥', change24h: -0.12 },
 
   // Frontier AI & Pre-IPO Giants
   OPENAI: { symbol: 'OPENAI', name: 'OpenAI (ChatGPT & Frontier AI)', nameFa: 'اوپن‌ای‌آی (خالق چت‌جی‌پی‌تی و پیشتاز هوش مصنوعی عمومی AGI)', category: 'stock', marketName: 'Pre-IPO Benchmark', icon: 'https://cdn-icons-png.flaticon.com/512/12222/12222560.png', currentPrice: 150.00, unit: '$', change24h: 5.0 },
@@ -250,13 +299,22 @@ const MACRO_ASSETS: Record<string, MacroAssetMeta> = {
   SNOW: { symbol: 'SNOW', name: 'Snowflake Inc.', nameFa: 'اسنوفلیک (انبار داده‌های کلاد هوش مصنوعی)', category: 'stock', marketName: 'NYSE', icon: 'https://companiesmarketcap.com/img/company-logos/64/SNOW.png', currentPrice: 118.50, unit: '$', change24h: 1.7 },
   RACE: { symbol: 'RACE', name: 'Ferrari N.V.', nameFa: 'فراری (سوپراسپرت‌های لوکس ایتالیا)', category: 'stock', marketName: 'NYSE', icon: 'https://companiesmarketcap.com/img/company-logos/64/RACE.png', currentPrice: 462.80, unit: '$', change24h: 0.9 },
 
-  // Commodities
+  // Commodities (MSN Money Watchlist)
   GOLD: { symbol: 'XAU/USD', name: 'Gold Spot', nameFa: 'انس طلای جهانی (Gold XAU/USD)', category: 'commodity', marketName: 'Commodities', icon: 'https://cdn-icons-png.flaticon.com/512/2583/2583344.png', currentPrice: 2735.40, unit: '$', change24h: 0.75 },
   SILVER: { symbol: 'XAG/USD', name: 'Silver Spot', nameFa: 'انس نقره جهانی (Silver XAG/USD)', category: 'commodity', marketName: 'Commodities', icon: 'https://cdn-icons-png.flaticon.com/512/2583/2583434.png', currentPrice: 33.85, unit: '$', change24h: 1.40 },
+  COPPER: { symbol: 'HG=F', name: 'Copper Futures (Dr. Copper)', nameFa: 'مس صنعتی جهانی (دکتر مس - دماسنج اقتصاد)', category: 'commodity', marketName: 'COMEX', icon: 'https://cdn-icons-png.flaticon.com/512/2583/2583434.png', currentPrice: 4.42, unit: '$', change24h: 1.15 },
+  NATGAS: { symbol: 'NG=F', name: 'Natural Gas Futures', nameFa: 'گاز طبیعی هنری هاب (Henry Hub)', category: 'commodity', marketName: 'NYMEX', icon: 'https://cdn-icons-png.flaticon.com/512/2933/2933884.png', currentPrice: 2.85, unit: '$', change24h: -2.40 },
+  PLATINUM: { symbol: 'PL=F', name: 'Platinum Spot (XPT/USD)', nameFa: 'پلاتین جهانی (فلز فوق‌لوکس صنعتی)', category: 'commodity', marketName: 'NYMEX', icon: 'https://cdn-icons-png.flaticon.com/512/2583/2583344.png', currentPrice: 1025.50, unit: '$', change24h: 0.90 },
+  URANIUM: { symbol: 'URNM', name: 'Sprott Uranium Miners ETF', nameFa: 'صندوق اورانیوم و سوخت هسته‌ای هوش مصنوعی', category: 'commodity', marketName: 'NYSE', icon: 'https://cdn-icons-png.flaticon.com/512/2933/2933884.png', currentPrice: 52.80, unit: '$', change24h: 3.20 },
   OIL_WTI: { symbol: 'WTI', name: 'Crude Oil (WTI)', nameFa: 'نفت خام تگزاس (WTI Oil)', category: 'commodity', marketName: 'NYMEX', icon: 'https://cdn-icons-png.flaticon.com/512/2933/2933884.png', currentPrice: 71.20, unit: '$', change24h: -1.20 },
   OIL_BRENT: { symbol: 'BRENT', name: 'Brent Crude Oil', nameFa: 'نفت برنت دریای شمال', category: 'commodity', marketName: 'ICE', icon: 'https://cdn-icons-png.flaticon.com/512/2933/2933884.png', currentPrice: 75.40, unit: '$', change24h: -0.90 },
 
-  // Global Indices
+  // Global Indices (MSN Money Benchmarks)
+  VIX: { symbol: '^VIX', name: 'CBOE Volatility Index (VIX)', nameFa: 'شاخص نوسان و ترس وال‌استریت (VIX)', category: 'index', marketName: 'CBOE', icon: 'https://cdn-icons-png.flaticon.com/512/4222/4222002.png', currentPrice: 18.50, unit: 'pts', change24h: -4.20 },
+  RUT: { symbol: '^RUT', name: 'Russell 2000 Index', nameFa: 'شاخص ۲۰۰۰ شرکت کوچک آمریکا (Russell 2000)', category: 'index', marketName: 'US Indices', icon: 'https://cdn-icons-png.flaticon.com/512/4222/4222002.png', currentPrice: 2250.40, unit: 'pts', change24h: 1.15 },
+  DAX: { symbol: '^GDAXI', name: 'DAX 40 Germany', nameFa: 'شاخص ۴۰ غول صنعتی بورس آلمان (DAX)', category: 'index', marketName: 'Deutsche Börse', icon: 'https://cdn-icons-png.flaticon.com/512/4222/4222002.png', currentPrice: 19450.20, unit: 'pts', change24h: 0.42 },
+  NIKKEI: { symbol: '^N225', name: 'Nikkei 225 Japan', nameFa: 'شاخص ۲۲۵ شرکت برتر بورس توکیو ژاپن (Nikkei)', category: 'index', marketName: 'Tokyo Stock Exchange', icon: 'https://cdn-icons-png.flaticon.com/512/4222/4222002.png', currentPrice: 38980.50, unit: 'pts', change24h: 0.85 },
+  FTSE: { symbol: '^FTSE', name: 'FTSE 100 UK', nameFa: 'شاخص ۱۰۰ شرکت برتر بورس لندن انگلستان (FTSE)', category: 'index', marketName: 'London Stock Exchange', icon: 'https://cdn-icons-png.flaticon.com/512/4222/4222002.png', currentPrice: 8250.80, unit: 'pts', change24h: 0.28 },
   SP500: { symbol: 'S&P 500', name: 'S&P 500 Index', nameFa: 'شاخص ۵۰۰ شرکت برتر آمریکا (S&P 500)', category: 'index', marketName: 'US Indices', icon: 'https://cdn-icons-png.flaticon.com/512/4222/4222002.png', currentPrice: 5864.67, unit: 'pts', change24h: 0.65 },
   NASDAQ100: { symbol: 'NDX', name: 'NASDAQ 100 Index', nameFa: 'شاخص ۱۰۰ غول فناوری (Nasdaq 100)', category: 'index', marketName: 'NASDAQ', icon: 'https://cdn-icons-png.flaticon.com/512/4222/4222002.png', currentPrice: 18518.61, unit: 'pts', change24h: 0.92 },
   DOWJONES: { symbol: 'DJI', name: 'Dow Jones Industrial', nameFa: 'شاخص صنعتی داوجونز (Dow Jones)', category: 'index', marketName: 'NYSE', icon: 'https://cdn-icons-png.flaticon.com/512/4222/4222002.png', currentPrice: 42931.60, unit: 'pts', change24h: 0.35 },
@@ -363,9 +421,48 @@ const INITIAL_RULES: AlertRule[] = [
 export default function App() {
   // TAB NAVIGATION: ALERTS IS IN THE MIDDLE (INDEX 1) AND IS THE DEFAULT
   const [mobileScreen, setMobileScreen] = useState<'history' | 'alerts' | 'settings'>('alerts');
-  const [rules, setRules] = useState<AlertRule[]>(INITIAL_RULES);
-  const [cryptoPrices, setCryptoPrices] = useState(CRYPTO_COIN_METAS);
-  const [macroPrices, setMacroPrices] = useState(MACRO_ASSETS);
+  
+  // Persistent Offline-First Alert Rules Cache
+  const [rules, setRules] = useState<AlertRule[]>(() => {
+    try {
+      const saved = localStorage.getItem('alarmer_rules');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (_) {}
+    return INITIAL_RULES;
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('alarmer_rules', JSON.stringify(rules));
+    } catch (_) {}
+  }, [rules]);
+
+  // Persistent Offline-First Crypto Prices Cache
+  const [cryptoPrices, setCryptoPrices] = useState<Record<string, CryptoCoinMeta>>(() => {
+    try {
+      const saved = localStorage.getItem('alarmer_crypto_prices');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') return { ...CRYPTO_COIN_METAS, ...parsed };
+      }
+    } catch (_) {}
+    return CRYPTO_COIN_METAS;
+  });
+
+  // Persistent Offline-First Macro Prices Cache
+  const [macroPrices, setMacroPrices] = useState<Record<string, MacroAssetMeta>>(() => {
+    try {
+      const saved = localStorage.getItem('alarmer_macro_prices');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') return { ...MACRO_ASSETS, ...parsed };
+      }
+    } catch (_) {}
+    return MACRO_ASSETS;
+  });
   
   // Theme & Language
   const [appTheme, setAppTheme] = useState<ThemeModeType>('dark-green');
@@ -409,7 +506,31 @@ export default function App() {
   // Crypto Flow: Exchange Chips + Search + 40+ Exchanges + Pairs Sync + Frequency + Both-Sides Condition
   const [cryptoStep, setCryptoStep] = useState<1 | 2 | 3>(1);
   const [exchangeCategoryFilter, setExchangeCategoryFilter] = useState<ExchangeCategoryType>('all');
-  const [selectedExchange, setSelectedExchange] = useState<ExchangeInfo>(ALL_EXCHANGES[0]);
+  const [selectedExchange, setSelectedExchange] = useState<ExchangeInfo>(ALL_EXCHANGES.find(e => e.id === 'nobitex') || ALL_EXCHANGES[0]);
+  const [selectedCounterCurrency, setSelectedCounterCurrency] = useState<string>('TMN');
+  
+  // Real-Time Iranian Exchange Toman Rates & Domestic Orderbook Cache
+  const [usdtTomanRate, setUsdtTomanRate] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('alarmer_usdt_tmn_rate');
+      if (saved) {
+        const val = parseFloat(saved);
+        if (val > 10000) return val;
+      }
+    } catch (_) {}
+    return 104500;
+  });
+
+  const [iranianMarketPrices, setIranianMarketPrices] = useState<Record<string, { priceTmn: number; priceUsdt: number; change24h: number; high24hTmn?: number; low24hTmn?: number }>>(() => {
+    try {
+      const saved = localStorage.getItem('alarmer_iranian_prices');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') return parsed;
+      }
+    } catch (_) {}
+    return {};
+  });
   const [exchangeSearchQuery, setExchangeSearchQuery] = useState<string>('');
   const [cryptoSearchQuery, setCryptoSearchQuery] = useState<string>('');
   const [selectedCryptoCoin, setSelectedCryptoCoin] = useState<string>('BTC');
@@ -424,9 +545,15 @@ export default function App() {
   // Common Frequency & Condition inputs
   const [unitType, setUnitType] = useState<'seconds' | 'minutes' | 'hours'>('minutes');
   const [unitNumber, setUnitNumber] = useState<string>('1');
-  const [conditionType, setConditionType] = useState<'PERCENT_CHANGE' | 'PRICE_THRESHOLD'>('PERCENT_CHANGE');
+  const [conditionType, setConditionType] = useState<'PERCENT_CHANGE' | 'PRICE_THRESHOLD' | 'VOLUME_SURGE'>('PERCENT_CHANGE');
   const [direction, setDirection] = useState<'BOTH' | 'ABOVE' | 'BELOW'>('BOTH');
+  const [bothWayBehavior, setBothWayBehavior] = useState<'OCO' | 'DUAL_ACTIVE'>('OCO');
   const [targetValueStr, setTargetValueStr] = useState<string>('2.0');
+  const [volumePercentStr, setVolumePercentStr] = useState<string>('100');
+  const [upperPriceStr, setUpperPriceStr] = useState<string>('4.00');
+  const [upperNote, setUpperNote] = useState<string>('«رسید به مقاومت، بررسی کن»');
+  const [lowerPriceStr, setLowerPriceStr] = useState<string>('2.00');
+  const [lowerNote, setLowerNote] = useState<string>('«حمایت شکست، بفروش»');
   const [ruleSoundEnabled, setRuleSoundEnabled] = useState<boolean>(true);
   const [ruleVibrationEnabled, setRuleVibrationEnabled] = useState<boolean>(true);
   const [ttsEnabled, setTtsEnabled] = useState<boolean>(true);
@@ -458,45 +585,427 @@ export default function App() {
 
   const audioContextRef = useRef<AudioContext | null>(null);
 
-  // Live Crypto Prices Sync
+  // Persistent Last Known Authentic Prices Map (Prevents 50%+ offline price drop / drift)
+  const [lastKnownCoinPrices, setLastKnownCoinPrices] = useState<Record<string, { priceTmn: number; priceUsd: number; high24h?: number; low24h?: number }>>(() => {
+    try {
+      const saved = localStorage.getItem('alarmer_last_known_prices');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') return parsed;
+      }
+    } catch (_) {}
+    return {};
+  });
+
+  const updateLastKnownCoinPrice = (coin: string, tmn: number, usd: number, high?: number, low?: number) => {
+    const cUpper = coin.toUpperCase();
+    setLastKnownCoinPrices((prev) => {
+      const next = {
+        ...prev,
+        [cUpper]: {
+          priceTmn: tmn > 0 ? tmn : (prev[cUpper]?.priceTmn || 0),
+          priceUsd: usd > 0 ? usd : (prev[cUpper]?.priceUsd || 0),
+          high24h: high || prev[cUpper]?.high24h,
+          low24h: low || prev[cUpper]?.low24h,
+        }
+      };
+      try {
+        localStorage.setItem('alarmer_last_known_prices', JSON.stringify(next));
+      } catch (_) {}
+      return next;
+    });
+  };
+
+  // Helper to resolve live market price, unit and 24h stats for any exchange pair with 100% offline safety
+  const getCryptoMarketPrice = (coin: string, exchangeId: string, counterCurrency: string) => {
+    const isIranianExchange = ['nobitex', 'wallex', 'tabdeal', 'bitbarg', 'abantether', 'ramzinex', 'tetherland', 'sarmayex'].includes(exchangeId.toLowerCase());
+    const isTmn = counterCurrency === 'TMN' || counterCurrency === 'IRT';
+    const cUpper = coin.toUpperCase();
+    const irData = iranianMarketPrices[cUpper];
+    const binanceMeta = cryptoPrices[cUpper];
+    const rate = usdtTomanRate > 10000 ? usdtTomanRate : 104500;
+    const lastKnown = lastKnownCoinPrices[cUpper];
+
+    // 1. Iranian Exchange with TMN / IRT Counter Currency
+    if (isIranianExchange && isTmn) {
+      if (irData && irData.priceTmn > 0) {
+        const finalTmn = irData.priceTmn;
+        const h = irData.high24hTmn || Math.round(finalTmn * 1.025);
+        const l = irData.low24hTmn || Math.round(finalTmn * 0.975);
+        return {
+          price: finalTmn,
+          unit: 'تومان',
+          high24h: h,
+          low24h: l,
+          change24h: irData.change24h,
+        };
+      }
+      
+      if (binanceMeta && binanceMeta.currentPrice > 0) {
+        const tmnP = cUpper === 'USDT' ? rate : Math.round(binanceMeta.currentPrice * rate);
+        const h = cUpper === 'USDT' ? Math.round(rate * 1.01) : Math.round((binanceMeta.high24h || binanceMeta.currentPrice * 1.025) * rate);
+        const l = cUpper === 'USDT' ? Math.round(rate * 0.99) : Math.round((binanceMeta.low24h || binanceMeta.currentPrice * 0.975) * rate);
+        return {
+          price: tmnP,
+          unit: 'تومان',
+          high24h: h,
+          low24h: l,
+          change24h: binanceMeta.change24h,
+        };
+      }
+
+      if (lastKnown && lastKnown.priceTmn > 0) {
+        return {
+          price: lastKnown.priceTmn,
+          unit: 'تومان',
+          high24h: lastKnown.high24h || Math.round(lastKnown.priceTmn * 1.025),
+          low24h: lastKnown.low24h || Math.round(lastKnown.priceTmn * 0.975),
+          change24h: 0,
+        };
+      }
+
+      // Safe default without jumping to BTC
+      const safeUsd = lastKnown?.priceUsd || 1.0;
+      return {
+        price: Math.round(safeUsd * rate),
+        unit: 'تومان',
+        high24h: Math.round(safeUsd * rate * 1.025),
+        low24h: Math.round(safeUsd * rate * 0.975),
+        change24h: 0,
+      };
+    }
+
+    // 2. Iranian Exchange with USDT Counter Currency
+    if (isIranianExchange && (counterCurrency === 'USDT' || counterCurrency === 'USD')) {
+      if (irData && irData.priceUsdt > 0) {
+        return {
+          price: irData.priceUsdt,
+          unit: '$',
+          high24h: binanceMeta?.high24h || irData.priceUsdt * 1.025,
+          low24h: binanceMeta?.low24h || irData.priceUsdt * 0.975,
+          change24h: irData.change24h || (binanceMeta?.change24h ?? 0),
+        };
+      }
+      if (irData && irData.priceTmn > 0 && rate > 1000) {
+        const uPrice = Number((irData.priceTmn / rate).toFixed(irData.priceTmn / rate < 1 ? 6 : 2));
+        return {
+          price: uPrice,
+          unit: '$',
+          high24h: uPrice * 1.025,
+          low24h: uPrice * 0.975,
+          change24h: irData.change24h,
+        };
+      }
+      if (binanceMeta && binanceMeta.currentPrice > 0) {
+        return {
+          price: binanceMeta.currentPrice,
+          unit: '$',
+          high24h: binanceMeta.high24h,
+          low24h: binanceMeta.low24h,
+          change24h: binanceMeta.change24h,
+        };
+      }
+      if (lastKnown && lastKnown.priceUsd > 0) {
+        return {
+          price: lastKnown.priceUsd,
+          unit: '$',
+          high24h: lastKnown.high24h || lastKnown.priceUsd * 1.025,
+          low24h: lastKnown.low24h || lastKnown.priceUsd * 0.975,
+          change24h: 0,
+        };
+      }
+    }
+
+    // 3. Global Crypto Exchanges (Binance, OKX, KuCoin, etc.)
+    if (binanceMeta && binanceMeta.currentPrice > 0) {
+      return {
+        price: binanceMeta.currentPrice,
+        unit: counterCurrency === 'USD' || counterCurrency === 'USDT' ? '$' : counterCurrency,
+        high24h: binanceMeta.high24h,
+        low24h: binanceMeta.low24h,
+        change24h: binanceMeta.change24h,
+      };
+    }
+
+    if (lastKnown && lastKnown.priceUsd > 0) {
+      return {
+        price: lastKnown.priceUsd,
+        unit: counterCurrency === 'USD' || counterCurrency === 'USDT' ? '$' : counterCurrency,
+        high24h: lastKnown.high24h || lastKnown.priceUsd * 1.025,
+        low24h: lastKnown.low24h || lastKnown.priceUsd * 0.975,
+        change24h: 0,
+      };
+    }
+
+    return {
+      price: (cryptoPrices[cUpper] || cryptoPrices.BTC).currentPrice,
+      unit: counterCurrency === 'USD' || counterCurrency === 'USDT' ? '$' : counterCurrency,
+      high24h: (cryptoPrices[cUpper] || cryptoPrices.BTC).high24h,
+      low24h: (cryptoPrices[cUpper] || cryptoPrices.BTC).low24h,
+      change24h: (cryptoPrices[cUpper] || cryptoPrices.BTC).change24h,
+    };
+  };
+
+  // Live Crypto Prices Sync (Global Binance + Domestic Iranian Wallex, Nobitex, Ramzinex, TetherLand, Bitbarg)
   useEffect(() => {
     const fetchLivePrices = async () => {
+      // 1. Fetch Global Binance Tickers
       try {
         const res = await fetch('https://api.binance.com/api/v3/ticker/24hr');
-        if (!res.ok) return;
-        const tickers: any[] = await res.json();
-        const priceMap: Record<string, { price: number; change: number }> = {};
+        if (res.ok) {
+          const tickers: any[] = await res.json();
+          const priceMap: Record<string, { price: number; change: number; high: number; low: number; volume: number }> = {};
 
-        tickers.forEach((t) => {
-          if (t.symbol.endsWith('USDT')) {
-            const sym = t.symbol.replace('USDT', '');
-            priceMap[sym] = {
-              price: parseFloat(t.lastPrice),
-              change: parseFloat(t.priceChangePercent),
-            };
-          }
-        });
-
-        setCryptoPrices((prev) => {
-          const updated = { ...prev };
-          Object.keys(updated).forEach((key) => {
-            if (priceMap[key]) {
-              updated[key] = {
-                ...updated[key],
-                currentPrice: priceMap[key].price,
-                change24h: priceMap[key].change,
+          tickers.forEach((t) => {
+            if (t.symbol.endsWith('USDT')) {
+              const sym = t.symbol.replace('USDT', '');
+              priceMap[sym] = {
+                price: parseFloat(t.lastPrice),
+                change: parseFloat(t.priceChangePercent),
+                high: parseFloat(t.highPrice),
+                low: parseFloat(t.lowPrice),
+                volume: parseFloat(t.quoteVolume),
               };
             }
           });
-          return updated;
-        });
+
+          setCryptoPrices((prev) => {
+            const updated = { ...prev };
+            Object.keys(priceMap).forEach((key) => {
+              if (updated[key]) {
+                updated[key] = {
+                  ...updated[key],
+                  currentPrice: priceMap[key].price,
+                  change24h: priceMap[key].change,
+                  high24h: priceMap[key].high || updated[key].high24h,
+                  low24h: priceMap[key].low || updated[key].low24h,
+                  volume24h: priceMap[key].volume || updated[key].volume24h,
+                };
+              } else if (['WIF', 'HMSTR', 'CATI', 'DOGS', 'TURBO', 'AAVE', 'UNI', 'ICP', 'XLM', 'TAO', 'ETC', 'XMR', 'HBAR', 'FIL', 'INJ', 'SEI'].includes(key)) {
+                updated[key] = {
+                  name: key,
+                  nameFa: key,
+                  icon: 'https://cdn-icons-png.flaticon.com/512/2830/2830284.png',
+                  currentPrice: priceMap[key].price,
+                  change24h: priceMap[key].change,
+                  high24h: priceMap[key].high,
+                  low24h: priceMap[key].low,
+                  volume24h: priceMap[key].volume,
+                };
+              }
+              updateLastKnownCoinPrice(key, Math.round(priceMap[key].price * (usdtTomanRate > 10000 ? usdtTomanRate : 104500)), priceMap[key].price, priceMap[key].high, priceMap[key].low);
+            });
+            try {
+              localStorage.setItem('alarmer_crypto_prices', JSON.stringify(updated));
+            } catch (_) {}
+            return updated;
+          });
+        }
+      } catch (_) {}
+
+      // 2. Fetch Iranian Exchange Rates (Wallex Live API via proxy - 370+ pairs)
+      try {
+        const wallexRes = await fetch('/api/wallex/markets');
+        if (wallexRes.ok) {
+          const wData = await wallexRes.json();
+          const symbols = wData?.result?.symbols;
+          if (symbols && typeof symbols === 'object') {
+            const usdtTmn = parseFloat(symbols['USDTTMN']?.stats?.lastPrice || '0');
+            if (usdtTmn > 10000) {
+              setUsdtTomanRate(usdtTmn);
+              try {
+                localStorage.setItem('alarmer_usdt_tmn_rate', usdtTmn.toString());
+              } catch (_) {}
+            }
+
+            const irPrices: Record<string, { priceTmn: number; priceUsdt: number; change24h: number; high24hTmn?: number; low24hTmn?: number }> = {};
+            Object.keys(symbols).forEach((k) => {
+              const s = symbols[k];
+              const base = s.baseAsset?.toUpperCase();
+              const quote = s.quoteAsset?.toUpperCase();
+              const lastP = parseFloat(s.stats?.lastPrice || '0');
+              const ch = parseFloat(s.stats?.['24h_ch'] || '0');
+              const highP = parseFloat(s.stats?.['24h_highPrice'] || '0');
+              const lowP = parseFloat(s.stats?.['24h_lowPrice'] || '0');
+
+              if (base && lastP > 0) {
+                if (!irPrices[base]) {
+                  irPrices[base] = { priceTmn: 0, priceUsdt: 0, change24h: ch };
+                }
+                if (quote === 'TMN') {
+                  irPrices[base].priceTmn = lastP;
+                  irPrices[base].high24hTmn = highP;
+                  irPrices[base].low24hTmn = lowP;
+                  irPrices[base].change24h = ch;
+                  updateLastKnownCoinPrice(base, lastP, lastP / (usdtTmn > 10000 ? usdtTmn : 104500), highP, lowP);
+                } else if (quote === 'USDT') {
+                  irPrices[base].priceUsdt = lastP;
+                  updateLastKnownCoinPrice(base, Math.round(lastP * (usdtTmn > 10000 ? usdtTmn : 104500)), lastP);
+                }
+              }
+            });
+
+            setIranianMarketPrices((prev) => {
+              const next = { ...prev, ...irPrices };
+              try {
+                localStorage.setItem('alarmer_iranian_prices', JSON.stringify(next));
+              } catch (_) {}
+              return next;
+            });
+          }
+        }
+      } catch (_) {}
+
+      // 3. Nobitex Live Stats via proxy (530+ pairs)
+      try {
+        const nobiRes = await fetch('/api/nobitex/market/stats', { method: 'POST' });
+        if (nobiRes.ok) {
+          const nobiData = await nobiRes.json();
+          const stats = nobiData?.stats;
+          if (stats && typeof stats === 'object') {
+            const nobiTmnPrices: Record<string, { priceTmn: number; priceUsdt: number; change24h: number; high24hTmn?: number; low24hTmn?: number }> = {};
+            Object.keys(stats).forEach((k) => {
+              const item = stats[k];
+              const parts = k.split('-');
+              if (parts.length === 2) {
+                const base = parts[0].toUpperCase();
+                const quote = parts[1].toUpperCase();
+                const latest = parseFloat(item.latest || '0');
+                const ch = parseFloat(item.dayChange || '0');
+                const dayHigh = parseFloat(item.dayHigh || '0');
+                const dayLow = parseFloat(item.dayLow || '0');
+
+                if (base && latest > 0) {
+                  if (!nobiTmnPrices[base]) {
+                    nobiTmnPrices[base] = { priceTmn: 0, priceUsdt: 0, change24h: ch };
+                  }
+                  if (quote === 'RLS') {
+                    const tmn = latest / 10;
+                    nobiTmnPrices[base].priceTmn = tmn;
+                    nobiTmnPrices[base].high24hTmn = dayHigh > 0 ? dayHigh / 10 : undefined;
+                    nobiTmnPrices[base].low24hTmn = dayLow > 0 ? dayLow / 10 : undefined;
+                    nobiTmnPrices[base].change24h = ch;
+                    updateLastKnownCoinPrice(base, tmn, tmn / 104500, dayHigh > 0 ? dayHigh / 10 : undefined, dayLow > 0 ? dayLow / 10 : undefined);
+                  } else if (quote === 'USDT') {
+                    nobiTmnPrices[base].priceUsdt = latest;
+                    updateLastKnownCoinPrice(base, Math.round(latest * 104500), latest);
+                  }
+                }
+              }
+            });
+
+            setIranianMarketPrices((prev) => {
+              const next = { ...prev, ...nobiTmnPrices };
+              try {
+                localStorage.setItem('alarmer_iranian_prices', JSON.stringify(next));
+              } catch (_) {}
+              return next;
+            });
+          }
+        }
+      } catch (_) {}
+
+      // 4. Ramzinex Live Pairs API via proxy (630+ domestic markets)
+      try {
+        const ramzRes = await fetch('/api/ramzinex/pairs');
+        if (ramzRes.ok) {
+          const rData = await ramzRes.json();
+          const rList = rData?.data;
+          if (Array.isArray(rList)) {
+            const rPrices: Record<string, { priceTmn: number; priceUsdt: number; change24h: number; high24hTmn?: number; low24hTmn?: number }> = {};
+            rList.forEach((item) => {
+              const base = item?.base_currency_symbol?.en?.toUpperCase();
+              const quote = item?.quote_currency_symbol?.en?.toUpperCase();
+              const sell = parseFloat(item.sell || '0');
+              const close = parseFloat(item.financial?.last24h?.close || '0');
+              const p = sell > 0 ? sell : close;
+              const ch = parseFloat(item.financial?.last24h?.change_percent || '0');
+              const highest = parseFloat(item.financial?.last24h?.highest || '0');
+              const lowest = parseFloat(item.financial?.last24h?.lowest || '0');
+
+              if (base && p > 0) {
+                if (!rPrices[base]) {
+                  rPrices[base] = { priceTmn: 0, priceUsdt: 0, change24h: ch };
+                }
+                if (quote === 'IRR' || quote === 'RLS') {
+                  const tmn = p / 10;
+                  rPrices[base].priceTmn = tmn;
+                  rPrices[base].high24hTmn = highest > 0 ? highest / 10 : undefined;
+                  rPrices[base].low24hTmn = lowest > 0 ? lowest / 10 : undefined;
+                  rPrices[base].change24h = ch;
+                  updateLastKnownCoinPrice(base, tmn, tmn / 104500);
+                } else if (quote === 'USDT') {
+                  rPrices[base].priceUsdt = p;
+                  updateLastKnownCoinPrice(base, Math.round(p * 104500), p);
+                }
+              }
+            });
+
+            setIranianMarketPrices((prev) => {
+              const next = { ...prev, ...rPrices };
+              try {
+                localStorage.setItem('alarmer_iranian_prices', JSON.stringify(next));
+              } catch (_) {}
+              return next;
+            });
+          }
+        }
+      } catch (_) {}
+
+      // 5. TetherLand Live USDT Rate
+      try {
+        const tethRes = await fetch('/api/tetherland/currencies');
+        if (tethRes.ok) {
+          const tData = await tethRes.json();
+          const usdt = tData?.data?.currencies?.USDT;
+          const p = parseFloat(usdt?.price || '0');
+          if (p > 10000) {
+            setUsdtTomanRate(p);
+            try {
+              localStorage.setItem('alarmer_usdt_tmn_rate', p.toString());
+            } catch (_) {}
+          }
+        }
+      } catch (_) {}
+
+      // 6. Bitbarg Live Currencies API (Over-The-Counter Instant Rates)
+      try {
+        const bitbargRes = await fetch('/api/bitbarg/currencies?page=1&page_size=200');
+        if (bitbargRes.ok) {
+          const bData = await bitbargRes.json();
+          const items = bData?.result?.items;
+          if (Array.isArray(items)) {
+            const bPrices: Record<string, { priceTmn: number; priceUsdt: number; change24h: number }> = {};
+            items.forEach((item) => {
+              const coin = (item.coin || item.symbol || '').toUpperCase();
+              const usd = parseFloat(item.price || '0');
+              const ch = parseFloat(item.percent || '0');
+              if (coin && usd > 0) {
+                bPrices[coin] = {
+                  priceTmn: Math.round(usd * (usdtTomanRate > 10000 ? usdtTomanRate : 104500)),
+                  priceUsdt: usd,
+                  change24h: ch,
+                };
+                updateLastKnownCoinPrice(coin, Math.round(usd * (usdtTomanRate > 10000 ? usdtTomanRate : 104500)), usd);
+              }
+            });
+
+            setIranianMarketPrices((prev) => {
+              const next = { ...prev, ...bPrices };
+              try {
+                localStorage.setItem('alarmer_iranian_prices', JSON.stringify(next));
+              } catch (_) {}
+              return next;
+            });
+          }
+        }
       } catch (_) {}
     };
 
     fetchLivePrices();
-    const interval = setInterval(fetchLivePrices, 30000);
+    const interval = setInterval(fetchLivePrices, 20000);
     return () => clearInterval(interval);
-  }, []);
+  }, [usdtTomanRate]);
 
   const playBeep = () => {
     if (!globalSoundEnabled) return;
@@ -638,9 +1147,12 @@ export default function App() {
 
   // --- CALCULATION HELPER: REAL PERCENTAGE CHANGE IN WIDGET (Never stuck on +0.00%) ---
   const getRuleWidgetBadge = (rule: AlertRule, currentPrice: number) => {
-    if (rule.isTriggered && rule.conditionType === 'PRICE_THRESHOLD') {
+    const isBothSidesPercent = rule.conditionType === 'PERCENT_CHANGE' && rule.direction === 'BOTH';
+    const isDualActivePrice = rule.conditionType === 'PRICE_THRESHOLD' && rule.direction === 'BOTH' && rule.bothWayBehavior === 'DUAL_ACTIVE';
+    const isPermanentlyActive = isBothSidesPercent || isDualActivePrice;
+    if (!isPermanentlyActive && (!rule.isActive || rule.isTriggered)) {
       return {
-        text: '✔️ Done',
+        text: '✅ Done',
         isPositive: true,
         isDone: true,
         bgClass: 'bg-amber-500/15 border-amber-500/30 text-amber-400',
@@ -679,29 +1191,44 @@ export default function App() {
   };
 
   const evaluateRule = (rule: AlertRule, forcedPriceDeltaPercent?: number) => {
+    if (!rule.isActive) return;
+
+    // Check Cooldown: prevent repetitive alert spam
+    if (rule.cooldownUntil && new Date(rule.cooldownUntil).getTime() > Date.now()) {
+      return;
+    }
+
     let nameFa = rule.marketSymbol;
     let unit = '$';
+    let currentLiveMarketPrice = rule.basePrice;
 
     if (rule.marketType === 'crypto') {
-      const meta = cryptoPrices[rule.baseCurrency] || cryptoPrices.BTC;
-      nameFa = meta.nameFa;
-      unit = '$';
+      const mkt = getCryptoMarketPrice(rule.baseCurrency, rule.exchangeId, rule.counterCurrency);
+      nameFa = (cryptoPrices[rule.baseCurrency] || cryptoPrices.BTC).nameFa;
+      unit = mkt.unit;
+      currentLiveMarketPrice = mkt.price;
     } else {
       const meta = macroPrices[rule.baseCurrency] || macroPrices.US10Y;
       nameFa = meta.nameFa;
       unit = meta.unit;
+      currentLiveMarketPrice = meta.currentPrice;
     }
 
     const now = new Date();
-    const driftPct = forcedPriceDeltaPercent ?? ((Math.random() - 0.48) * (rule.assetCategory === 'bond' || rule.assetCategory === 'forex' ? 0.3 : 1.2));
-    const newPrice = Number((rule.basePrice * (1 + driftPct / 100)).toFixed(rule.basePrice < 1 ? 6 : 2));
+    const newPrice = forcedPriceDeltaPercent !== undefined
+      ? Number((rule.basePrice * (1 + forcedPriceDeltaPercent / 100)).toFixed(rule.basePrice < 1 ? 6 : 2))
+      : (currentLiveMarketPrice > 0 ? currentLiveMarketPrice : (rule.lastCheckedPrice ?? rule.basePrice));
     
     const diff = newPrice - rule.basePrice;
-    const actualPercent = (diff / rule.basePrice) * 100;
+    const actualPercent = rule.basePrice > 0 ? (diff / rule.basePrice) * 100 : 0;
 
     let triggered = false;
     let title = '';
     let body = '';
+
+    const priceStr = unit === 'تومان'
+      ? `${Math.round(newPrice).toLocaleString('fa-IR')} تومان`
+      : `${unit}${newPrice.toLocaleString(undefined, { minimumFractionDigits: newPrice < 1 ? 4 : 2, maximumFractionDigits: 4 })}`;
 
     if (rule.conditionType === 'PERCENT_CHANGE') {
       if (rule.direction === 'BOTH' && Math.abs(actualPercent) >= rule.targetValue) {
@@ -717,15 +1244,32 @@ export default function App() {
         const emoji = isUpward ? '🟢' : '🔴';
         const arrow = isUpward ? '▲' : '▼';
         const sign = isUpward ? '+' : '-';
-        const priceStr = `${unit}${newPrice.toLocaleString(undefined, { minimumFractionDigits: newPrice < 1 ? 4 : 2, maximumFractionDigits: 4 })}`;
         title = `${emoji} ${rule.marketSymbol} ${sign}${Math.abs(actualPercent).toFixed(2)}% ${priceStr} ${arrow}`;
         body = rule.customNote && rule.customNote.trim() 
           ? (rule.customNote.startsWith('📝') ? rule.customNote.trim() : `📝 ${rule.customNote.trim()}`)
           : '';
       }
     } else if (rule.conditionType === 'PRICE_THRESHOLD') {
-      const priceStr = `${unit}${newPrice.toLocaleString(undefined, { minimumFractionDigits: newPrice < 1 ? 4 : 2, maximumFractionDigits: 4 })}`;
-      if (rule.direction === 'ABOVE' && newPrice >= rule.targetValue) {
+      if (rule.direction === 'BOTH') {
+        const upper = rule.upperTargetPrice;
+        const lower = rule.lowerTargetPrice;
+
+        if (upper != null && upper > 0 && newPrice >= upper) {
+          triggered = true;
+          const pct = ((newPrice - rule.basePrice) / rule.basePrice) * 100;
+          title = `🟢 ${rule.marketSymbol} +${Math.abs(pct).toFixed(2)}% ${priceStr} ▲`;
+          body = rule.upperNote && rule.upperNote.trim()
+            ? (rule.upperNote.startsWith('📝') ? rule.upperNote.trim() : `📝 ${rule.upperNote.trim()}`)
+            : (rule.customNote ? `📝 ${rule.customNote}` : '');
+        } else if (lower != null && lower > 0 && newPrice <= lower) {
+          triggered = true;
+          const pct = ((newPrice - rule.basePrice) / rule.basePrice) * 100;
+          title = `🔴 ${rule.marketSymbol} -${Math.abs(pct).toFixed(2)}% ${priceStr} ▼`;
+          body = rule.lowerNote && rule.lowerNote.trim()
+            ? (rule.lowerNote.startsWith('📝') ? rule.lowerNote.trim() : `📝 ${rule.lowerNote.trim()}`)
+            : (rule.customNote ? `📝 ${rule.customNote}` : '');
+        }
+      } else if (rule.direction === 'ABOVE' && newPrice >= rule.targetValue) {
         triggered = true;
         const pct = ((newPrice - rule.basePrice) / rule.basePrice) * 100;
         title = `🟢 ${rule.marketSymbol} +${Math.abs(pct).toFixed(2)}% ${priceStr} ▲`;
@@ -740,6 +1284,22 @@ export default function App() {
           ? (rule.customNote.startsWith('📝') ? rule.customNote.trim() : `📝 ${rule.customNote.trim()}`)
           : '';
       }
+    } else if (rule.conditionType === 'VOLUME_SURGE') {
+      const volReq = rule.volumePercent || 100;
+      const coinMeta = rule.marketType === 'crypto' ? cryptoPrices[rule.baseCurrency] : macroPrices[rule.baseCurrency];
+      const currentVol = (coinMeta as any)?.volume24h || 25000000000;
+      const baseVol = rule.baseVolume || currentVol;
+      const volGrowth = baseVol > 0 ? ((currentVol - baseVol) / baseVol) * 100 : 0;
+
+      // Fires if real volume surged by requested threshold or simulated push
+      if (volGrowth >= volReq || (forcedPriceDeltaPercent !== undefined && Math.abs(forcedPriceDeltaPercent) >= 1.0)) {
+        triggered = true;
+        const volFormatted = currentVol >= 1e9 ? `$${(currentVol / 1e9).toFixed(2)}B` : `$${(currentVol / 1e6).toFixed(1)}M`;
+        title = `📊 ${rule.marketSymbol} جهش حجم معاملات! ${volFormatted} ⚡`;
+        body = rule.customNote && rule.customNote.trim()
+          ? rule.customNote.trim()
+          : `حجم معاملات ۲۴ ساعته نماد بیش از +${volReq}% نسبت به مبنا جهش پیدا کرد (ورود نقدینگی سنگین).`;
+      }
     }
 
     if (triggered) {
@@ -748,9 +1308,20 @@ export default function App() {
       const effectiveVibration = globalVibrationEnabled && (rule.vibrationEnabled ?? true);
       const effectiveTts = globalTtsEnabled && (rule.ttsEnabled ?? false);
 
+      let spokenPrice = newPrice.toLocaleString('fa-IR');
+      if (unit === 'تومان' && newPrice >= 1e9) {
+        spokenPrice = `${(newPrice / 1e9).toFixed(2)} میلیارد تومان`;
+      } else if (unit === 'تومان' && newPrice >= 1e6) {
+        spokenPrice = `${(newPrice / 1e6).toFixed(1)} میلیون تومان`;
+      } else if (unit === 'تومان') {
+        spokenPrice = `${Math.round(newPrice).toLocaleString('fa-IR')} تومان`;
+      } else {
+        spokenPrice = `${spokenPrice} ${unit === '$' ? 'دلار' : unit}`;
+      }
+
       const spoken = currentLang === 'fa'
-        ? `هشدار: ${nameFa} به قیمت ${newPrice.toLocaleString('fa-IR')} ${unit === '$' ? 'دلار' : unit} رسید.`
-        : `Alert: ${rule.baseCurrency} reached ${newPrice} ${unit === '$' ? 'dollars' : unit}.`;
+        ? `هشدار: ${nameFa} در ${rule.exchangeName} به قیمت ${spokenPrice} رسید.`
+        : `Alert: ${rule.baseCurrency} on ${rule.exchangeName} reached ${newPrice} ${unit === '$' ? 'dollars' : unit}.`;
 
       const notifItem: QueuedNotification = {
         id: `notif-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
@@ -787,13 +1358,25 @@ export default function App() {
     setRules((prev) =>
       prev.map((r) => {
         if (r.uuid === rule.uuid) {
+          const isBothSidesPercent = r.conditionType === 'PERCENT_CHANGE' && r.direction === 'BOTH';
+          const isDualActivePrice = r.conditionType === 'PRICE_THRESHOLD' && r.direction === 'BOTH' && r.bothWayBehavior === 'DUAL_ACTIVE';
+          const shouldStayActive = isBothSidesPercent || isDualActivePrice;
+
+          // Set 30s cooldown for recurring/dualActive alerts so they don't spam while price hovers
+          const cooldownDate = (triggered && shouldStayActive)
+            ? new Date(now.getTime() + Math.max(r.checkIntervalSeconds, 30) * 1000)
+            : r.cooldownUntil;
+
+          const safePrice = (newPrice && newPrice > 0) ? newPrice : (r.lastCheckedPrice ?? r.basePrice);
+
           return {
             ...r,
             lastCheckedAt: now,
-            lastCheckedPrice: newPrice,
-            basePrice: triggered ? newPrice : r.basePrice,
-            isTriggered: triggered && r.conditionType === 'PRICE_THRESHOLD',
-            isActive: triggered && r.conditionType === 'PRICE_THRESHOLD' ? false : r.isActive,
+            lastCheckedPrice: safePrice,
+            basePrice: triggered ? safePrice : r.basePrice,
+            isTriggered: triggered ? !shouldStayActive : r.isTriggered,
+            isActive: triggered ? (shouldStayActive ? true : false) : r.isActive,
+            cooldownUntil: cooldownDate,
             triggerCount: triggered ? r.triggerCount + 1 : r.triggerCount,
             lastTriggeredAt: triggered ? now : r.lastTriggeredAt,
           };
@@ -805,6 +1388,10 @@ export default function App() {
 
   useEffect(() => {
     const timer = setInterval(() => {
+      // Offline-safe: Do not simulate or overwrite prices if network is disconnected
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        return;
+      }
       const now = new Date();
       rules.forEach((rule) => {
         if (!rule.isActive) return;
@@ -885,14 +1472,32 @@ export default function App() {
 
   const handleCreateCryptoSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const val = parseFloat(targetValueStr);
-    if (isNaN(val) || val <= 0) {
-      alert('لطفاً مقدار عددی معتبری وارد فرمایید.');
-      return;
+    let val = parseFloat(targetValueStr);
+    let upperVal: number | undefined = undefined;
+    let lowerVal: number | undefined = undefined;
+
+    if (conditionType === 'VOLUME_SURGE') {
+      val = parseFloat(volumePercentStr);
+      if (isNaN(val) || val <= 0) val = 100;
+    } else if (conditionType === 'PRICE_THRESHOLD' && direction === 'BOTH') {
+      upperVal = parseFloat(upperPriceStr);
+      lowerVal = parseFloat(lowerPriceStr);
+      if (isNaN(upperVal) && isNaN(lowerVal)) {
+        alert('لطفاً حداقل یکی از قیمت‌های حد بالا یا حد پایین را وارد کنید.');
+        return;
+      }
+      val = !isNaN(upperVal) ? upperVal : lowerVal!;
+    } else {
+      if (isNaN(val) || val <= 0) {
+        alert('لطفاً مقدار عددی معتبری وارد فرمایید.');
+        return;
+      }
     }
 
     const meta = cryptoPrices[selectedCryptoCoin] || cryptoPrices.BTC;
     const totalSecs = calculateTotalSeconds(unitType, unitNumber);
+    const mkt = getCryptoMarketPrice(selectedCryptoCoin, selectedExchange.id, selectedCounterCurrency);
+    const counterCur = selectedCounterCurrency || selectedExchange.defaultCounter;
 
     const newRule: AlertRule = {
       uuid: `rule-crypto-${Date.now()}`,
@@ -900,15 +1505,22 @@ export default function App() {
       exchangeId: selectedExchange.id,
       exchangeName: selectedExchange.name,
       baseCurrency: selectedCryptoCoin,
-      counterCurrency: selectedExchange.defaultCounter,
-      marketSymbol: `${selectedCryptoCoin}/${selectedExchange.defaultCounter}`,
+      counterCurrency: counterCur,
+      marketSymbol: `${selectedCryptoCoin}/${counterCur}`,
       assetCategory: 'crypto',
       checkIntervalSeconds: totalSecs,
       conditionType: conditionType,
       direction: direction,
+      bothWayBehavior: conditionType === 'PRICE_THRESHOLD' && direction === 'BOTH' ? bothWayBehavior : undefined,
       targetValue: val,
-      basePrice: meta.currentPrice,
-      lastCheckedPrice: meta.currentPrice,
+      upperTargetPrice: upperVal,
+      upperNote: upperNote?.trim() || undefined,
+      lowerTargetPrice: lowerVal,
+      lowerNote: lowerNote?.trim() || undefined,
+      volumePercent: conditionType === 'VOLUME_SURGE' ? val : undefined,
+      baseVolume: (meta as any).volume24h || 25000000000,
+      basePrice: mkt.price,
+      lastCheckedPrice: mkt.price,
       isActive: true,
       isTriggered: false,
       triggerCount: 0,
@@ -927,10 +1539,26 @@ export default function App() {
 
   const handleCreateMacroSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const val = parseFloat(targetValueStr);
-    if (isNaN(val) || val <= 0) {
-      alert('لطفاً مقدار عددی معتبری وارد فرمایید.');
-      return;
+    let val = parseFloat(targetValueStr);
+    let upperVal: number | undefined = undefined;
+    let lowerVal: number | undefined = undefined;
+
+    if (conditionType === 'VOLUME_SURGE') {
+      val = parseFloat(volumePercentStr);
+      if (isNaN(val) || val <= 0) val = 100;
+    } else if (conditionType === 'PRICE_THRESHOLD' && direction === 'BOTH') {
+      upperVal = parseFloat(upperPriceStr);
+      lowerVal = parseFloat(lowerPriceStr);
+      if (isNaN(upperVal) && isNaN(lowerVal)) {
+        alert('لطفاً حداقل یکی از قیمت‌های حد بالا یا حد پایین را وارد کنید.');
+        return;
+      }
+      val = !isNaN(upperVal) ? upperVal : lowerVal!;
+    } else {
+      if (isNaN(val) || val <= 0) {
+        alert('لطفاً مقدار عددی معتبری وارد فرمایید.');
+        return;
+      }
     }
 
     const meta = macroPrices[selectedMacroKey] || macroPrices.US10Y;
@@ -948,7 +1576,14 @@ export default function App() {
       checkIntervalSeconds: totalSecs,
       conditionType: conditionType,
       direction: direction,
+      bothWayBehavior: conditionType === 'PRICE_THRESHOLD' && direction === 'BOTH' ? bothWayBehavior : undefined,
       targetValue: val,
+      upperTargetPrice: upperVal,
+      upperNote: upperNote?.trim() || undefined,
+      lowerTargetPrice: lowerVal,
+      lowerNote: lowerNote?.trim() || undefined,
+      volumePercent: conditionType === 'VOLUME_SURGE' ? val : undefined,
+      baseVolume: 50000000,
       basePrice: meta.currentPrice,
       lastCheckedPrice: meta.currentPrice,
       isActive: true,
@@ -1017,14 +1652,15 @@ export default function App() {
     ? 'bg-orange-500/10 border-orange-500/20 text-orange-400'
     : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400';
 
-  // Filtered 40+ Exchanges
+  // Filtered 40+ Exchanges (Strictly Sorted Alphabetically A-Z by English Name)
   const filteredExchanges = ALL_EXCHANGES.filter((ex) => {
     const matchesCategory = exchangeCategoryFilter === 'all' || ex.category === exchangeCategoryFilter;
     const matchesSearch = !exchangeSearchQuery ||
       ex.name.toLowerCase().includes(exchangeSearchQuery.toLowerCase()) ||
+      ex.id.toLowerCase().includes(exchangeSearchQuery.toLowerCase()) ||
       ex.countryBadge.toLowerCase().includes(exchangeSearchQuery.toLowerCase());
     return matchesCategory && matchesSearch;
-  });
+  }).sort((a, b) => a.name.localeCompare(b.name, 'en', { sensitivity: 'base' }));
 
   // Filtered Macro Assets
   const filteredMacroAssets = Object.entries(macroPrices).filter(([key, asset]) => {
@@ -1234,7 +1870,8 @@ export default function App() {
                           const meta = cryptoPrices[rule.baseCurrency] || cryptoPrices.BTC;
                           iconUrl = meta?.icon || '';
                           nameFa = meta?.nameFa || rule.baseCurrency;
-                          unit = '$';
+                          const isTmn = rule.counterCurrency === 'TMN' || rule.counterCurrency === 'IRT';
+                          unit = isTmn ? 'تومان' : '$';
                         } else {
                           const meta = macroPrices[rule.baseCurrency] || macroPrices.US10Y;
                           iconUrl = meta?.icon || '';
@@ -1310,15 +1947,21 @@ export default function App() {
                                   <span className="text-base font-black font-mono tracking-tight text-white block">
                                     {unit === '$' ? `$${displayP >= 1000 ? Math.round(displayP).toLocaleString() : (displayP < 1 ? displayP.toFixed(6) : displayP.toFixed(2))}` : `${displayP >= 1000 ? Math.round(displayP).toLocaleString() : displayP.toFixed(2)}${unit}`}
                                   </span>
-                                  <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[10px] font-mono font-bold ${
-                                    isZero
-                                      ? 'bg-slate-800 text-slate-400'
-                                      : isPositive
-                                      ? 'bg-emerald-500/15 text-emerald-400'
-                                      : 'bg-rose-500/15 text-rose-400'
-                                  }`}>
-                                    {isZero ? '• ' : (isPositive ? '▲ +' : '▼ ')}{Math.abs(effectivePct).toFixed(2)}%
-                                  </span>
+                                  {rule.isTriggered ? (
+                                    <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-500/15 border border-amber-500/30 text-amber-400">
+                                      ✅ Done
+                                    </span>
+                                  ) : (
+                                    <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[10px] font-mono font-bold ${
+                                      isZero
+                                        ? 'bg-slate-800 text-slate-400'
+                                        : isPositive
+                                        ? 'bg-emerald-500/15 text-emerald-400'
+                                        : 'bg-rose-500/15 text-rose-400'
+                                    }`}>
+                                      {isZero ? '• ' : (isPositive ? '▲ +' : '▼ ')}{Math.abs(effectivePct).toFixed(2)}%
+                                    </span>
+                                  )}
                                 </div>
 
                                 <button
@@ -1344,13 +1987,17 @@ export default function App() {
                                   <span className="font-semibold">
                                     {rule.conditionType === 'PERCENT_CHANGE'
                                       ? `تغییر نرخ ${rule.direction === 'BOTH' ? '±' : (rule.direction === 'ABOVE' ? '+' : '-')}${rule.targetValue}%`
-                                      : `تارگت قیمت: ${unit}${rule.targetValue.toLocaleString()}`}
+                                      : (rule.direction === 'BOTH'
+                                          ? `▲ بالا: ${unit}${rule.upperTargetPrice?.toLocaleString() ?? '—'} | ▼ پایین: ${unit}${rule.lowerTargetPrice?.toLocaleString() ?? '—'}`
+                                          : `تارگت قیمت: ${rule.direction === 'ABOVE' ? '▲ بالای' : '▼ زیر'} ${unit}${rule.targetValue.toLocaleString()}`)}
                                   </span>
                                 </div>
                                 <span className={`font-mono font-bold text-[10px] ${
-                                  targetProximity >= 85 ? 'text-amber-400' : 'text-emerald-400'
+                                  rule.isTriggered ? 'text-amber-400' : (targetProximity >= 85 ? 'text-amber-400' : 'text-emerald-400')
                                 }`}>
-                                  {targetProximity}% تا هدف
+                                  {rule.isTriggered
+                                    ? '✅ Done'
+                                    : (rule.conditionType === 'PERCENT_CHANGE' && rule.direction === 'BOTH' ? '🔄 Active (دائماً فعال)' : `${targetProximity}% تا هدف`)}
                                 </span>
                               </div>
                               <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
@@ -2030,7 +2677,7 @@ export default function App() {
                     <span>⚡ بیش از ۴۰ صرافی با دسته‌بندی منطقه‌ای</span>
                   </div>
                   <p className="text-slate-400 text-[11px]">
-                    ⭐ جهانی رتبه یک (Binance, Coinbase, Kraken, Bybit, KuCoin) • 📊 اگریگیتورها (CoinGecko با ۱۰هزار کوین) • 🇮🇷 ایران (نوبیتکس، والکس، تبدیل) • ⛩️ آسیا • 🇪🇺 اروپا • 🌎 آمریکا.
+                    ⭐ جهانی رتبه یک (Binance, Coinbase, Kraken, Bybit, KuCoin) • 📊 اگریگیتورها (CoinGecko با ۱۰هزار کوین) • 🇮🇷 ایران (Nobitex, Wallex, Tabdeal, Ramzinex, Bitbarg) • ⛩️ آسیا • 🇪🇺 اروپا • 🌎 آمریکا.
                   </p>
                 </div>
 
@@ -2195,6 +2842,10 @@ export default function App() {
                     </div>
 
                     {/* Exchanges List */}
+                    <div className="flex items-center justify-between text-[11px] text-slate-400 px-1 pt-1">
+                      <span>فهرست صرافی‌ها (مرتب‌سازی الفبای انگلیسی):</span>
+                      <span className="font-mono text-emerald-400 text-[10px] bg-slate-900 px-2 py-0.5 rounded border border-slate-800 font-bold">A → Z</span>
+                    </div>
                     <div className="max-h-64 overflow-y-auto space-y-1.5 custom-scrollbar pr-1">
                       {filteredExchanges.map((ex) => (
                         <button
@@ -2265,6 +2916,12 @@ export default function App() {
                         .filter(sym => !cryptoSearchQuery || sym.toLowerCase().includes(cryptoSearchQuery.toLowerCase()))
                         .map((sym) => {
                           const meta = cryptoPrices[sym] || { nameFa: sym, currentPrice: 1.0, icon: 'https://cdn-icons-png.flaticon.com/512/2830/2830284.png' };
+                          const counter = selectedCounterCurrency || selectedExchange.defaultCounter;
+                          const mkt = getCryptoMarketPrice(sym, selectedExchange.id, counter);
+                          const priceDisplay = mkt.unit === 'تومان'
+                            ? `${Math.round(mkt.price).toLocaleString('fa-IR')} تومان`
+                            : `${mkt.unit}${mkt.price < 1 ? mkt.price.toFixed(6) : mkt.price.toLocaleString()}`;
+
                           return (
                             <button
                               key={sym}
@@ -2281,9 +2938,9 @@ export default function App() {
                               <div className="flex items-center gap-2.5">
                                 <img src={meta.icon} alt={sym} className="h-7 w-7 rounded-full" />
                                 <div>
-                                  <div className="font-bold text-xs text-white">{meta.nameFa} ({sym}/{selectedExchange.defaultCounter})</div>
-                                  <div className="text-[10px] text-slate-400 font-mono">
-                                    ${meta.currentPrice < 1 ? meta.currentPrice.toFixed(6) : meta.currentPrice.toLocaleString()}
+                                  <div className="font-bold text-xs text-white">{meta.nameFa || sym} ({sym}/{counter})</div>
+                                  <div className="text-[10px] text-emerald-400 font-mono font-bold">
+                                    {priceDisplay}
                                   </div>
                                 </div>
                               </div>
@@ -2291,6 +2948,20 @@ export default function App() {
                             </button>
                           );
                         })}
+
+                      {selectedExchange.pairsList.filter(sym => !cryptoSearchQuery || sym.toLowerCase().includes(cryptoSearchQuery.toLowerCase())).length === 0 && cryptoSearchQuery.trim() && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const customSym = cryptoSearchQuery.trim().toUpperCase();
+                            setSelectedCryptoCoin(customSym);
+                            setCryptoStep(3);
+                          }}
+                          className="w-full p-3 rounded-2xl border border-dashed border-emerald-500/50 bg-emerald-500/10 text-emerald-300 font-bold text-xs text-center hover:bg-emerald-500/20 transition-all"
+                        >
+                          + پایش دستی نماد {cryptoSearchQuery.trim().toUpperCase()} در صرافی {selectedExchange.name}
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}
@@ -2345,28 +3016,39 @@ export default function App() {
 
                     <div>
                       <label className="block text-slate-300 font-bold mb-1.5">۲. نوع شرط هشدار:</label>
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-3 gap-1.5">
                         <button
                           type="button"
                           onClick={() => setConditionType('PERCENT_CHANGE')}
-                          className={`py-2 rounded-xl border text-center font-bold ${
+                          className={`py-2 rounded-xl border text-center font-bold text-[11px] ${
                             conditionType === 'PERCENT_CHANGE'
                               ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400'
                               : 'border-slate-800 bg-slate-950 text-slate-400'
                           }`}
                         >
-                          درصد تغییر قیمت (%)
+                          درصد تغییرات (%)
                         </button>
                         <button
                           type="button"
                           onClick={() => setConditionType('PRICE_THRESHOLD')}
-                          className={`py-2 rounded-xl border text-center font-bold ${
+                          className={`py-2 rounded-xl border text-center font-bold text-[11px] ${
                             conditionType === 'PRICE_THRESHOLD'
                               ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400'
                               : 'border-slate-800 bg-slate-950 text-slate-400'
                           }`}
                         >
-                          سقف / کف قیمت ($)
+                          سقف / کف قیمت
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConditionType('VOLUME_SURGE')}
+                          className={`py-2 rounded-xl border text-center font-bold text-[11px] ${
+                            conditionType === 'VOLUME_SURGE'
+                              ? 'border-amber-500 bg-amber-500/10 text-amber-400'
+                              : 'border-slate-800 bg-slate-950 text-slate-400'
+                          }`}
+                        >
+                          جهش حجم ۲۴h 📊
                         </button>
                       </div>
                     </div>
@@ -2419,17 +3101,232 @@ export default function App() {
                     )}
 
                     {conditionType === 'PRICE_THRESHOLD' && (
-                      <div className="space-y-2.5 p-3 rounded-2xl bg-slate-950 border border-slate-800">
+                      <div className="space-y-3 p-3 rounded-2xl bg-slate-950 border border-slate-800">
+                        {/* 24h High & Low 1-Tap Auto-Fill Presets */}
+                        {(() => {
+                          const counter = selectedCounterCurrency || selectedExchange.defaultCounter;
+                          const mkt = getCryptoMarketPrice(selectedCryptoCoin, selectedExchange.id, counter);
+                          const curP = mkt.price;
+                          const h24 = mkt.high24h || curP * 1.025;
+                          const l24 = mkt.low24h || curP * 0.975;
+                          const isTmn = mkt.unit === 'تومان';
+
+                          return (
+                            <div className="space-y-1">
+                              <span className="text-[10px] text-slate-400 block font-semibold">تک‌لمس سریع بر اساس سقف و کف روزانه ({selectedExchange.name}):</span>
+                              <div className="grid grid-cols-2 gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const val = isTmn ? Math.round(h24).toString() : (h24 < 1 ? h24.toFixed(6) : h24.toFixed(2));
+                                    if (direction === 'BOTH') {
+                                      setUpperPriceStr(val);
+                                    } else {
+                                      setTargetValueStr(val);
+                                      setDirection('ABOVE');
+                                    }
+                                  }}
+                                  className="py-1 px-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 font-bold text-[10px] flex items-center justify-between transition-all"
+                                >
+                                  <span>🔼 سقف ۲۴h:</span>
+                                  <span className="font-mono font-black">{isTmn ? `${Math.round(h24).toLocaleString('fa-IR')} ت` : `$${h24.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const val = isTmn ? Math.round(l24).toString() : (l24 < 1 ? l24.toFixed(6) : l24.toFixed(2));
+                                    if (direction === 'BOTH') {
+                                      setLowerPriceStr(val);
+                                    } else {
+                                      setTargetValueStr(val);
+                                      setDirection('BELOW');
+                                    }
+                                  }}
+                                  className="py-1 px-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-400 font-bold text-[10px] flex items-center justify-between transition-all"
+                                >
+                                  <span>🔽 کف ۲۴h:</span>
+                                  <span className="font-mono font-black">{isTmn ? `${Math.round(l24).toLocaleString('fa-IR')} ت` : `$${l24.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}</span>
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })()}
+
+                        <label className="block text-slate-300 font-bold text-xs pt-1">جهت بررسی قیمت:</label>
+                        <div className="grid grid-cols-3 gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setDirection('ABOVE')}
+                            className={`py-1.5 rounded-lg border font-bold text-[11px] ${
+                              direction === 'ABOVE' ? 'border-emerald-500 bg-emerald-500 text-slate-950' : 'border-slate-800 text-slate-400'
+                            }`}
+                          >
+                            🔼 فقط حد بالا
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDirection('BELOW')}
+                            className={`py-1.5 rounded-lg border font-bold text-[11px] ${
+                              direction === 'BELOW' ? 'border-emerald-500 bg-emerald-500 text-slate-950' : 'border-slate-800 text-slate-400'
+                            }`}
+                          >
+                            🔽 فقط حد پایین
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDirection('BOTH')}
+                            className={`py-1.5 rounded-lg border font-bold text-[11px] ${
+                              direction === 'BOTH' ? 'border-emerald-500 bg-emerald-500 text-slate-950' : 'border-slate-800 text-slate-400'
+                            }`}
+                          >
+                            🔄 هر دو جهت
+                          </button>
+                        </div>
+
+                        {direction === 'BOTH' ? (
+                          <div className="space-y-3 pt-1">
+                            {/* Both Way Behavior Toggle: OCO vs Dual-Active */}
+                            <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 space-y-1.5">
+                              <label className="block text-[11px] font-bold text-slate-300">رفتار پس از اولین تاچ قیمت:</label>
+                              <div className="grid grid-cols-2 gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setBothWayBehavior('OCO')}
+                                  className={`py-2 px-2 rounded-lg border text-[10px] font-bold transition-all text-center ${
+                                    bothWayBehavior === 'OCO'
+                                      ? 'border-amber-500 bg-amber-500/15 text-amber-300 shadow'
+                                      : 'border-slate-800 bg-slate-950 text-slate-400'
+                                  }`}
+                                >
+                                  <span>🛑 خروج با اولین تارگت (OCO)</span>
+                                  <span className="block text-[9px] font-normal opacity-75 mt-0.5">بسته شدن با علامت ✅ Done</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setBothWayBehavior('DUAL_ACTIVE')}
+                                  className={`py-2 px-2 rounded-lg border text-[10px] font-bold transition-all text-center ${
+                                    bothWayBehavior === 'DUAL_ACTIVE'
+                                      ? 'border-emerald-500 bg-emerald-500/15 text-emerald-300 shadow'
+                                      : 'border-slate-800 bg-slate-950 text-slate-400'
+                                  }`}
+                                >
+                                  <span>🔄 پایش دائمی کانال</span>
+                                  <span className="block text-[9px] font-normal opacity-75 mt-0.5">کانال باز می‌ماند (🔄 Active)</span>
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="p-2.5 rounded-xl border border-emerald-500/30 bg-emerald-500/5 space-y-2">
+                              <div className="flex items-center gap-1.5 text-emerald-400 font-bold text-xs">
+                                <span>🔼 حد بالا (مقاومت / سیو سود)</span>
+                              </div>
+                              <div>
+                                <label className="block text-[10px] text-slate-400 mb-0.5">Upper Price (قیمت حد بالا):</label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={upperPriceStr}
+                                  onChange={(e) => setUpperPriceStr(e.target.value)}
+                                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-white font-mono font-bold text-xs"
+                                  placeholder="4.00"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[10px] text-slate-400 mb-0.5">Upper Note (یادداشت حد بالا):</label>
+                                <input
+                                  type="text"
+                                  value={upperNote}
+                                  onChange={(e) => setUpperNote(e.target.value)}
+                                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-white text-xs"
+                                  placeholder="«رسید به مقاومت، بررسی کن»"
+                                />
+                              </div>
+                            </div>
+
+                            <div className="p-2.5 rounded-xl border border-rose-500/30 bg-rose-500/5 space-y-2">
+                              <div className="flex items-center gap-1.5 text-rose-400 font-bold text-xs">
+                                <span>🔽 حد پایین (حمایت / حد ضرر)</span>
+                              </div>
+                              <div>
+                                <label className="block text-[10px] text-slate-400 mb-0.5">Lower Price (قیمت حد پایین):</label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={lowerPriceStr}
+                                  onChange={(e) => setLowerPriceStr(e.target.value)}
+                                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-white font-mono font-bold text-xs"
+                                  placeholder="2.00"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[10px] text-slate-400 mb-0.5">Lower Note (یادداشت حد پایین):</label>
+                                <input
+                                  type="text"
+                                  value={lowerNote}
+                                  onChange={(e) => setLowerNote(e.target.value)}
+                                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-white text-xs"
+                                  placeholder="«حمایت شکست، بفروش»"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div>
+                            <label className="block text-slate-400 mb-1">قیمت هدف (دلار):</label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={targetValueStr}
+                              onChange={(e) => setTargetValueStr(e.target.value)}
+                              className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono font-bold"
+                              placeholder="مثال: 95000"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {conditionType === 'VOLUME_SURGE' && (
+                      <div className="space-y-3 p-3 rounded-2xl bg-slate-950 border border-slate-800">
+                        <div className="flex items-center justify-between pb-1 border-b border-slate-800">
+                          <span className="text-slate-400 text-xs">حجم پایه معاملات ۲۴ ساعته:</span>
+                          <span className="text-white font-mono font-bold text-xs">
+                            ${(((cryptoPrices[selectedCryptoCoin] || cryptoPrices.BTC) as any).volume24h
+                              ? (((cryptoPrices[selectedCryptoCoin] || cryptoPrices.BTC) as any).volume24h / 1e9).toFixed(1) + 'B'
+                              : '28.4B')}
+                          </span>
+                        </div>
                         <div>
-                          <label className="block text-slate-400 mb-1">قیمت هدف (دلار):</label>
+                          <label className="block text-slate-300 font-bold mb-1.5 text-xs">میزان جهش نقدینگی مورد انتظار:</label>
+                          <div className="grid grid-cols-3 gap-1.5 mb-2">
+                            {['50', '100', '200'].map((p) => (
+                              <button
+                                key={p}
+                                type="button"
+                                onClick={() => setVolumePercentStr(p)}
+                                className={`py-1.5 rounded-lg border font-bold text-[10px] transition-all ${
+                                  volumePercentStr === p
+                                    ? 'border-amber-500 bg-amber-500 text-slate-950 shadow'
+                                    : 'border-slate-800 text-slate-400'
+                                }`}
+                              >
+                                +{p}% {p === '100' ? '(۲ برابر ⚡)' : (p === '200' ? '(۳ برابر 🚀)' : '(۱.۵ برابر)')}
+                              </button>
+                            ))}
+                          </div>
                           <input
                             type="number"
-                            step="0.01"
-                            value={targetValueStr}
-                            onChange={(e) => setTargetValueStr(e.target.value)}
-                            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono font-bold"
-                            placeholder="مثال: 95000"
+                            min="10"
+                            max="5000"
+                            value={volumePercentStr}
+                            onChange={(e) => setVolumePercentStr(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono font-bold text-xs"
+                            placeholder="درصد دلخواه (مثلاً: 100)"
                           />
+                        </div>
+                        <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[10px] flex items-center gap-1.5">
+                          <Zap className="h-3.5 w-3.5 shrink-0" />
+                          <span>ردپای نهنگ‌ها یا خریدهای سنگین به‌محض افزایش حجم شناسایی و اعلام صوتی می‌شود.</span>
                         </div>
                       </div>
                     )}
@@ -2667,28 +3564,39 @@ export default function App() {
 
                     <div>
                       <label className="block text-slate-300 font-bold mb-1.5">۲. نوع شرط هشدار:</label>
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-3 gap-1.5">
                         <button
                           type="button"
                           onClick={() => setConditionType('PERCENT_CHANGE')}
-                          className={`py-2 rounded-xl border text-center font-bold ${
+                          className={`py-2 rounded-xl border text-center font-bold text-[11px] ${
                             conditionType === 'PERCENT_CHANGE'
                               ? 'border-blue-500 bg-blue-500/10 text-blue-400'
                               : 'border-slate-800 bg-slate-950 text-slate-400'
                           }`}
                         >
-                          درصد تغییر نرخ (%)
+                          درصد تغییرات (%)
                         </button>
                         <button
                           type="button"
                           onClick={() => setConditionType('PRICE_THRESHOLD')}
-                          className={`py-2 rounded-xl border text-center font-bold ${
+                          className={`py-2 rounded-xl border text-center font-bold text-[11px] ${
                             conditionType === 'PRICE_THRESHOLD'
                               ? 'border-blue-500 bg-blue-500/10 text-blue-400'
                               : 'border-slate-800 bg-slate-950 text-slate-400'
                           }`}
                         >
                           سقف / کف نرخ
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConditionType('VOLUME_SURGE')}
+                          className={`py-2 rounded-xl border text-center font-bold text-[11px] ${
+                            conditionType === 'VOLUME_SURGE'
+                              ? 'border-amber-500 bg-amber-500/10 text-amber-400'
+                              : 'border-slate-800 bg-slate-950 text-slate-400'
+                          }`}
+                        >
+                          جهش حجم ۲۴h 📊
                         </button>
                       </div>
                     </div>
@@ -2741,17 +3649,223 @@ export default function App() {
                     )}
 
                     {conditionType === 'PRICE_THRESHOLD' && (
-                      <div className="space-y-2.5 p-3 rounded-2xl bg-slate-950 border border-slate-800">
+                      <div className="space-y-3 p-3 rounded-2xl bg-slate-950 border border-slate-800">
+                        {/* 24h High & Low 1-Tap Auto-Fill Presets */}
+                        {(() => {
+                          const meta = macroPrices[selectedMacroKey] || macroPrices.US10Y;
+                          const curP = meta.currentPrice;
+                          const h24 = curP * 1.02;
+                          const l24 = curP * 0.98;
+                          return (
+                            <div className="space-y-1">
+                              <span className="text-[10px] text-slate-400 block font-semibold">تک‌لمس سریع بر اساس سقف و کف روزانه:</span>
+                              <div className="grid grid-cols-2 gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (direction === 'BOTH') {
+                                      setUpperPriceStr(h24.toFixed(2));
+                                    } else {
+                                      setTargetValueStr(h24.toFixed(2));
+                                      setDirection('ABOVE');
+                                    }
+                                  }}
+                                  className="py-1 px-2 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 text-blue-400 font-bold text-[10px] flex items-center justify-between transition-all"
+                                >
+                                  <span>🔼 سقف ۲۴h:</span>
+                                  <span className="font-mono font-black">{meta.unit === '$' ? `$${h24.toFixed(2)}` : `${h24.toFixed(2)}${meta.unit}`}</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (direction === 'BOTH') {
+                                      setLowerPriceStr(l24.toFixed(2));
+                                    } else {
+                                      setTargetValueStr(l24.toFixed(2));
+                                      setDirection('BELOW');
+                                    }
+                                  }}
+                                  className="py-1 px-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-400 font-bold text-[10px] flex items-center justify-between transition-all"
+                                >
+                                  <span>🔽 کف ۲۴h:</span>
+                                  <span className="font-mono font-black">{meta.unit === '$' ? `$${l24.toFixed(2)}` : `${l24.toFixed(2)}${meta.unit}`}</span>
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })()}
+
+                        <label className="block text-slate-300 font-bold text-xs pt-1">جهت بررسی نرخ:</label>
+                        <div className="grid grid-cols-3 gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setDirection('ABOVE')}
+                            className={`py-1.5 rounded-lg border font-bold text-[11px] ${
+                              direction === 'ABOVE' ? 'border-blue-500 bg-blue-500 text-white' : 'border-slate-800 text-slate-400'
+                            }`}
+                          >
+                            🔼 فقط حد بالا
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDirection('BELOW')}
+                            className={`py-1.5 rounded-lg border font-bold text-[11px] ${
+                              direction === 'BELOW' ? 'border-blue-500 bg-blue-500 text-white' : 'border-slate-800 text-slate-400'
+                            }`}
+                          >
+                            🔽 فقط حد پایین
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDirection('BOTH')}
+                            className={`py-1.5 rounded-lg border font-bold text-[11px] ${
+                              direction === 'BOTH' ? 'border-blue-500 bg-blue-500 text-white' : 'border-slate-800 text-slate-400'
+                            }`}
+                          >
+                            🔄 هر دو جهت
+                          </button>
+                        </div>
+
+                        {direction === 'BOTH' ? (
+                          <div className="space-y-3 pt-1">
+                            {/* Both Way Behavior Toggle: OCO vs Dual-Active */}
+                            <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 space-y-1.5">
+                              <label className="block text-[11px] font-bold text-slate-300">رفتار پس از اولین تاچ نرخ:</label>
+                              <div className="grid grid-cols-2 gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setBothWayBehavior('OCO')}
+                                  className={`py-2 px-2 rounded-lg border text-[10px] font-bold transition-all text-center ${
+                                    bothWayBehavior === 'OCO'
+                                      ? 'border-amber-500 bg-amber-500/15 text-amber-300 shadow'
+                                      : 'border-slate-800 bg-slate-950 text-slate-400'
+                                  }`}
+                                >
+                                  <span>🛑 خروج با اولین تارگت (OCO)</span>
+                                  <span className="block text-[9px] font-normal opacity-75 mt-0.5">بسته شدن با علامت ✅ Done</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setBothWayBehavior('DUAL_ACTIVE')}
+                                  className={`py-2 px-2 rounded-lg border text-[10px] font-bold transition-all text-center ${
+                                    bothWayBehavior === 'DUAL_ACTIVE'
+                                      ? 'border-blue-500 bg-blue-500/15 text-blue-300 shadow'
+                                      : 'border-slate-800 bg-slate-950 text-slate-400'
+                                  }`}
+                                >
+                                  <span>🔄 پایش دائمی کانال</span>
+                                  <span className="block text-[9px] font-normal opacity-75 mt-0.5">کانال باز می‌ماند (🔄 Active)</span>
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="p-2.5 rounded-xl border border-emerald-500/30 bg-emerald-500/5 space-y-2">
+                              <div className="flex items-center gap-1.5 text-emerald-400 font-bold text-xs">
+                                <span>🔼 حد بالا (مقاومت / خروج سود)</span>
+                              </div>
+                              <div>
+                                <label className="block text-[10px] text-slate-400 mb-0.5">Upper Price (نرخ حد بالا):</label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={upperPriceStr}
+                                  onChange={(e) => setUpperPriceStr(e.target.value)}
+                                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-white font-mono font-bold text-xs"
+                                  placeholder="4.00"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[10px] text-slate-400 mb-0.5">Upper Note (یادداشت حد بالا):</label>
+                                <input
+                                  type="text"
+                                  value={upperNote}
+                                  onChange={(e) => setUpperNote(e.target.value)}
+                                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-white text-xs"
+                                  placeholder="«رسید به مقاومت، بررسی کن»"
+                                />
+                              </div>
+                            </div>
+
+                            <div className="p-2.5 rounded-xl border border-rose-500/30 bg-rose-500/5 space-y-2">
+                              <div className="flex items-center gap-1.5 text-rose-400 font-bold text-xs">
+                                <span>🔽 حد پایین (حمایت / حد ضرر)</span>
+                              </div>
+                              <div>
+                                <label className="block text-[10px] text-slate-400 mb-0.5">Lower Price (نرخ حد پایین):</label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={lowerPriceStr}
+                                  onChange={(e) => setLowerPriceStr(e.target.value)}
+                                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-white font-mono font-bold text-xs"
+                                  placeholder="2.00"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[10px] text-slate-400 mb-0.5">Lower Note (یادداشت حد پایین):</label>
+                                <input
+                                  type="text"
+                                  value={lowerNote}
+                                  onChange={(e) => setLowerNote(e.target.value)}
+                                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-white text-xs"
+                                  placeholder="«حمایت شکست، بفروش»"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div>
+                            <label className="block text-slate-400 mb-1">نرخ هدف:</label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={targetValueStr}
+                              onChange={(e) => setTargetValueStr(e.target.value)}
+                              className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono font-bold"
+                              placeholder="مثال: 4.50"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {conditionType === 'VOLUME_SURGE' && (
+                      <div className="space-y-3 p-3 rounded-2xl bg-slate-950 border border-slate-800">
+                        <div className="flex items-center justify-between pb-1 border-b border-slate-800">
+                          <span className="text-slate-400 text-xs">حجم پایه معاملات ۲۴ ساعته:</span>
+                          <span className="text-white font-mono font-bold text-xs">$50.0M</span>
+                        </div>
                         <div>
-                          <label className="block text-slate-400 mb-1">نرخ هدف:</label>
+                          <label className="block text-slate-300 font-bold mb-1.5 text-xs">میزان جهش نقدینگی مورد انتظار:</label>
+                          <div className="grid grid-cols-3 gap-1.5 mb-2">
+                            {['50', '100', '200'].map((p) => (
+                              <button
+                                key={p}
+                                type="button"
+                                onClick={() => setVolumePercentStr(p)}
+                                className={`py-1.5 rounded-lg border font-bold text-[10px] transition-all ${
+                                  volumePercentStr === p
+                                    ? 'border-amber-500 bg-amber-500 text-slate-950 shadow'
+                                    : 'border-slate-800 text-slate-400'
+                                }`}
+                              >
+                                +{p}% {p === '100' ? '(۲ برابر ⚡)' : (p === '200' ? '(۳ برابر 🚀)' : '(۱.۵ برابر)')}
+                              </button>
+                            ))}
+                          </div>
                           <input
                             type="number"
-                            step="0.01"
-                            value={targetValueStr}
-                            onChange={(e) => setTargetValueStr(e.target.value)}
-                            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono font-bold"
-                            placeholder="مثال: 4.50"
+                            min="10"
+                            max="5000"
+                            value={volumePercentStr}
+                            onChange={(e) => setVolumePercentStr(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono font-bold text-xs"
+                            placeholder="درصد دلخواه (مثلاً: 100)"
                           />
+                        </div>
+                        <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[10px] flex items-center gap-1.5">
+                          <Zap className="h-3.5 w-3.5 shrink-0" />
+                          <span>ردپای نهنگ‌ها یا خریدهای سنگین به‌محض افزایش حجم شناسایی و اعلام صوتی می‌شود.</span>
                         </div>
                       </div>
                     )}

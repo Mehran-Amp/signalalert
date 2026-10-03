@@ -7,6 +7,8 @@ enum AppThemePalette {
   lightOrange,
   darkPurpleBlue,
   lightPurpleBlue,
+  darkGold,
+  darkSapphire,
 }
 
 class AppSettings {
@@ -214,6 +216,32 @@ class AppSettings {
           border: const Color(0xFFD6DBF5),
           textPrimary: const Color(0xFF0F172A),
           textSecondary: const Color(0xFF475569),
+          onPrimaryText: Colors.white,
+        );
+      case AppThemePalette.darkGold:
+        return _buildTheme(
+          isDark: true,
+          scaffoldBg: const Color(0xFF09090B), // Deep Obsidian Black
+          surface: const Color(0xFF141416),
+          surfaceElevated: const Color(0xFF1E1E22),
+          primary: const Color(0xFFF59E0B), // Titanium Warm Gold
+          secondary: const Color(0xFFFBBF24), // Champagne Gold
+          border: const Color(0x4DF59E0B), // Golden crystalline border
+          textPrimary: const Color(0xFFF9FAFB),
+          textSecondary: const Color(0xFFD4D4D8),
+          onPrimaryText: Colors.black,
+        );
+      case AppThemePalette.darkSapphire:
+        return _buildTheme(
+          isDark: true,
+          scaffoldBg: const Color(0xFF030712), // Deep Midnight Navy
+          surface: const Color(0xFF0B132B),
+          surfaceElevated: const Color(0xFF172554),
+          primary: const Color(0xFF38BDF8), // Platinum Cyan & Sapphire
+          secondary: const Color(0xFF0284C7),
+          border: const Color(0x4D38BDF8),
+          textPrimary: const Color(0xFFF9FAFB),
+          textSecondary: const Color(0xFF94A3B8),
           onPrimaryText: Colors.white,
         );
     }

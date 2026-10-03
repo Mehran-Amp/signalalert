@@ -872,6 +872,22 @@ class _SettingsPageState extends State<SettingsPage> {
                   childAspectRatio: 2.3,
                   children: [
                     _buildThemeCard(
+                      palette: AppThemePalette.darkGold,
+                      currentPalette: settings.themePalette,
+                      title: isFa ? '👑 تیتانیوم طلایی اشرافی (لوکس)' : 'Titanium Gold Luxury',
+                      bgPreview: const Color(0xFF09090B),
+                      accent: const Color(0xFFF59E0B),
+                      onSelect: () => settingsService.setPalette(AppThemePalette.darkGold),
+                    ),
+                    _buildThemeCard(
+                      palette: AppThemePalette.darkSapphire,
+                      currentPalette: settings.themePalette,
+                      title: isFa ? '💎 یاقوتی و پلاتینیوم (رویال)' : 'Midnight Royal Sapphire',
+                      bgPreview: const Color(0xFF030712),
+                      accent: const Color(0xFF38BDF8),
+                      onSelect: () => settingsService.setPalette(AppThemePalette.darkSapphire),
+                    ),
+                    _buildThemeCard(
                       palette: AppThemePalette.darkGreen,
                       currentPalette: settings.themePalette,
                       title: AppStrings.get('theme_dark_green', lang),

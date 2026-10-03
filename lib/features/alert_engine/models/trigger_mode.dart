@@ -28,3 +28,12 @@ enum AlertDirection {
   below,
   bothSides,
 }
+
+/// Behavior mode for Both Way Price Target alerts
+enum BothWayBehavior {
+  /// One-Cancels-the-Other: When first boundary (upper or lower) triggers, rule deactivates with Done
+  oco,
+
+  /// Dual-Active: Continually monitors both sides of the price channel without deactivating
+  dualActive,
+}

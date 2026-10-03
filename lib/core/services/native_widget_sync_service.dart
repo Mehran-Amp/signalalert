@@ -36,14 +36,16 @@ class NativeWidgetSyncService {
             : '—';
 
         // Check if one-shot condition is fulfilled / done
-        final isOneShot = rule.conditionType == AlertConditionType.priceThreshold;
-        final isDone = isOneShot && (!rule.isActive || rule.isTriggered);
+        // All types close with Done EXCEPT Percent Change Both Way which stays permanently active!
+        final isPermanentBothWayPercent = rule.conditionType == AlertConditionType.percentChange &&
+            rule.direction == AlertDirection.bothSides;
+        final isDone = !isPermanentBothWayPercent && (!rule.isActive || rule.isTriggered);
 
         String badgeText;
         bool isPositive = true;
 
         if (isDone) {
-          badgeText = '✔️ Done';
+          badgeText = '✅ Done';
           isPositive = true;
         } else {
           // Calculate authentic real percentage change (never stuck on +0.00%)
@@ -173,6 +175,28 @@ class NativeWidgetSyncService {
           'border': 0xFFD6DBF5,
           'price': 0xFFD97706,
           'isDark': 0,
+        };
+      case AppThemePalette.darkGold:
+        return {
+          'bg': 0xFF09090B,
+          'surface': 0xFF141416,
+          'primary': 0xFFF59E0B,
+          'textPrimary': 0xFFF9FAFB,
+          'textSecondary': 0xFFD4D4D8,
+          'border': 0x4DF59E0B,
+          'price': 0xFFFBBF24,
+          'isDark': 1,
+        };
+      case AppThemePalette.darkSapphire:
+        return {
+          'bg': 0xFF030712,
+          'surface': 0xFF0B132B,
+          'primary': 0xFF38BDF8,
+          'textPrimary': 0xFFF9FAFB,
+          'textSecondary': 0xFF94A3B8,
+          'border': 0x4D38BDF8,
+          'price': 0xFF38BDF8,
+          'isDark': 1,
         };
     }
   }

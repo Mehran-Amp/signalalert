@@ -15,6 +15,7 @@ class IranMarketGateway {
 
   static double? _cachedUsdtTomanRate;
   static DateTime? _rateLastFetched;
+  static final Map<String, double> _cachedGlobalPrices = {};
 
   /// Fetches the latest live USDT to TMN (Toman) rate across multiple Iranian sources
   static Future<double> getLiveUsdtTomanRate() async {
@@ -39,7 +40,7 @@ class IranMarketGateway {
     // 2. Try Nobitex USDT/RLS
     try {
       final res = await _dio.post(
-        'https://api.nobitex.ir/market/stats',
+        'https://apiv2.nobitex.ir/market/stats',
         data: {'srcCurrency': 'usdt', 'dstCurrency': 'rls'},
       );
       final stats = res.data?['stats'] as Map<String, dynamic>?;
@@ -52,17 +53,35 @@ class IranMarketGateway {
       }
     } catch (_) {}
 
-    // 3. Try Tabdeal USDT_IRT
+    // 3. Try TetherLand USDT/TMN
     try {
-      final res = await _dio.get('https://api.tabdeal.org/r/plots/market/information/');
-      if (res.data is List) {
-        for (final item in res.data) {
-          if (item is Map && (item['symbol'] == 'USDT_IRT' || item['name'] == 'USDT_IRT')) {
-            final p = double.tryParse(item['last_price']?.toString() ?? '0') ?? 0.0;
-            if (p > 10000) {
-              _cachedUsdtTomanRate = p;
+      final res = await _dio.get('https://api.tetherland.com/currencies');
+      final currencies = res.data?['data']?['currencies'] as Map<String, dynamic>?;
+      final usdt = currencies?['USDT'] as Map<String, dynamic>?;
+      final p = double.tryParse(usdt?['price']?.toString() ?? '0') ?? 0.0;
+      if (p > 10000) {
+        _cachedUsdtTomanRate = p;
+        _rateLastFetched = DateTime.now();
+        return p;
+      }
+    } catch (_) {}
+
+    // 4. Try Ramzinex USDT/IRR
+    try {
+      final res = await _dio.get('https://publicapi.ramzinex.com/exchange/api/v1.0/exchange/pairs');
+      final list = res.data?['data'] as List?;
+      if (list != null) {
+        for (final item in list) {
+          if (item is Map &&
+              item['base_currency_symbol']?['en']?.toString().toLowerCase() == 'usdt' &&
+              (item['quote_currency_symbol']?['en']?.toString().toLowerCase() == 'irr' ||
+                  item['quote_currency_symbol']?['en']?.toString().toLowerCase() == 'rls')) {
+            final p = double.tryParse(item['sell']?.toString() ?? item['financial']?['last24h']?['close']?.toString() ?? '0') ?? 0.0;
+            if (p > 100000) {
+              final tmn = p / 10.0;
+              _cachedUsdtTomanRate = tmn;
               _rateLastFetched = DateTime.now();
-              return p;
+              return tmn;
             }
           }
         }
@@ -84,14 +103,20 @@ class IranMarketGateway {
     try {
       final res = await _dio.get('https://api.binance.com/api/v3/ticker/price?symbol=${cleanCoin}USDT');
       final p = double.tryParse(res.data?['price']?.toString() ?? '0') ?? 0.0;
-      if (p > 0) return p;
+      if (p > 0) {
+        _cachedGlobalPrices[cleanCoin] = p;
+        return p;
+      }
     } catch (_) {}
 
     // 2. Try KuCoin
     try {
       final res = await _dio.get('https://api.kucoin.com/api/v1/market/orderbook/level1?symbol=$cleanCoin-USDT');
       final p = double.tryParse(res.data?['data']?['price']?.toString() ?? '0') ?? 0.0;
-      if (p > 0) return p;
+      if (p > 0) {
+        _cachedGlobalPrices[cleanCoin] = p;
+        return p;
+      }
     } catch (_) {}
 
     // 3. Try CoinGecko
@@ -101,10 +126,14 @@ class IranMarketGateway {
         queryParameters: {'ids': cleanCoin.toLowerCase(), 'vs_currencies': 'usd'},
       );
       final p = double.tryParse(res.data?[cleanCoin.toLowerCase()]?['usd']?.toString() ?? '0') ?? 0.0;
-      if (p > 0) return p;
+      if (p > 0) {
+        _cachedGlobalPrices[cleanCoin] = p;
+        return p;
+      }
     } catch (_) {}
 
-    return 0.0;
+    // Return last verified live price if offline, or 0.0 to prevent bad overrides
+    return _cachedGlobalPrices[cleanCoin] ?? 0.0;
   }
 
   /// Estimates the price of any coin in Tomans or USDT with zero failure

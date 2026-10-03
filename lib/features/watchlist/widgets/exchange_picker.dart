@@ -24,6 +24,12 @@ class ExchangePicker extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
+    final sortedExchangeIds = List<String>.from(availableExchangeIds)..sort((a, b) {
+      final nameA = registry.get(a)?.name ?? a;
+      final nameB = registry.get(b)?.name ?? b;
+      return nameA.toLowerCase().compareTo(nameB.toLowerCase());
+    });
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -35,7 +41,7 @@ class ExchangePicker extends StatelessWidget {
         Wrap(
           spacing: AppTokens.space8,
           runSpacing: AppTokens.space8,
-          children: availableExchangeIds.map((exId) {
+          children: sortedExchangeIds.map((exId) {
             final exchange = registry.get(exId);
             final name = exchange?.name ?? exId.toUpperCase();
             final isSelected = selectedExchangeId == exId;

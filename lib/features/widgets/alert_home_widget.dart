@@ -188,15 +188,17 @@ class AlertHomeWidgetView extends StatelessWidget {
         : '—';
 
     // Check if one-shot condition fulfilled
-    final isOneShot = rule.conditionType == AlertConditionType.priceThreshold;
-    final isDone = isOneShot && (!rule.isActive || rule.isTriggered);
+    // All types close with Done EXCEPT Percent Change Both Way which stays permanently active!
+    final isPermanentBothWayPercent = rule.conditionType == AlertConditionType.percentChange &&
+        rule.direction == AlertDirection.bothSides;
+    final isDone = !isPermanentBothWayPercent && (!rule.isActive || rule.isTriggered);
 
     String badgeText;
     Color badgeBgColor;
     Color badgeTextColor;
 
     if (isDone) {
-      badgeText = '✔️ Done';
+      badgeText = '✅ Done';
       badgeBgColor = isDark ? const Color(0xFF2B2410) : const Color(0xFFFEF3C7);
       badgeTextColor = isDark ? const Color(0xFFE3B341) : const Color(0xFFD97706);
     } else {

@@ -86,8 +86,13 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
   // Condition
   AlertConditionType _conditionType = AlertConditionType.percentChange;
   AlertDirection _direction = AlertDirection.bothSides;
+  BothWayBehavior _bothWayBehavior = BothWayBehavior.oco;
   late final TextEditingController _percentController;
   late final TextEditingController _targetPriceController;
+  late final TextEditingController _upperPriceController;
+  late final TextEditingController _upperNoteController;
+  late final TextEditingController _lowerPriceController;
+  late final TextEditingController _lowerNoteController;
 
   // Custom Notification, Sound & Note
   late final TextEditingController _customNoteController;
@@ -104,6 +109,7 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
       final rule = widget.initialRule!;
       _conditionType = rule.conditionType;
       _direction = rule.direction;
+      _bothWayBehavior = rule.bothWayBehavior;
       _currentPrice = rule.currentDisplayPrice;
       _selectedSound = rule.customSound ?? 'alarm_siren';
       _soundEnabled = rule.soundEnabled;
@@ -130,6 +136,18 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
       _targetPriceController = TextEditingController(
         text: rule.targetPrice != null ? rule.targetPrice.toString() : (_currentPrice?.toStringAsFixed(2) ?? ''),
       );
+      _upperPriceController = TextEditingController(
+        text: rule.upperTargetPrice != null ? rule.upperTargetPrice.toString() : '',
+      );
+      _upperNoteController = TextEditingController(
+        text: rule.upperNote ?? '',
+      );
+      _lowerPriceController = TextEditingController(
+        text: rule.lowerTargetPrice != null ? rule.lowerTargetPrice.toString() : '',
+      );
+      _lowerNoteController = TextEditingController(
+        text: rule.lowerNote ?? '',
+      );
 
       // Determine Market Type
       if (rule.exchangeId == 'global_stocks') {
@@ -155,6 +173,10 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
       _unitValueController = TextEditingController(text: '1');
       _percentController = TextEditingController(text: '2.5');
       _targetPriceController = TextEditingController();
+      _upperPriceController = TextEditingController();
+      _upperNoteController = TextEditingController();
+      _lowerPriceController = TextEditingController();
+      _lowerNoteController = TextEditingController();
       _customNoteController = TextEditingController();
       _selectedSound = 'alarm_siren';
       _soundEnabled = true;
@@ -167,6 +189,10 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
     _unitValueController.dispose();
     _percentController.dispose();
     _targetPriceController.dispose();
+    _upperPriceController.dispose();
+    _upperNoteController.dispose();
+    _lowerPriceController.dispose();
+    _lowerNoteController.dispose();
     _customNoteController.dispose();
     super.dispose();
   }
@@ -352,9 +378,30 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
 
     double? percent;
     double? targetPrice;
+    double? upperTargetPrice;
+    String? upperNote;
+    double? lowerTargetPrice;
+    String? lowerNote;
 
     if (_conditionType == AlertConditionType.percentChange) {
       percent = double.tryParse(_percentController.text.trim()) ?? 2.5;
+    } else if (_conditionType == AlertConditionType.priceThreshold && _direction == AlertDirection.bothSides) {
+      upperTargetPrice = double.tryParse(_upperPriceController.text.trim());
+      lowerTargetPrice = double.tryParse(_lowerPriceController.text.trim());
+      upperNote = _upperNoteController.text.trim().isNotEmpty ? _upperNoteController.text.trim() : null;
+      lowerNote = _lowerNoteController.text.trim().isNotEmpty ? _lowerNoteController.text.trim() : null;
+
+      if (upperTargetPrice == null && lowerTargetPrice == null) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(lang == 'fa' ? 'لطفاً حداقل یکی از قیمت‌های حد بالا یا حد پایین را وارد کنید' : 'Please enter at least Upper Price or Lower Price'),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+        return;
+      }
     } else {
       targetPrice = double.tryParse(_targetPriceController.text.trim());
       if (targetPrice == null) {
@@ -383,8 +430,13 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
         checkIntervalSeconds: intervalSeconds,
         conditionType: _conditionType,
         direction: _direction,
+        bothWayBehavior: _bothWayBehavior,
         percent: percent,
         targetPrice: targetPrice,
+        upperTargetPrice: upperTargetPrice,
+        upperNote: upperNote,
+        lowerTargetPrice: lowerTargetPrice,
+        lowerNote: lowerNote,
         customNote: customNote,
         customSound: _selectedSound,
         language: lang,
@@ -402,8 +454,13 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
         checkIntervalSeconds: intervalSeconds,
         conditionType: _conditionType,
         direction: _direction,
+        bothWayBehavior: _bothWayBehavior,
         percent: percent,
         targetPrice: targetPrice,
+        upperTargetPrice: upperTargetPrice,
+        upperNote: upperNote,
+        lowerTargetPrice: lowerTargetPrice,
+        lowerNote: lowerNote,
         customNote: customNote,
         customSound: _selectedSound,
         language: lang,
@@ -679,7 +736,8 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
       return ex.name.toLowerCase().contains(q) ||
           ex.id.toLowerCase().contains(q) ||
           ex.countryBadge.toLowerCase().contains(q);
-    }).toList();
+    }).toList()
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
 
     return Column(
       children: [
@@ -1445,30 +1503,298 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
 
         if (_conditionType == AlertConditionType.priceThreshold) ...[
           Text(
-            AppStrings.get('price_cross_direction', lang),
-            style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface.withValues(alpha: 0.7)),
+            lang == 'fa' ? 'حالت هشدار قیمت (Price Target Mode):' : 'Price Target Mode:',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface.withValues(alpha: 0.8)),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
           Row(
             children: [
-              _buildDirectionChip(AppStrings.get('above_target', lang), AlertDirection.above, theme),
-              const SizedBox(width: 8),
-              _buildDirectionChip(AppStrings.get('below_target', lang), AlertDirection.below, theme),
+              _buildDirectionChip(lang == 'fa' ? '🔼 فقط حد بالا' : '🔼 Above', AlertDirection.above, theme),
+              const SizedBox(width: 6),
+              _buildDirectionChip(lang == 'fa' ? '🔽 فقط حد پایین' : '🔽 Below', AlertDirection.below, theme),
+              const SizedBox(width: 6),
+              _buildDirectionChip(lang == 'fa' ? '🔄 هر دو جهت' : '🔄 Both Way', AlertDirection.bothSides, theme),
             ],
           ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _targetPriceController,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'monospace', color: theme.colorScheme.onSurface),
-            decoration: InputDecoration(
-              labelText: AppStrings.get('target_price_label', lang),
-              hintText: '95000',
-              filled: true,
-              fillColor: theme.colorScheme.surface,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: theme.dividerColor)),
+          const SizedBox(height: 10),
+
+          if (_currentPrice != null && _currentPrice! > 0) ...[
+            Builder(builder: (context) {
+              final h24 = _currentPrice! * 1.025;
+              final l24 = _currentPrice! * 0.975;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: InkWell(
+                        onTap: () {
+                          if (_direction == AlertDirection.bothSides) {
+                            _upperPriceController.text = _formatSmartNumber(h24);
+                          } else {
+                            _targetPriceController.text = _formatSmartNumber(h24);
+                            setState(() => _direction = AlertDirection.above);
+                          }
+                        },
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: AppTokens.positive.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: AppTokens.positive.withValues(alpha: 0.3)),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(lang == 'fa' ? '🔼 سقف ۲۴h:' : '🔼 24h High:', style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: AppTokens.positive)),
+                              Text(_formatSmartNumber(h24), style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, fontFamily: 'monospace', color: AppTokens.positive)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: InkWell(
+                        onTap: () {
+                          if (_direction == AlertDirection.bothSides) {
+                            _lowerPriceController.text = _formatSmartNumber(l24);
+                          } else {
+                            _targetPriceController.text = _formatSmartNumber(l24);
+                            setState(() => _direction = AlertDirection.below);
+                          }
+                        },
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: AppTokens.negative.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: AppTokens.negative.withValues(alpha: 0.3)),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(lang == 'fa' ? '🔽 کف ۲۴h:' : '🔽 24h Low:', style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: AppTokens.negative)),
+                              Text(_formatSmartNumber(l24), style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, fontFamily: 'monospace', color: AppTokens.negative)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
+
+          // Both Way Mode Inputs
+          if (_direction == AlertDirection.bothSides) ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surface,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.3)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // BOTH WAY BEHAVIOR MODE (OCO vs Dual-Active)
+                  Text(
+                    lang == 'fa' ? 'رفتار پس از اولین تاچ قیمت:' : 'Behavior after first trigger:',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11.5, color: theme.colorScheme.onSurface.withValues(alpha: 0.8)),
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: InkWell(
+                          onTap: () => setState(() => _bothWayBehavior = BothWayBehavior.oco),
+                          borderRadius: BorderRadius.circular(10),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: _bothWayBehavior == BothWayBehavior.oco
+                                  ? AppTokens.warning.withValues(alpha: 0.15)
+                                  : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: _bothWayBehavior == BothWayBehavior.oco
+                                    ? AppTokens.warning
+                                    : theme.dividerColor,
+                              ),
+                            ),
+                            child: Column(
+                              children: [
+                                Text(
+                                  lang == 'fa' ? '🛑 خروج با اولین تارگت' : '🛑 One-Cancels-Other',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: _bothWayBehavior == BothWayBehavior.oco
+                                        ? AppTokens.warning
+                                        : theme.colorScheme.onSurface,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  lang == 'fa' ? 'بسته شدن با ✅ Done' : 'Deactivates with Done',
+                                  style: TextStyle(fontSize: 9.5, color: theme.colorScheme.onSurface.withValues(alpha: 0.6)),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: InkWell(
+                          onTap: () => setState(() => _bothWayBehavior = BothWayBehavior.dualActive),
+                          borderRadius: BorderRadius.circular(10),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: _bothWayBehavior == BothWayBehavior.dualActive
+                                  ? theme.colorScheme.primary.withValues(alpha: 0.15)
+                                  : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: _bothWayBehavior == BothWayBehavior.dualActive
+                                    ? theme.colorScheme.primary
+                                    : theme.dividerColor,
+                              ),
+                            ),
+                            child: Column(
+                              children: [
+                                Text(
+                                  lang == 'fa' ? '🔄 پایش دائمی کانال' : '🔄 Dual-Active Channel',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: _bothWayBehavior == BothWayBehavior.dualActive
+                                        ? theme.colorScheme.primary
+                                        : theme.colorScheme.onSurface,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  lang == 'fa' ? 'کانال باز می‌ماند (Active)' : 'Stays active forever',
+                                  style: TextStyle(fontSize: 9.5, color: theme.colorScheme.onSurface.withValues(alpha: 0.6)),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 10),
+                    child: Divider(height: 1),
+                  ),
+
+                  // UPPER TARGET SECTION
+                  Row(
+                    children: [
+                      const Icon(Icons.arrow_upward_rounded, size: 16, color: AppTokens.positive),
+                      const SizedBox(width: 6),
+                      Text(
+                        lang == 'fa' ? 'حد بالا (Upper Target / مقاومت):' : 'Upper Target (Resistance):',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTokens.positive),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _upperPriceController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'monospace', color: theme.colorScheme.onSurface),
+                    decoration: InputDecoration(
+                      labelText: lang == 'fa' ? 'قیمت حد بالا (Upper Price)' : 'Upper Price',
+                      hintText: '4.00',
+                      prefixIcon: const Icon(Icons.show_chart_rounded, size: 18),
+                      filled: true,
+                      fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: theme.dividerColor)),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _upperNoteController,
+                    style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface),
+                    decoration: InputDecoration(
+                      labelText: lang == 'fa' ? 'یادداشت حد بالا (Upper Note)' : 'Upper Note',
+                      hintText: lang == 'fa' ? '«رسید به مقاومت، بررسی کن»' : 'Hit resistance, check take profit',
+                      prefixIcon: const Icon(Icons.edit_note_rounded, size: 18),
+                      filled: true,
+                      fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: theme.dividerColor)),
+                    ),
+                  ),
+
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    child: Divider(height: 1),
+                  ),
+
+                  // LOWER TARGET SECTION
+                  Row(
+                    children: [
+                      const Icon(Icons.arrow_downward_rounded, size: 16, color: AppTokens.negative),
+                      const SizedBox(width: 6),
+                      Text(
+                        lang == 'fa' ? 'حد پایین (Lower Target / حمایت):' : 'Lower Target (Support):',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTokens.negative),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _lowerPriceController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'monospace', color: theme.colorScheme.onSurface),
+                    decoration: InputDecoration(
+                      labelText: lang == 'fa' ? 'قیمت حد پایین (Lower Price)' : 'Lower Price',
+                      hintText: '2.00',
+                      prefixIcon: const Icon(Icons.trending_down_rounded, size: 18),
+                      filled: true,
+                      fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: theme.dividerColor)),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _lowerNoteController,
+                    style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface),
+                    decoration: InputDecoration(
+                      labelText: lang == 'fa' ? 'یادداشت حد پایین (Lower Note)' : 'Lower Note',
+                      hintText: lang == 'fa' ? '«حمایت شکست، بفروش»' : 'Support broke, sell / stop loss',
+                      prefixIcon: const Icon(Icons.edit_note_rounded, size: 18),
+                      filled: true,
+                      fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: theme.dividerColor)),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
+          ] else ...[
+            // Single Direction Mode (Above or Below)
+            TextField(
+              controller: _targetPriceController,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'monospace', color: theme.colorScheme.onSurface),
+              decoration: InputDecoration(
+                labelText: AppStrings.get('target_price_label', lang),
+                hintText: '95000',
+                filled: true,
+                fillColor: theme.colorScheme.surface,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: theme.dividerColor)),
+              ),
+            ),
+          ],
         ],
 
         const SizedBox(height: 20),

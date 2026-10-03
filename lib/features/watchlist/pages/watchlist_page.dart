@@ -567,7 +567,24 @@ class _WatchlistPageState extends State<WatchlistPage> {
                                 : textMuted,
                           ),
                         ),
-                        if (changePercent != null) ...[
+                        if (isTriggeredOneShot) ...[
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppTokens.warning.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: AppTokens.warning.withValues(alpha: 0.3)),
+                            ),
+                            child: const Text(
+                              '✅ Done',
+                              style: TextStyle(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.bold,
+                                color: AppTokens.warning,
+                              ),
+                            ),
+                          ),
+                        ] else if (changePercent != null) ...[
                           Builder(builder: (context) {
                             final isZero = changePercent!.abs() < 0.005;
                             final isPositive = changePercent! > 0.005;
@@ -931,23 +948,23 @@ class _WatchlistPageState extends State<WatchlistPage> {
       case 'binance':
         return 'Binance';
       case 'nobitex':
-        return isFa ? 'نوبیتکس' : 'Nobitex';
+        return 'Nobitex';
       case 'wallex':
-        return isFa ? 'والکس' : 'Wallex';
+        return 'Wallex';
       case 'tabdeal':
-        return isFa ? 'تبدیل' : 'Tabdeal';
+        return 'Tabdeal';
       case 'bitbarg':
-        return isFa ? 'بیت‌برگ' : 'Bitbarg';
+        return 'Bitbarg';
       case 'abantether':
-        return isFa ? 'آبان‌تتر' : 'AbanTether';
+        return 'AbanTether';
       case 'ramzinex':
-        return isFa ? 'رمزینکس' : 'Ramzinex';
+        return 'Ramzinex';
       case 'tetherland':
-        return isFa ? 'تترلند' : 'TetherLand';
+        return 'TetherLand';
       case 'sarmayex':
-        return isFa ? 'سرمایکس' : 'Sarmayex';
+        return 'Sarmayex';
       case 'exir':
-        return isFa ? 'اکسیر' : 'Exir';
+        return 'Exir';
       case 'kcex':
         return 'KCEX';
       case 'lbank':
@@ -989,6 +1006,11 @@ class _WatchlistPageState extends State<WatchlistPage> {
     final isFa = AppStrings.isRtl(lang);
     switch (rule.conditionType) {
       case AlertConditionType.priceThreshold:
+        if (rule.direction == AlertDirection.bothSides) {
+          final up = FormatUtils.formatPrice(rule.upperTargetPrice ?? 0, currencySymbol: rule.counterCurrency);
+          final down = FormatUtils.formatPrice(rule.lowerTargetPrice ?? 0, currencySymbol: rule.counterCurrency);
+          return isFa ? '▲ بالا: $up | ▼ پایین: $down' : '▲ Up: $up | ▼ Down: $down';
+        }
         final String dirStr;
         if (rule.direction == AlertDirection.above) {
           dirStr = lang == 'ckb' ? 'بەرزبوونەوە بۆ سەرووی' : (isFa ? 'صعود به بالای' : 'Crosses above');

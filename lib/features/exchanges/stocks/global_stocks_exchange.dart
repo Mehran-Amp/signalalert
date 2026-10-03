@@ -494,17 +494,195 @@ class GlobalStocksExchange implements Exchange {
     },
 
     // =========================================================================
-    // 7. AEROSPACE, DEFENSE & COMMERCIAL SPACE (فضا، استارلینک، ماهواره و هوافضا)
+    // 7. ELON MUSK ECOSYSTEM & VENTURES (امپراتوری شرکت‌ها و فناوری‌های ایلان ماسک)
     // =========================================================================
     {
+      'symbol': 'TSLA',
+      'name': 'Tesla Inc. (EV, AI, Optimus & Energy)',
+      'nameFa': 'تسلا (خودروهای برقی، هوش مصنوعی، ربات انسان‌نمای اپتیموس و انرژی ایلان ماسک)',
+      'cat': 'ElonMusk',
+      'icon': '⚡',
+      'price': 255.40,
+      'isTop100': true,
+    },
+    {
       'symbol': 'SPACEX',
-      'name': 'SpaceX (Space Exploration Technologies & Starlink)',
-      'nameFa': 'اسپیس‌ایکس (فناوری‌های فضایی، موشک استارشیپ و اینترنت ماهواره‌ای استارلینک)',
-      'cat': 'Aerospace',
+      'name': 'SpaceX (Starship, Falcon & Mars Missions)',
+      'nameFa': 'اسپیس‌ایکس (فناوری‌های فضایی، استارشیپ و ماموریت‌های مریخ ایلان ماسک)',
+      'cat': 'ElonMusk',
       'icon': '🚀',
       'price': 112.0,
       'isTop100': true,
     },
+    {
+      'symbol': 'STARLINK',
+      'name': 'Starlink (SpaceX Satellite Constellation)',
+      'nameFa': 'استارلینک (شبکه اینترنت ماهواره‌ای جهانی ایلان ماسک)',
+      'cat': 'ElonMusk',
+      'icon': '🛰️',
+      'price': 85.0,
+      'isTop100': true,
+    },
+    {
+      'symbol': 'XAI',
+      'name': 'xAI (Grok AI & Colossus Supercomputer)',
+      'nameFa': 'شرکت هوش مصنوعی xAI (خالق Grok و سوپرکامپیوتر کلوسوس ایلان ماسک)',
+      'cat': 'ElonMusk',
+      'icon': '🧠',
+      'price': 45.0,
+      'isTop100': true,
+    },
+    {
+      'symbol': 'X_CORP',
+      'name': 'X Corp (Formerly Twitter - Everything App)',
+      'nameFa': 'ایکس / توییتر سابق (شبکه اجتماعی جهانی و اپلیکیشن همه‌کاره ایلان ماسک)',
+      'cat': 'ElonMusk',
+      'icon': '𝕏',
+      'price': 38.50,
+      'isTop100': true,
+    },
+    {
+      'symbol': 'NEURALINK',
+      'name': 'Neuralink (Brain-Computer Interface & Telepathy)',
+      'nameFa': 'نورالینک (تراشه رابط مغز و رایانه و تله‌پاتی ایلان ماسک)',
+      'cat': 'ElonMusk',
+      'icon': '🧬',
+      'price': 55.0,
+      'isTop100': true,
+    },
+    {
+      'symbol': 'BORING',
+      'name': 'The Boring Company (Hyperloop & Tunneling)',
+      'nameFa': 'بورینگ کمپانی (تونل‌های زیرزمینی حمل‌ونقل سریع هایپرلوپ ایلان ماسک)',
+      'cat': 'ElonMusk',
+      'icon': '🚇',
+      'price': 22.0,
+      'isTop100': true,
+    },
+    {
+      'symbol': 'DOGE',
+      'name': 'Dogecoin (Elon Musk Ecosystem Crypto)',
+      'nameFa': 'دوج‌کوین (رمزارز محبوب و رسمی اکوسیستم تسلا و پلتفرم ایکس)',
+      'cat': 'ElonMusk',
+      'icon': '🐕',
+      'price': 0.165,
+      'isTop100': true,
+    },
+
+    // =========================================================================
+    // 8. LUXURY BRANDS & PRESTIGE CONGLOMERATES (برندهای فوق‌لوکس و اشرافی جهان)
+    // =========================================================================
+    {
+      'symbol': 'MC.PA',
+      'name': 'LVMH Moët Hennessy Louis Vuitton',
+      'nameFa': 'ال‌وی‌ام‌اچ فرانسه (لویی ویتون، دیور، تیفانی، بولگاری - پادشاه برندهای لوکس جهان)',
+      'cat': 'Luxury',
+      'icon': '👑',
+      'price': 635.80,
+      'isTop100': true,
+    },
+    {
+      'symbol': 'RMS.PA',
+      'name': 'Hermès International',
+      'nameFa': 'هرمس اینترنشنال (گران‌قیمت‌ترین خانه مد، کیف برکین و چرم دست‌ساز جهان)',
+      'cat': 'Luxury',
+      'icon': '👜',
+      'price': 2085.0,
+      'isTop100': true,
+    },
+    {
+      'symbol': 'P911.DE',
+      'name': 'Porsche AG',
+      'nameFa': 'پورشه آلمان (سوپراسپرت‌های لوکس و مهندسی اشتوتگارت)',
+      'cat': 'Luxury',
+      'icon': '🏎️',
+      'price': 68.40,
+      'isTop100': true,
+    },
+    {
+      'symbol': 'RACE',
+      'name': 'Ferrari N.V.',
+      'nameFa': 'فراری ایتالیا (سوپراسپرت‌های اشرافی و اسب سرکش مارانلو)',
+      'cat': 'Luxury',
+      'icon': '🐎',
+      'price': 462.80,
+      'isTop100': true,
+    },
+
+    // =========================================================================
+    // 9. STRATEGIC COMMODITIES & METALS (فلزات استراتژیک، پلاتین، مس و انرژی)
+    // =========================================================================
+    {
+      'symbol': 'PL=F',
+      'name': 'Platinum Spot (XPT/USD)',
+      'nameFa': 'پلاتین جهانی (فلز گران‌بها و فوق‌لوکس صنعتی)',
+      'cat': 'Commodities',
+      'icon': '💍',
+      'price': 1025.50,
+    },
+    {
+      'symbol': 'URNM',
+      'name': 'Sprott Uranium Miners ETF',
+      'nameFa': 'صندوق معادن اورانیوم (سوخت انرژی هسته‌ای دیتاسنترهای AI)',
+      'cat': 'Commodities',
+      'icon': '☢️',
+      'price': 52.80,
+    },
+
+    // =========================================================================
+    // 10. CRITICAL SEMICONDUCTORS & AI HARDWARE (انحصار تراشه‌ها و لیتوگرافی)
+    // =========================================================================
+    {
+      'symbol': 'TSM',
+      'name': 'Taiwan Semiconductor Manufacturing (TSMC)',
+      'nameFa': 'تی‌اس‌ام‌سی (سازنده انحصاری تراشه‌های انویدیا، اپل و نبض جهان)',
+      'cat': 'Tech',
+      'icon': '🇹🇼',
+      'price': 195.40,
+      'isTop100': true,
+    },
+    {
+      'symbol': 'ASML',
+      'name': 'ASML Holding N.V.',
+      'nameFa': 'ای‌اس‌ام‌ال هلند (انحصار ۱۰۰٪ ماشین‌آلات لیتوگرافی فرابنفش چاپ تراشه)',
+      'cat': 'Tech',
+      'icon': '🔬',
+      'price': 712.50,
+      'isTop100': true,
+    },
+    {
+      'symbol': 'AVGO',
+      'name': 'Broadcom Inc.',
+      'nameFa': 'برودکام (غول تراشه‌های اختصاصی شبکه و هوش مصنوعی)',
+      'cat': 'Tech',
+      'icon': '📡',
+      'price': 178.60,
+      'isTop100': true,
+    },
+
+    // =========================================================================
+    // 11. REGIONAL FOREX & MIDDLE EAST (ارزهای کلیدی منطقه و ایران)
+    // =========================================================================
+    {
+      'symbol': 'USDT/TMN',
+      'name': 'Tether to Iranian Toman (USDT/TMN)',
+      'nameFa': 'تتر به تومان ایران (نرخ لحظه‌ای بازار آزاد تهران)',
+      'cat': 'Forex',
+      'icon': '🇮🇷',
+      'price': 69400.0,
+    },
+    {
+      'symbol': 'USDAED=X',
+      'name': 'USD/AED (UAE Dirham)',
+      'nameFa': 'دلار آمریکا به درهم امارات (USD/AED)',
+      'cat': 'Forex',
+      'icon': '🇦🇪',
+      'price': 3.6725,
+    },
+
+    // =========================================================================
+    // 12. AEROSPACE, DEFENSE & COMMERCIAL SPACE (فضا، استارلینک، ماهواره و هوافضا)
+    // =========================================================================
     {
       'symbol': 'DXYZ',
       'name': 'Destiny Tech100 Inc. (SpaceX & OpenAI Portfolio ETF)',
@@ -1606,6 +1784,8 @@ class GlobalStocksExchange implements Exchange {
     );
   }
 
+  static final Map<String, MarketTicker> _lastKnownLiveTickers = {};
+
   @override
   Future<MarketTicker> fetchTicker(CurrencyPair pair) async {
     final cleanSymbol = pair.baseCurrency;
@@ -1699,7 +1879,7 @@ class GlobalStocksExchange implements Exchange {
             final double volume = (meta['regularMarketVolume'] as num?)?.toDouble() ?? 0.0;
 
             if (regularPrice > 0) {
-              return MarketTicker(
+              final ticker = MarketTicker(
                 exchangeId: id,
                 pair: pair,
                 lastPrice: regularPrice,
@@ -1708,6 +1888,8 @@ class GlobalStocksExchange implements Exchange {
                 low24h: low,
                 timestamp: DateTime.now(),
               );
+              _lastKnownLiveTickers[cleanSymbol] = ticker;
+              return ticker;
             }
           }
         }
@@ -1725,33 +1907,26 @@ class GlobalStocksExchange implements Exchange {
           final item = data['symbols'][0];
           final p = double.tryParse(item['close']?.toString() ?? '0') ?? 0.0;
           if (p > 0) {
-            return MarketTicker(
+            final ticker = MarketTicker(
               exchangeId: id,
               pair: pair,
               lastPrice: p,
               volume24h: 0.0,
               timestamp: DateTime.now(),
             );
+            _lastKnownLiveTickers[cleanSymbol] = ticker;
+            return ticker;
           }
         }
       }
     } catch (_) {}
 
-    // 4. Fallback to predefined baseline price if network is temporarily slow
-    final match = predefinedStocks.firstWhere(
-      (s) => (s['symbol'] as String).toUpperCase() == cleanSymbol.toUpperCase(),
-      orElse: () => {},
-    );
-    if (match.isNotEmpty && match['price'] != null) {
-      return MarketTicker(
-        exchangeId: id,
-        pair: pair,
-        lastPrice: (match['price'] as num).toDouble(),
-        volume24h: 0.0,
-        timestamp: DateTime.now(),
-      );
+    // 4. Return cached live ticker if available from previous successful network fetch
+    if (_lastKnownLiveTickers.containsKey(cleanSymbol)) {
+      return _lastKnownLiveTickers[cleanSymbol]!;
     }
 
+    // If completely offline and never fetched before, do NOT return static catalog price which would corrupt rule state!
     throw Exception('Connection error: Live price unavailable for $cleanSymbol');
   }
 }

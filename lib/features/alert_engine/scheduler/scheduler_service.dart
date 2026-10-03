@@ -158,6 +158,7 @@ class SchedulerService {
           isTriggered: result.newIsTriggered,
           basePrice: result.newBasePrice, // New base price for subsequent % move calculations
           baseVolume: result.newBaseVolume,
+          cooldownUntil: result.cooldownUntil,
           lastTriggeredAt: now,
           triggerCount: rule.triggerCount + 1,
         );

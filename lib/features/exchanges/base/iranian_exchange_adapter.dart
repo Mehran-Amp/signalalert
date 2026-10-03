@@ -23,6 +23,7 @@ class IranianExchangeAdapter implements Exchange {
 
   final String? directTickerUrl;
   final Dio _dio;
+  static final Map<String, MarketTicker> _lastKnownLiveTickers = {};
 
   IranianExchangeAdapter({
     required this.id,
@@ -62,7 +63,37 @@ class IranianExchangeAdapter implements Exchange {
 
   @override
   Future<MarketTicker> fetchTicker(CurrencyPair pair) async {
-    // 1. If direct ticker URL is provided, query it
+    final cacheKey = '${id}_${pair.baseCurrency}_${pair.counterCurrency}'.toUpperCase();
+
+    // 1. Direct AbanTether API if applicable
+    if (id == 'abantether') {
+      try {
+        final res = await _dio.get('https://api.abantether.com/api/v1/manager/otc/ticker');
+        final markets = res.data?['data']?['markets'] as Map<String, dynamic>?;
+        final targetKey = '${pair.baseCurrency}IRT'.toUpperCase();
+        if (markets != null && markets[targetKey] != null) {
+          final p = double.tryParse(markets[targetKey]['buy_price']?.toString() ?? '0') ?? 0.0;
+          if (p > 0) {
+            double finalP = p;
+            if (pair.counterCurrency.toUpperCase() == 'USDT') {
+              final rate = await IranMarketGateway.getLiveUsdtTomanRate();
+              finalP = p / rate;
+            }
+            final ticker = MarketTicker(
+              exchangeId: id,
+              pair: pair,
+              lastPrice: finalP,
+              volume24h: 0.0,
+              timestamp: DateTime.now(),
+            );
+            _lastKnownLiveTickers[cacheKey] = ticker;
+            return ticker;
+          }
+        }
+      } catch (_) {}
+    }
+
+    // 2. If direct ticker URL is provided, query it
     if (directTickerUrl != null) {
       try {
         final url = directTickerUrl!
@@ -83,18 +114,20 @@ class IranianExchangeAdapter implements Exchange {
               0.0;
         }
         if (p > 0) {
-          return MarketTicker(
+          final ticker = MarketTicker(
             exchangeId: id,
             pair: pair,
             lastPrice: p,
             volume24h: 0.0,
             timestamp: DateTime.now(),
           );
+          _lastKnownLiveTickers[cacheKey] = ticker;
+          return ticker;
         }
       } catch (_) {}
     }
 
-    // 2. Multi-Gateway Resilient Pipeline (Bypasses VPN blocks & national filter timeouts)
+    // 3. Multi-Gateway Resilient Pipeline (Bypasses VPN blocks & national filter timeouts)
     try {
       final estimatedPrice = await IranMarketGateway.getEstimatedPrice(
         baseCoin: pair.baseCurrency,
@@ -102,15 +135,22 @@ class IranianExchangeAdapter implements Exchange {
       );
 
       if (estimatedPrice > 0) {
-        return MarketTicker(
+        final ticker = MarketTicker(
           exchangeId: id,
           pair: pair,
           lastPrice: estimatedPrice,
           volume24h: 0.0,
           timestamp: DateTime.now(),
         );
+        _lastKnownLiveTickers[cacheKey] = ticker;
+        return ticker;
       }
     } catch (_) {}
+
+    // 4. Persistent Last Known Live Ticker (Preserves authentic online price when offline)
+    if (_lastKnownLiveTickers.containsKey(cacheKey)) {
+      return _lastKnownLiveTickers[cacheKey]!;
+    }
 
     throw Exception('Live price for ${pair.displayName} on $name is currently loading...');
   }

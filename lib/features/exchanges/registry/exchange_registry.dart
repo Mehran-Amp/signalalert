@@ -22,8 +22,13 @@ class ExchangeRegistry {
   /// Retrieves an exchange adapter by its unique ID
   Exchange? get(String exchangeId) => _exchanges[exchangeId];
 
-  /// Returns all currently registered exchanges
-  List<Exchange> getAll() => _exchanges.values.toList();
+  /// Returns all currently registered exchanges strictly sorted alphabetically A-Z by English name
+  List<Exchange> getAll() => _exchanges.values.toList()
+    ..sort((a, b) {
+      if (a.id == 'global_stocks') return -1;
+      if (b.id == 'global_stocks') return 1;
+      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    });
 
   /// Map of all exchanges
   Map<String, Exchange> get asMap => Map.unmodifiable(_exchanges);

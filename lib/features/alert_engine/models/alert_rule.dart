@@ -37,11 +37,26 @@ class AlertRule extends Equatable {
   /// Evaluation direction: above, below, or bothSides
   final AlertDirection direction;
 
+  /// Behavior mode for Both Way price alerts (OCO vs Dual-Active)
+  final BothWayBehavior bothWayBehavior;
+
   /// Trigger mode: auto-set based on conditionType
   final TriggerMode triggerMode;
 
   /// For priceThreshold: target price in counter currency
   final double? targetPrice;
+
+  /// For Both Way priceThreshold: upper threshold price
+  final double? upperTargetPrice;
+
+  /// For Both Way priceThreshold: dedicated note for upper breakout
+  final String? upperNote;
+
+  /// For Both Way priceThreshold: lower threshold price
+  final double? lowerTargetPrice;
+
+  /// For Both Way priceThreshold: dedicated note for lower breakdown
+  final String? lowerNote;
 
   /// For percentChange: percentage change from basePrice (e.g. 3.0 for 3%)
   final double? percent;
@@ -171,8 +186,13 @@ class AlertRule extends Equatable {
     required this.checkIntervalSeconds,
     required this.conditionType,
     required this.direction,
+    this.bothWayBehavior = BothWayBehavior.oco,
     required this.triggerMode,
     this.targetPrice,
+    this.upperTargetPrice,
+    this.upperNote,
+    this.lowerTargetPrice,
+    this.lowerNote,
     this.percent,
     this.deltaAbsolute,
     this.volumePercent,
@@ -201,7 +221,12 @@ class AlertRule extends Equatable {
     required int checkIntervalSeconds,
     required AlertConditionType conditionType,
     required AlertDirection direction,
+    BothWayBehavior bothWayBehavior = BothWayBehavior.oco,
     double? targetPrice,
+    double? upperTargetPrice,
+    String? upperNote,
+    double? lowerTargetPrice,
+    String? lowerNote,
     double? percent,
     double? deltaAbsolute,
     double? volumePercent,
@@ -216,7 +241,9 @@ class AlertRule extends Equatable {
     DateTime? cooldownUntil,
     int triggerCount = 0,
   }) {
-    final mode = conditionType == AlertConditionType.priceThreshold
+    final mode = (conditionType == AlertConditionType.priceThreshold && bothWayBehavior != BothWayBehavior.dualActive ||
+            (conditionType == AlertConditionType.percentChange &&
+                direction != AlertDirection.bothSides))
         ? TriggerMode.oneShot
         : TriggerMode.recurring;
 
@@ -229,8 +256,13 @@ class AlertRule extends Equatable {
       checkIntervalSeconds: checkIntervalSeconds,
       conditionType: conditionType,
       direction: direction,
+      bothWayBehavior: bothWayBehavior,
       triggerMode: mode,
       targetPrice: targetPrice,
+      upperTargetPrice: upperTargetPrice,
+      upperNote: upperNote,
+      lowerTargetPrice: lowerTargetPrice,
+      lowerNote: lowerNote,
       percent: percent,
       deltaAbsolute: deltaAbsolute,
       volumePercent: volumePercent,
@@ -267,8 +299,13 @@ class AlertRule extends Equatable {
     int? checkIntervalSeconds,
     AlertConditionType? conditionType,
     AlertDirection? direction,
+    BothWayBehavior? bothWayBehavior,
     TriggerMode? triggerMode,
     double? targetPrice,
+    double? upperTargetPrice,
+    String? upperNote,
+    double? lowerTargetPrice,
+    String? lowerNote,
     double? percent,
     double? deltaAbsolute,
     double? volumePercent,
@@ -297,8 +334,13 @@ class AlertRule extends Equatable {
       checkIntervalSeconds: checkIntervalSeconds ?? this.checkIntervalSeconds,
       conditionType: conditionType ?? this.conditionType,
       direction: direction ?? this.direction,
+      bothWayBehavior: bothWayBehavior ?? this.bothWayBehavior,
       triggerMode: triggerMode ?? this.triggerMode,
       targetPrice: targetPrice ?? this.targetPrice,
+      upperTargetPrice: upperTargetPrice ?? this.upperTargetPrice,
+      upperNote: upperNote ?? this.upperNote,
+      lowerTargetPrice: lowerTargetPrice ?? this.lowerTargetPrice,
+      lowerNote: lowerNote ?? this.lowerNote,
       percent: percent ?? this.percent,
       deltaAbsolute: deltaAbsolute ?? this.deltaAbsolute,
       volumePercent: volumePercent ?? this.volumePercent,
@@ -330,8 +372,13 @@ class AlertRule extends Equatable {
         'checkIntervalSeconds': checkIntervalSeconds,
         'conditionType': conditionType.name,
         'direction': direction.name,
+        'bothWayBehavior': bothWayBehavior.name,
         'triggerMode': triggerMode.name,
         'targetPrice': targetPrice,
+        'upperTargetPrice': upperTargetPrice,
+        'upperNote': upperNote,
+        'lowerTargetPrice': lowerTargetPrice,
+        'lowerNote': lowerNote,
         'percent': percent,
         'deltaAbsolute': deltaAbsolute,
         'volumePercent': volumePercent,
@@ -364,9 +411,19 @@ class AlertRule extends Equatable {
             json['conditionType'] as String? ?? 'percentChange'),
         direction: AlertDirection.values
             .byName(json['direction'] as String? ?? 'bothSides'),
+        bothWayBehavior: json['bothWayBehavior'] != null
+            ? BothWayBehavior.values.firstWhere(
+                (e) => e.name == json['bothWayBehavior'],
+                orElse: () => BothWayBehavior.oco,
+              )
+            : BothWayBehavior.oco,
         triggerMode: TriggerMode.values
             .byName(json['triggerMode'] as String? ?? 'recurring'),
         targetPrice: (json['targetPrice'] as num?)?.toDouble(),
+        upperTargetPrice: (json['upperTargetPrice'] as num?)?.toDouble(),
+        upperNote: json['upperNote'] as String?,
+        lowerTargetPrice: (json['lowerTargetPrice'] as num?)?.toDouble(),
+        lowerNote: json['lowerNote'] as String?,
         percent: (json['percent'] as num?)?.toDouble(),
         deltaAbsolute: (json['deltaAbsolute'] as num?)?.toDouble(),
         volumePercent: (json['volumePercent'] as num?)?.toDouble(),
@@ -406,8 +463,13 @@ class AlertRule extends Equatable {
         checkIntervalSeconds,
         conditionType,
         direction,
+        bothWayBehavior,
         triggerMode,
         targetPrice,
+        upperTargetPrice,
+        upperNote,
+        lowerTargetPrice,
+        lowerNote,
         percent,
         deltaAbsolute,
         volumePercent,
