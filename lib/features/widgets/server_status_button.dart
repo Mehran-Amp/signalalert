@@ -46,44 +46,48 @@ class _ServerStatusButtonState extends State<ServerStatusButton> {
     if (!mounted) return;
     setState(() => _status = ServerConnectionStatus.checking);
 
-    final stopwatch = Stopwatch()..start();
-    try {
-      final url = Uri.parse(ServerAlertService.baseUrl);
-      final res = await http.get(url).timeout(const Duration(seconds: 4));
-      stopwatch.stop();
+    final candidateUrls = [
+      ServerAlertService.baseUrl,
+      'https://aisocialfeed.com',
+      'http://5.9.73.43:8000',
+      'http://aisocialfeed.com:8000',
+    ].toSet().toList();
 
-      if (res.statusCode == 200) {
-        final data = jsonDecode(res.body);
-        if (mounted) {
-          setState(() {
-            _status = ServerConnectionStatus.online;
-            _latencyMs = stopwatch.elapsedMilliseconds;
-            _activeServerAlerts = data['active_alerts'] as int?;
-            _totalServerAlerts = data['total_alerts'] as int?;
-            _lastError = null;
-          });
+    for (final testUrlStr in candidateUrls) {
+      final stopwatch = Stopwatch()..start();
+      try {
+        final url = Uri.parse(testUrlStr);
+        final res = await http.get(url).timeout(const Duration(seconds: 3));
+        stopwatch.stop();
+
+        if (res.statusCode == 200) {
+          final data = jsonDecode(res.body);
+          if (data is Map && data.containsKey('status') && data['status'] == 'online') {
+            ServerAlertService.setBaseUrl(testUrlStr);
+            if (mounted) {
+              setState(() {
+                _status = ServerConnectionStatus.online;
+                _latencyMs = stopwatch.elapsedMilliseconds;
+                _activeServerAlerts = data['active_alerts'] as int?;
+                _totalServerAlerts = data['total_alerts'] as int?;
+                _lastError = null;
+              });
+            }
+            return; // Success! Exit early
+          }
         }
-      } else {
-        if (mounted) {
-          setState(() {
-            _status = ServerConnectionStatus.offline;
-            _latencyMs = null;
-            _lastError = 'HTTP Status: ${res.statusCode}';
-          });
-        }
+      } catch (e) {
+        // Try next candidate URL
       }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _status = ServerConnectionStatus.offline;
-          _latencyMs = null;
-          _lastError = e.toString().contains('TimeoutException')
-              ? 'تایم‌اوت شبکه (عدم دسترسی به پورت 8000 هاست)'
-              : (e.toString().contains('Cleartext')
-                  ? 'مجوز HTTP غیرفعال بود'
-                  : 'خطای اتصال: $e');
-        });
-      }
+    }
+
+    // If all candidate URLs failed:
+    if (mounted) {
+      setState(() {
+        _status = ServerConnectionStatus.offline;
+        _latencyMs = null;
+        _lastError = 'سرور پایتون خاموش است یا .htaccess ست نشده است.';
+      });
     }
   }
 
