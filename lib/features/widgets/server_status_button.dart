@@ -118,6 +118,8 @@ class _ServerStatusButtonState extends State<ServerStatusButton> {
     String pingLabel;
     String alertsLabel;
     String reasonLabel;
+    String supportTitle;
+    String supportDesc;
     String recheckBtn;
     String closeBtn;
 
@@ -130,6 +132,8 @@ class _ServerStatusButtonState extends State<ServerStatusButton> {
         pingLabel = 'زمان پاسخگویی (Ping):';
         alertsLabel = 'هشدارهای فعال سرور:';
         reasonLabel = 'علت عدم اتصال:';
+        supportTitle = 'پشتیبانی و توسعه پایدار';
+        supportDesc = 'پایش ۲۴ساعته و ارتقای مداوم سرورها، نیازمند تهیه نسخه قانونی این اپلیکیشن است. با حمایت و خرید قانونی، اتصال پایدار و بروزرسانی همیشگی سیستم را تضمین می‌فرمایید.';
         recheckBtn = 'بررسی مجدد';
         closeBtn = 'بستن';
         break;
@@ -141,6 +145,8 @@ class _ServerStatusButtonState extends State<ServerStatusButton> {
         pingLabel = 'زمن الاستجابة (Ping):';
         alertsLabel = 'التنبيهات النشطة بالسيرفر:';
         reasonLabel = 'سبب عدم الاتصال:';
+        supportTitle = 'الدعم واستدامة السيرفرات';
+        supportDesc = 'استمرار مراقبة السيرفرات على مدار ۲۴ ساعة والتحديثات المستمرة يعتمد على دعمكم واقتناء النسخة القانونية لهذا التطبيق. بدعمكم نبقى دائماً متصلين وأقوياء.';
         recheckBtn = 'إعادة الفحص';
         closeBtn = 'إغلاق';
         break;
@@ -152,6 +158,8 @@ class _ServerStatusButtonState extends State<ServerStatusButton> {
         pingLabel = 'کاتی وەڵامدانەوە (Ping):';
         alertsLabel = 'ئاگادارییە چالاکەکان:';
         reasonLabel = 'هۆکاری نەبەستنەوە:';
+        supportTitle = 'پشتیوانی و گەشەپێدانی بەردەوام';
+        supportDesc = 'بەردەوامیی چاودێری ۲۴ کاتژمێری و بەرزکردنەوەی ئاستی سێرڤەرەکان، بەستراوەتەوە بە پشتگیری و کڕینی یاسایی ئەم ئەپڵیکەیشنە. بە پشتگیری ئێوە، هەمیشە ئۆنلاین دەمێنینەوە.';
         recheckBtn = 'پشکنینەوە';
         closeBtn = 'داخستن';
         break;
@@ -163,6 +171,8 @@ class _ServerStatusButtonState extends State<ServerStatusButton> {
         pingLabel = 'Tepki Süresi (Ping):';
         alertsLabel = 'Sunucudaki Aktif Uyarılar:';
         reasonLabel = 'Neden:';
+        supportTitle = 'Destek ve Kesintisiz Sunucu Hizmeti';
+        supportDesc = '7/24 kesintisiz sunucu izleme hizmetimiz ve sürekli güncellemelerimiz, bu uygulamayı yasal olarak desteklemenize bağlıdır. Desteğinizle her zaman çevrimiçi kalıyoruz.';
         recheckBtn = 'Yeniden Kontrol Et';
         closeBtn = 'Kapat';
         break;
@@ -174,6 +184,8 @@ class _ServerStatusButtonState extends State<ServerStatusButton> {
         pingLabel = 'Response Time (Ping):';
         alertsLabel = 'Active Alerts on Server:';
         reasonLabel = 'Reason:';
+        supportTitle = 'Support & Server Sustainability';
+        supportDesc = '24/7 stable server monitoring and continuous upgrades depend on supporting and legally acquiring this app. Your support keeps our central engines online and updated.';
         recheckBtn = 'Recheck';
         closeBtn = 'Close';
         break;
@@ -302,6 +314,56 @@ class _ServerStatusButtonState extends State<ServerStatusButton> {
                             icon: Icons.warning_amber_rounded,
                           ),
                         ],
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 14),
+
+                  // Legal Support Card
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.25)),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.primary.withValues(alpha: 0.15),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(Icons.verified_user_rounded, color: theme.colorScheme.primary, size: 20),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                supportTitle,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                  color: theme.colorScheme.primary,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                supportDesc,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  height: 1.45,
+                                  color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
                   ),

@@ -886,29 +886,36 @@ class _WatchlistPageState extends State<WatchlistPage> {
 
     final now = DateTime.now();
     final lastTime = rule.lastCheckedAt ?? rule.createdAt;
-    final nextTime = lastTime.add(Duration(seconds: rule.checkIntervalSeconds));
-    final diff = nextTime.difference(now);
+    
+    // Smooth cyclic interval calculation matching central server scheduler
+    final elapsedSecs = now.difference(lastTime).inSeconds;
+    final interval = rule.checkIntervalSeconds > 0 ? rule.checkIntervalSeconds : 10;
+    
+    final mod = elapsedSecs % interval;
+    final remainingSecs = mod == 0 ? 0 : (interval - mod);
 
-    if (diff.isNegative || diff.inSeconds <= 0) {
-      return isFa ? 'در حال بررسی...' : 'Checking now...';
+    if (remainingSecs == 0) {
+      return '⚡';
     }
+
+    final diff = Duration(seconds: remainingSecs);
 
     if (diff.inHours >= 1) {
       final h = diff.inHours;
       final m = diff.inMinutes % 60;
       if (m == 0) {
-        return isFa ? '$h ساعت تا بررسی' : 'In ${h}h';
+        return isFa ? '$h ساعت تا پایش' : 'In ${h}h';
       }
-      return isFa ? '$h ساعت و $m دقیقه تا بررسی' : 'In ${h}h ${m}m';
+      return isFa ? '$h ساعت و $m دقیقه تا پایش' : 'In ${h}h ${m}m';
     } else if (diff.inMinutes >= 1) {
       final m = diff.inMinutes;
       final s = diff.inSeconds % 60;
       if (s == 0) {
-        return isFa ? '$m دقیقه تا بررسی' : 'In ${m}m';
+        return isFa ? '$m دقیقه تا پایش' : 'In ${m}m';
       }
-      return isFa ? '$m دقیقه و $s ثانیه تا بررسی' : 'In ${m}m ${s}s';
+      return isFa ? '$m دقیقه و $s ثانیه تا پایش' : 'In ${m}m ${s}s';
     } else {
-      return 'In ${diff.inSeconds} s';
+      return isFa ? '${diff.inSeconds} ثانیه تا پایش' : 'In ${diff.inSeconds}s';
     }
   }
 
