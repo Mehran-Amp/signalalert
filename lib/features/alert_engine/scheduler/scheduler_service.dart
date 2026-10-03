@@ -86,9 +86,10 @@ class SchedulerService {
       final serverPrice = await ServerAlertService.fetchPriceViaServer(rule.exchangeId, rule.pair.marketSymbol);
       if (serverPrice != null && serverPrice > 0) {
         final t = MarketTicker(
-          baseCurrency: rule.baseCurrency,
-          counterCurrency: rule.counterCurrency,
+          exchangeId: rule.exchangeId,
+          pair: rule.pair,
           lastPrice: serverPrice,
+          volume24h: 0.0,
           timestamp: now,
         );
         _recentTickers[cacheKey] = (t, now);
@@ -114,9 +115,10 @@ class SchedulerService {
     final serverPrice = await ServerAlertService.fetchPriceViaServer(rule.exchangeId, rule.pair.marketSymbol);
     if (serverPrice != null && serverPrice > 0) {
       final t = MarketTicker(
-        baseCurrency: rule.baseCurrency,
-        counterCurrency: rule.counterCurrency,
+        exchangeId: rule.exchangeId,
+        pair: rule.pair,
         lastPrice: serverPrice,
+        volume24h: 0.0,
         timestamp: now,
       );
       _recentTickers[cacheKey] = (t, now);
