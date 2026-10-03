@@ -32,7 +32,7 @@ import '../xt/xt_exchange.dart';
 /// Provides unrestricted access to all spot assets on each exchange with 100% price uptime.
 class ExchangeCatalog {
   static List<Exchange> buildAllExchanges() {
-    return [
+    final exchanges = <Exchange>[
       // --- GLOBAL STOCKS, METALS, FOREX & COMMODITIES (Wall Street) ---
       GlobalStocksExchange(),
 
