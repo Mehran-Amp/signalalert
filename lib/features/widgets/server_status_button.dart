@@ -238,7 +238,7 @@ class _ServerStatusButtonState extends State<ServerStatusButton> {
                     controller: urlController,
                     style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurface),
                     decoration: InputDecoration(
-                      hintText: 'http://server60.webtook.com:8000',
+                      hintText: 'https://aisocialfeed.com',
                       prefixIcon: Icon(Icons.link_rounded, size: 20, color: theme.colorScheme.onSurface.withValues(alpha: 0.5)),
                       filled: true,
                       fillColor: theme.colorScheme.surface,

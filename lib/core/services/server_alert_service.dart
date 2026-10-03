@@ -6,8 +6,8 @@ import 'fcm_notification_service.dart';
 
 /// ServerAlertService handles communication with the Python Alert Engine backend
 class ServerAlertService {
-  // Configurable base URL for the Python server (server60 port 8000)
-  static String _baseUrl = 'http://server60.webtook.com:8000';
+  // Configurable base URL for the Python server (Primary domain: https://aisocialfeed.com)
+  static String _baseUrl = 'https://aisocialfeed.com';
 
   /// Set or update the server base URL dynamically
   static void setBaseUrl(String url) {
