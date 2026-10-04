@@ -3,7 +3,7 @@ import time
 import uuid
 import json
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Optional, Dict
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -347,7 +347,7 @@ def send_fcm_notification(fcm_token: str, title: str, body: str, data_payload: d
             token=fcm_token,
             android=messaging.AndroidConfig(
                 priority='high',
-                ttl=datetime.timedelta(days=1),
+                ttl=timedelta(days=1),
                 direct_boot_ok=True,
                 notification=messaging.AndroidNotification(
                     sound='default',

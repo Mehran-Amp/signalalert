@@ -12,6 +12,15 @@ class ServerAlertService {
   // Configurable base URL for the Python server (Primary domain: https://aisocialfeed.com or custom IP)
   static String _baseUrl = 'https://aisocialfeed.com';
   static bool _initialized = false;
+  static DateTime? _circuitBreakerUntil;
+
+  /// Whether server calls should be attempted
+  static bool get isServerAvailable {
+    if (_circuitBreakerUntil != null && DateTime.now().isBefore(_circuitBreakerUntil!)) {
+      return false;
+    }
+    return true;
+  }
 
   /// Load persisted server URL from disk on startup
   static Future<void> initialize() async {
@@ -35,6 +44,7 @@ class ServerAlertService {
     if (url.trim().isNotEmpty) {
       final cleanUrl = url.trim().endsWith('/') ? url.trim().substring(0, url.trim().length - 1) : url.trim();
       _baseUrl = cleanUrl;
+      _circuitBreakerUntil = null; // Reset circuit breaker
       debugPrint('🌐 ServerAlertService Base URL updated to: $_baseUrl');
       try {
         final dir = await getApplicationDocumentsDirectory();
@@ -49,6 +59,7 @@ class ServerAlertService {
 
   /// Bulk sync all local alert rules to Python server with real FCM Token
   static Future<bool> syncAllRulesToServer(List<AlertRule> rules, {String userId = 'user_default'}) async {
+    if (!isServerAvailable) return false;
     try {
       final fcmToken = await FCMNotificationService.getFCMToken();
       final activeRules = rules.where((r) => r.isActive).toList();
@@ -76,20 +87,19 @@ class ServerAlertService {
         'alerts': alertsPayload,
       };
 
-      debugPrint('📤 Bulk syncing ${alertsPayload.length} alert(s) to server with FCM Token: ${fcmToken.substring(0, fcmToken.length > 20 ? 20 : fcmToken.length)}...');
-
       final response = await http.post(
         url,
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(payload),
-      ).timeout(const Duration(seconds: 10));
+      ).timeout(const Duration(seconds: 5));
 
       if (response.statusCode == 200) {
+        _circuitBreakerUntil = null;
         debugPrint('✅ All alerts successfully synced to Python server for 24/7 background FCM monitoring!');
         return true;
       }
-    } catch (e) {
-      debugPrint('⚠️ Error bulk syncing alerts to server: $e');
+    } catch (_) {
+      _circuitBreakerUntil = DateTime.now().add(const Duration(minutes: 2));
     }
     return false;
   }
@@ -193,12 +203,14 @@ class ServerAlertService {
 
   /// Fetch live price via Python server proxy for filtered exchanges (Binance, MEXC, Yahoo Finance, etc.)
   static Future<double?> fetchPriceViaServer(String exchange, String symbol) async {
+    if (!isServerAvailable) return null;
     try {
       final sanitizedSym = symbol.replaceAll('/', '').replaceAll(' ', '');
       final url = Uri.parse('$_baseUrl/api/price/${exchange.toLowerCase()}/$sanitizedSym');
-      final response = await http.get(url).timeout(const Duration(seconds: 5));
+      final response = await http.get(url).timeout(const Duration(seconds: 4));
 
       if (response.statusCode == 200) {
+        _circuitBreakerUntil = null;
         final data = jsonDecode(response.body);
         if (data is Map && data.containsKey('price') && data['price'] is num) {
           final p = (data['price'] as num).toDouble();
@@ -206,7 +218,8 @@ class ServerAlertService {
         }
       }
     } catch (_) {
-      // Gracefully return null so scheduler seamlessly uses direct local fetch
+      // Temporarily trip circuit breaker so local scheduler doesn't retry unreachable host
+      _circuitBreakerUntil = DateTime.now().add(const Duration(minutes: 2));
     }
     return null;
   }
