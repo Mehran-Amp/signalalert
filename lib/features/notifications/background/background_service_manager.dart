@@ -105,7 +105,7 @@ class BackgroundServiceManager {
       Timer.periodic(const Duration(seconds: 5), (timer) async {
         try {
           await alertRuleRepository.load();
-          final rules = alertRuleRepository.activeRules;
+          final rules = alertRuleRepository.allRules.where((r) => r.isActive).toList();
           if (rules.isNotEmpty) {
             for (final rule in rules) {
               await schedulerService.checkRuleNow(rule);
