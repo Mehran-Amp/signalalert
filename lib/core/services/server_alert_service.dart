@@ -9,13 +9,14 @@ import 'fcm_notification_service.dart';
 
 /// ServerAlertService handles communication with the Python Alert Engine backend
 class ServerAlertService {
-  // Configurable base URL for the Python server (Primary domain: https://aisocialfeed.com or custom IP)
-  static String _baseUrl = 'https://aisocialfeed.com';
+  // Configurable base URL for the Python server (Empty by default until user provides IP/URL)
+  static String _baseUrl = '';
   static bool _initialized = false;
   static DateTime? _circuitBreakerUntil;
 
   /// Whether server calls should be attempted
   static bool get isServerAvailable {
+    if (_baseUrl.isEmpty) return false;
     if (_circuitBreakerUntil != null && DateTime.now().isBefore(_circuitBreakerUntil!)) {
       return false;
     }

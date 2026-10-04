@@ -883,8 +883,15 @@ $jsonStr
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: SelectableText(
-                  ServerAlertService.baseUrl,
-                  style: const TextStyle(fontSize: 11, fontFamily: 'monospace', fontWeight: FontWeight.w600),
+                  ServerAlertService.baseUrl.isNotEmpty
+                      ? ServerAlertService.baseUrl
+                      : (isFa ? 'تنظیم نشده (حالت دریافت مستقیم و محلی فعال است)' : 'Not configured (Local direct mode active)'),
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontFamily: 'monospace',
+                    fontWeight: FontWeight.w600,
+                    color: ServerAlertService.baseUrl.isNotEmpty ? theme.colorScheme.onSurface : theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                  ),
                 ),
               ),
             ],
