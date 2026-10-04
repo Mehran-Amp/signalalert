@@ -353,7 +353,7 @@ async def check_alerts_job():
                 print(f"🔔 [ALERT TRIGGERED & FCM PUSH SENT] {alert.symbol} @ {current_price} (Target: {alert.target_price})")
                 
                 # Show custom note if provided; otherwise show exchange / market source name
-                note_or_source = f"📝 {alert.note.strip()}" if (alert.note and alert.note.strip()) else f"🏛️ منبع: {get_exchange_display_name(alert.exchange)}"
+                note_or_source = f"📝 {alert.note.strip()}" if (alert.note and alert.note.strip()) else f"🏛️ {get_exchange_display_name(alert.exchange)}"
                 
                 send_fcm_notification(
                     fcm_token=alert.fcm_token,

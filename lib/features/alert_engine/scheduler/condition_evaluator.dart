@@ -92,7 +92,7 @@ abstract class ConditionEvaluator {
       return '📝 $customNote';
     }
     final exName = getFormattedExchangeName(rule.exchangeId);
-    return '🏛️ منبع: $exName';
+    return '🏛️ $exName';
   }
 
   /// 1. Price Threshold (One-shot or Both Way Channel):
