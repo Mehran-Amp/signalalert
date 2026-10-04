@@ -461,6 +461,9 @@ async def inspect_market_source(exchange: str, symbol: str):
     start_time = time.time()
     ex = exchange.lower()
     sym = symbol.upper().replace('/', '').replace(' ', '')
+    crypto_sym = sym
+    if not crypto_sym.endswith('USDT') and not crypto_sym.endswith('BUSD') and not crypto_sym.endswith('BTC') and not crypto_sym.endswith('USDC'):
+        crypto_sym = crypto_sym + 'USDT'
     traces = []
     final_price = None
 
