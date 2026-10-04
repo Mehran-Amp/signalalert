@@ -107,6 +107,17 @@ class ServerAlertService {
     return false;
   }
 
+  /// Completely purge all alerts stored on the Python server
+  static Future<bool> purgeAllServerAlerts() async {
+    try {
+      final url = Uri.parse('$_baseUrl/api/alerts');
+      final response = await http.delete(url).timeout(const Duration(seconds: 5));
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Helper method to convert (unitValue, CheckUnit) into total seconds
   static int calculateIntervalInSeconds(int unitValue, CheckUnit unit) {
     final val = unitValue <= 0 ? 10 : unitValue;

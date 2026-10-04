@@ -522,8 +522,11 @@ def sync_user_alerts(payload: dict):
     fcm_token = payload.get('fcm_token', '')
     alerts_data = payload.get('alerts', [])
     
-    # Remove old alerts for this user
-    ALERTS_DB = [a for a in ALERTS_DB if a.user_id != user_id]
+    # Remove old alerts for this user or matching this device FCM token
+    if fcm_token and len(fcm_token) > 10:
+        ALERTS_DB = [a for a in ALERTS_DB if (a.user_id != user_id and a.fcm_token != fcm_token)]
+    else:
+        ALERTS_DB = [a for a in ALERTS_DB if a.user_id != user_id]
     
     added_count = 0
     for item in alerts_data:
@@ -548,8 +551,22 @@ def sync_user_alerts(payload: dict):
         added_count += 1
         
     save_alerts_to_disk(ALERTS_DB)
-    print(f"🔄 [API] Bulk Synced {added_count} alert(s) for user {user_id} with FCM token: {fcm_token[:20] if fcm_token else 'none'}...")
+    print(f"🔄 [API] Bulk Synced {added_count} alert(s) for user {user_id} with FCM token: {fcm_token[:20] if fcm_token else 'none'}... (Total active remaining: {len([a for a in ALERTS_DB if a.is_active])})")
     return {"status": "synced", "count": added_count, "total_active": len([a for a in ALERTS_DB if a.is_active])}
+
+@app.delete("/api/alerts")
+@app.delete("/alerts")
+def clear_all_alerts(user_id: Optional[str] = None, fcm_token: Optional[str] = None):
+    global ALERTS_DB
+    if fcm_token:
+        ALERTS_DB = [a for a in ALERTS_DB if a.fcm_token != fcm_token]
+    elif user_id:
+        ALERTS_DB = [a for a in ALERTS_DB if a.user_id != user_id]
+    else:
+        ALERTS_DB = []
+    save_alerts_to_disk(ALERTS_DB)
+    print("🧹 [API] All alerts successfully purged from server.")
+    return {"status": "cleared", "total_alerts": len(ALERTS_DB)}
 
 @app.get("/api/alerts/{user_id}", response_model=List[Alert])
 @app.get("/alerts/{user_id}", response_model=List[Alert])
