@@ -23,6 +23,10 @@ class JsonAlertRuleRepository {
   /// Read-only snapshot of current in-memory rules
   List<AlertRule> get allRules => List.unmodifiable(_rules);
 
+  /// Read-only snapshot of active in-memory rules
+  List<AlertRule> get activeRules =>
+      List.unmodifiable(_rules.where((r) => r.isActive));
+
   /// Loads all rules from JSON file into memory.
   /// If the file is missing or corrupted, starts with an empty list without crashing.
   Future<void> load() async {

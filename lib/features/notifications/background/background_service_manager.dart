@@ -122,16 +122,13 @@ class BackgroundServiceManager {
         settingsService: settingsService,
       );
 
-      // Background periodic loop checking prices every 5s even when app is closed!
-      Timer.periodic(const Duration(seconds: 5), (timer) async {
+      // Start SchedulerService 24/7 internal engine
+      schedulerService.start();
+
+      // Periodically reload rules in case user edited them or syncer updated alerts.json
+      Timer.periodic(const Duration(seconds: 10), (timer) async {
         try {
           await alertRuleRepository.load();
-          final rules = alertRuleRepository.allRules.where((r) => r.isActive).toList();
-          if (rules.isNotEmpty) {
-            for (final rule in rules) {
-              await schedulerService.checkRuleNow(rule);
-            }
-          }
         } catch (_) {}
       });
     } catch (_) {}
