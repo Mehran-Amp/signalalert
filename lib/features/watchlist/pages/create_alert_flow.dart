@@ -446,18 +446,24 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
         ? _customNoteController.text.trim()
         : null;
 
-    // Calculate real effective target price for server (never send 0.0 for percent change rules)
+    // Ensure live current price is available for percentage calculation
+    var liveBasePrice = _currentPrice;
+    if (liveBasePrice == null || liveBasePrice <= 0) {
+      liveBasePrice = await ServerAlertService.fetchPriceViaServer(exchangeId, pair.marketSymbol);
+    }
+
+    // Calculate real effective target price for server (never send 0.0 or 1.0 fallback for percent change rules)
     double effectiveTargetPrice;
     if (_conditionType == AlertConditionType.percentChange) {
       final p = percent ?? 2.5;
-      final baseP = _currentPrice ?? 1.0;
+      final baseP = (liveBasePrice != null && liveBasePrice > 0) ? liveBasePrice : 1.0;
       if (_direction == AlertDirection.below) {
         effectiveTargetPrice = baseP * (1.0 - (p / 100.0));
       } else {
         effectiveTargetPrice = baseP * (1.0 + (p / 100.0));
       }
     } else {
-      effectiveTargetPrice = targetPrice ?? upperTargetPrice ?? lowerTargetPrice ?? _currentPrice ?? 0.0;
+      effectiveTargetPrice = targetPrice ?? upperTargetPrice ?? lowerTargetPrice ?? liveBasePrice ?? 0.0;
     }
 
     if (widget.initialRule != null) {

@@ -175,9 +175,9 @@ async def fetch_price_async(client: httpx.AsyncClient, exchange: str, symbol: st
             except Exception:
                 pass
 
-        # 3. GLOBAL CRYPTO (Binance, MEXC, KuCoin, Gate.io, OKX, Bybit)
+        # 3. GLOBAL CRYPTO (Binance, MEXC, KuCoin, Gate.io, OKX, CoinEx, etc.)
         crypto_sym = sym
-        if not crypto_sym.endswith('USDT') and not crypto_sym.endswith('BUSD') and not crypto_sym.endswith('BTC'):
+        if not crypto_sym.endswith('USDT') and not crypto_sym.endswith('BUSD') and not crypto_sym.endswith('BTC') and not crypto_sym.endswith('USDC'):
             crypto_sym = crypto_sym + 'USDT'
 
         # Try Binance
@@ -198,6 +198,39 @@ async def fetch_price_async(client: httpx.AsyncClient, exchange: str, symbol: st
         except Exception:
             pass
 
+        # Try KuCoin
+        try:
+            url = f"https://api.kucoin.com/api/v1/market/orderbook/level1?symbol={crypto_sym[:-4]}-USDT"
+            res = await client.get(url, timeout=4.0)
+            if res.status_code == 200:
+                data = res.json()
+                if 'data' in data and 'price' in data['data']:
+                    return float(data['data']['price'])
+        except Exception:
+            pass
+
+        # Try Gate.io
+        try:
+            url = f"https://api.gateio.ws/api/v4/spot/tickers?currency_pair={crypto_sym[:-4]}_USDT"
+            res = await client.get(url, timeout=4.0)
+            if res.status_code == 200:
+                data = res.json()
+                if data and len(data) > 0 and 'last' in data[0]:
+                    return float(data[0]['last'])
+        except Exception:
+            pass
+
+        # Try CoinEx
+        try:
+            url = f"https://api.coinex.com/v1/market/ticker?market={crypto_sym}"
+            res = await client.get(url, timeout=4.0)
+            if res.status_code == 200:
+                data = res.json()
+                if 'data' in data and 'ticker' in data['data'] and 'last' in data['data']['ticker']:
+                    return float(data['data']['ticker']['last'])
+        except Exception:
+            pass
+
     except Exception as e:
         print(f"⚠️ [Worker] Unable to resolve price for {symbol} on {exchange} ({e})")
 
@@ -208,6 +241,9 @@ async def fetch_price_async(client: httpx.AsyncClient, exchange: str, symbol: st
 # -------------------------------------------------------------------
 def send_fcm_notification(fcm_token: str, title: str, body: str, data_payload: dict = None):
     if not firebase_admin._apps:
+        return False
+    if not fcm_token or 'sample' in fcm_token.lower() or 'pending' in fcm_token.lower() or fcm_token.startswith('device_token_'):
+        print(f"⚠️ [FCM] Waiting for real device token from mobile app (Current token: {fcm_token})")
         return False
     try:
         message = messaging.Message(
@@ -316,6 +352,7 @@ def read_root():
     }
 
 @app.post("/api/alerts", response_model=Alert)
+@app.post("/alerts", response_model=Alert)
 def create_alert(alert_in: AlertCreate):
     new_alert = Alert(
         id=str(uuid.uuid4()),
@@ -338,12 +375,14 @@ def create_alert(alert_in: AlertCreate):
     return new_alert
 
 @app.get("/api/alerts/{user_id}", response_model=List[Alert])
+@app.get("/alerts/{user_id}", response_model=List[Alert])
 def get_user_alerts(user_id: str):
     user_alerts = [a for a in ALERTS_DB if a.user_id == user_id]
     print(f"📖 [API] Fetching alerts for user {user_id}: {len(user_alerts)} alert(s) found.")
     return user_alerts
 
 @app.delete("/api/alerts/{alert_id}")
+@app.delete("/alerts/{alert_id}")
 def delete_alert(alert_id: str):
     global ALERTS_DB
     ALERTS_DB = [a for a in ALERTS_DB if a.id != alert_id]
@@ -352,6 +391,7 @@ def delete_alert(alert_id: str):
     return {"status": "deleted", "id": alert_id}
 
 @app.get("/api/price/{exchange}/{symbol}")
+@app.get("/price/{exchange}/{symbol}")
 async def get_live_price(exchange: str, symbol: str):
     async with httpx.AsyncClient() as client:
         price = await fetch_price_async(client, exchange, symbol)
