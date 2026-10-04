@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import '../models/alert_rule.dart';
 import '../../../core/services/native_widget_sync_service.dart';
+import '../../../core/services/server_alert_service.dart';
 
 /// Local-First JSON File-based Repository for managing alert rules.
 /// Stores rules in `<app_documents_dir>/alerts.json` with in-memory caching and atomic writes.
@@ -249,6 +250,7 @@ class JsonAlertRuleRepository {
       _rulesStreamController.add(List.unmodifiable(_rules));
     }
     NativeWidgetSyncService.syncAlerts(_rules);
+    ServerAlertService.syncAllRulesToServer(_rules);
   }
 
   /// Asynchronous atomic write: writes to alerts.json.tmp, then renames to alerts.json

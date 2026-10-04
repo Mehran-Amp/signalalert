@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import '../../features/alert_engine/models/alert_rule.dart';
 import '../../features/watchlist/pages/create_alert_flow.dart' show CheckUnit;
 import 'fcm_notification_service.dart';
 
@@ -16,6 +17,53 @@ class ServerAlertService {
       _baseUrl = url.endsWith('/') ? url.substring(0, url.length - 1) : url;
       debugPrint('🌐 ServerAlertService Base URL updated to: $_baseUrl');
     }
+  }
+
+  /// Bulk sync all local alert rules to Python server with real FCM Token
+  static Future<bool> syncAllRulesToServer(List<AlertRule> rules, {String userId = 'user_default'}) async {
+    try {
+      final fcmToken = await FCMNotificationService.getFCMToken();
+      final activeRules = rules.where((r) => r.isActive).toList();
+      
+      final alertsPayload = activeRules.map((rule) {
+        final effectiveTarget = rule.targetPrice ?? rule.upperTargetPrice ?? rule.lowerTargetPrice ?? 0.0;
+        final conditionStr = (rule.direction == AlertDirection.below) ? 'BELOW' : 'ABOVE';
+        return {
+          'id': rule.uuid,
+          'exchange': rule.exchangeId.toLowerCase(),
+          'symbol': rule.marketSymbol.toUpperCase(),
+          'target_price': effectiveTarget,
+          'condition': conditionStr,
+          'check_interval_seconds': rule.checkIntervalSeconds,
+          'note': rule.customNote ?? rule.upperNote ?? rule.lowerNote,
+          'is_active': rule.isActive,
+          'fcm_token': fcmToken,
+        };
+      }).toList();
+
+      final url = Uri.parse('$_baseUrl/api/alerts/sync');
+      final payload = {
+        'user_id': userId,
+        'fcm_token': fcmToken,
+        'alerts': alertsPayload,
+      };
+
+      debugPrint('📤 Bulk syncing ${alertsPayload.length} alert(s) to server with FCM Token: ${fcmToken.substring(0, fcmToken.length > 20 ? 20 : fcmToken.length)}...');
+
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(payload),
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        debugPrint('✅ All alerts successfully synced to Python server for 24/7 background FCM monitoring!');
+        return true;
+      }
+    } catch (e) {
+      debugPrint('⚠️ Error bulk syncing alerts to server: $e');
+    }
+    return false;
   }
 
   /// Get current base URL

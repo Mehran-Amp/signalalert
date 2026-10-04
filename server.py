@@ -418,10 +418,6 @@ async def check_alerts_job():
         if current_price is None:
             continue
 
-        # Ignore corrupted/legacy test rules saved previously with invalid target price
-        if current_price > 100.0 and alert.target_price < (current_price / 10.0):
-            continue
-
         triggered = False
         if alert.condition == 'ABOVE' and current_price >= alert.target_price:
             triggered = True
@@ -505,6 +501,42 @@ def create_alert(alert_in: AlertCreate):
     save_alerts_to_disk(ALERTS_DB)
     print(f"📩 [API] New Alert Created: {new_alert.symbol} ({new_alert.exchange}) | Target: {new_alert.target_price} | Interval: {new_alert.check_interval_seconds}s")
     return new_alert
+
+@app.post("/api/alerts/sync")
+@app.post("/alerts/sync")
+def sync_user_alerts(payload: dict):
+    global ALERTS_DB
+    user_id = payload.get('user_id', 'user_default')
+    fcm_token = payload.get('fcm_token', '')
+    alerts_data = payload.get('alerts', [])
+    
+    # Remove old alerts for this user
+    ALERTS_DB = [a for a in ALERTS_DB if a.user_id != user_id]
+    
+    added_count = 0
+    for item in alerts_data:
+        rule_id = item.get('id') or str(uuid.uuid4())
+        alert_obj = Alert(
+            id=rule_id,
+            user_id=user_id,
+            exchange=item.get('exchange', 'nobitex').lower(),
+            symbol=item.get('symbol', 'USDTIRT').upper(),
+            target_price=float(item.get('target_price', 0.0)),
+            condition=item.get('condition', 'ABOVE').upper(),
+            fcm_token=item.get('fcm_token') or fcm_token,
+            check_interval_seconds=int(item.get('check_interval_seconds', 10)),
+            note=item.get('note'),
+            is_active=bool(item.get('is_active', True)),
+            created_at=item.get('created_at') or datetime.utcnow().isoformat(),
+            last_checked_at=0.0,
+            last_triggered_at=0.0
+        )
+        ALERTS_DB.append(alert_obj)
+        added_count += 1
+        
+    save_alerts_to_disk(ALERTS_DB)
+    print(f"🔄 [API] Bulk Synced {added_count} alert(s) for user {user_id} with FCM token: {fcm_token[:20] if fcm_token else 'none'}...")
+    return {"status": "synced", "count": added_count, "total_active": len([a for a in ALERTS_DB if a.is_active])}
 
 @app.get("/api/alerts/{user_id}", response_model=List[Alert])
 @app.get("/alerts/{user_id}", response_model=List[Alert])

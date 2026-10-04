@@ -49,6 +49,13 @@ class _AppShellState extends State<AppShell> {
   }
 
   Future<void> _handlePop() async {
+    // 0. If a modal, dialog, or pushed subpage is open in Navigator, pop it first!
+    final nav = Navigator.maybeOf(context);
+    if (nav != null && nav.canPop()) {
+      nav.pop();
+      return;
+    }
+
     // 1. If we have previous tabs in history, go back step-by-step
     if (_tabHistory.length > 1) {
       setState(() {

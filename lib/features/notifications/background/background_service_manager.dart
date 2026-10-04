@@ -5,6 +5,7 @@ import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../../../core/services/fcm_notification_service.dart';
 import '../../alert_engine/repositories/json_alert_rule_repository.dart';
 import '../../alert_engine/scheduler/scheduler_service.dart';
 import '../../exchanges/registry/exchange_catalog.dart';
@@ -49,6 +50,7 @@ class BackgroundServiceManager {
         androidConfiguration: AndroidConfiguration(
           onStart: onBackgroundServiceStart,
           autoStart: true,
+          autoStartOnBoot: true,
           isForegroundMode: true,
           notificationChannelId: notificationChannelId,
           initialNotificationTitle: 'SignalAlert',
@@ -109,6 +111,9 @@ class BackgroundServiceManager {
       final settingsService = SettingsService(dir.path);
       await settingsService.load();
 
+      // Initialize FCM in background isolate so FCM listener and tokens are active from boot!
+      await FCMNotificationService.initialize(storageDirectoryPath: dir.path);
+
       final exchangeRegistry = ExchangeRegistry();
       for (final ex in ExchangeCatalog.buildAllExchanges()) {
         exchangeRegistry.register(ex);
@@ -138,3 +143,4 @@ class BackgroundServiceManager {
     });
   }
 }
+

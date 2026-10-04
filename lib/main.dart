@@ -7,6 +7,7 @@ import 'app/navigation/app_shell.dart';
 import 'core/localization/app_strings.dart';
 import 'core/services/fcm_notification_service.dart';
 import 'core/services/native_widget_sync_service.dart';
+import 'core/services/server_alert_service.dart';
 import 'features/alert_engine/bloc/alert_rules_bloc.dart';
 import 'features/alert_engine/bloc/alert_rules_event.dart';
 import 'features/alert_engine/repositories/json_alert_rule_repository.dart';
@@ -39,6 +40,9 @@ void main() async {
   final settingsService = SettingsService(dir.path);
   await settingsService.load();
   await FCMNotificationService.initialize(storageDirectoryPath: dir.path);
+
+  // Sync all active alert rules to Python server for 24/7 background FCM monitoring
+  ServerAlertService.syncAllRulesToServer(alertRuleRepository.allRules);
 
   // Sync initial widget state with loaded alerts and active theme
   await NativeWidgetSyncService.syncAlerts(
