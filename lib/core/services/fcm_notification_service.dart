@@ -186,11 +186,28 @@ class FCMNotificationService {
     }
   }
 
-  /// Get current Device / FCM Token
+  /// Get current Device / FCM Token (attempts upgrade to real Google FCM token if currently on dev fallback)
   static Future<String> getFCMToken() async {
+    if (_cachedToken != null && _cachedToken!.isNotEmpty && !_cachedToken!.startsWith('dev_')) {
+      return _cachedToken!;
+    }
+
+    try {
+      if (_firebaseInitialized) {
+        final token = await FirebaseMessaging.instance.getToken().timeout(const Duration(seconds: 4));
+        if (token != null && token.isNotEmpty) {
+          _cachedToken = token;
+          await _saveTokenToDisk(token);
+          debugPrint('🔑 Upgraded to Real Google FCM Token: $_cachedToken');
+          return token;
+        }
+      }
+    } catch (_) {}
+
     if (_cachedToken != null && _cachedToken!.isNotEmpty) {
       return _cachedToken!;
     }
+
     await initialize();
     return _cachedToken ?? 'dev_${DateTime.now().millisecondsSinceEpoch}';
   }

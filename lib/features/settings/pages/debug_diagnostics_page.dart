@@ -920,6 +920,22 @@ $jsonStr
                   Row(
                     children: [
                       IconButton(
+                        icon: const Icon(Icons.refresh_rounded, size: 18),
+                        tooltip: isFa ? 'دریافت مجدد توکن از گوگل' : 'Refresh Google Token',
+                        onPressed: () async {
+                          final tok = await FCMNotificationService.getFCMToken();
+                          setState(() => _currentFcmToken = tok);
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(tok.startsWith('dev_') ? (isFa ? 'توکن محلی (آفلاین)' : 'Local Token') : (isFa ? 'توکن رسمی گوگل دریافت شد!' : 'Real Google FCM Token fetched!')),
+                                duration: const Duration(seconds: 2),
+                              ),
+                            );
+                          }
+                        },
+                      ),
+                      IconButton(
                         icon: const Icon(Icons.edit_rounded, size: 18),
                         tooltip: isFa ? 'ویرایش توکن' : 'Edit Token',
                         onPressed: () => _showEditTokenDialog(context, lang, isFa),
