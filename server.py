@@ -104,49 +104,89 @@ async def fetch_price_async(client: httpx.AsyncClient, exchange: str, symbol: st
     sym = symbol.upper().replace('/', '').replace(' ', '')
 
     try:
-        # 1. IRANIAN EXCHANGES (Nobitex, Wallex, Tabdeal, Ramzinex, Tetherland, etc.)
-        if ex in ['nobitex', 'wallex', 'tabdeal', 'ramzinex', 'tetherland', 'abantether', 'bitbarg', 'sarmayex', 'exir']:
-            # Normalize symbol for Iranian APIs (e.g. USDTTMN -> USDTIRT or usdt-rls)
+        # 1. IRANIAN EXCHANGES (Tabdeal, Nobitex, Wallex, Bitpin, Tetherland, Ramzinex, AbanTether, etc.)
+        if ex in ['tabdeal', 'nobitex', 'wallex', 'bitpin', 'tetherland', 'abantether', 'ramzinex', 'bitbarg', 'sarmayex', 'exir'] or sym.endswith('TMN') or sym.endswith('IRT') or sym.endswith('RLS'):
+            # Normalize symbol for Iranian APIs (e.g. USDTTMN -> USDTIRT / USDT_IRT / USDT_TMN)
             nobitex_sym = sym
-            if sym in ['USDTTMN', 'USDTIRT', 'USDT']:
+            if sym in ['USDTTMN', 'USDTIRT', 'USDT', 'USDT-TMN', 'USDT-IRT']:
                 nobitex_sym = 'USDTIRT'
             elif sym.endswith('TMN'):
                 nobitex_sym = sym[:-3] + 'IRT'
             elif sym.endswith('IRT'):
                 nobitex_sym = sym
 
-            # Try Nobitex Orderbook
+            # 1a. Tabdeal API (Primary for Tabdeal exchange or USDT/TMN)
             try:
-                url = f"https://api.nobitex.ir/v2/orderbook/{nobitex_sym}"
-                res = await client.get(url, timeout=5.0, headers={'User-Agent': 'Mozilla/5.0'})
+                url_tabdeal = "https://api.tabdeal.org/r/plots/market/information"
+                res = await client.get(url_tabdeal, timeout=4.0, headers={'User-Agent': 'Mozilla/5.0'})
                 if res.status_code == 200:
                     data = res.json()
-                    if 'bids' in data and len(data['bids']) > 0:
-                        return float(data['bids'][0][0])
+                    # Tabdeal format: {"USDT_IRT": {"price": "...", ...}}
+                    for t_key, t_val in data.items():
+                        clean_t = t_key.upper().replace('_', '').replace('-', '')
+                        if clean_t in [sym, nobitex_sym, 'USDTTMN', 'USDTIRT']:
+                            if isinstance(t_val, dict) and 'price' in t_val:
+                                return float(t_val['price'])
+                            elif isinstance(t_val, dict) and 'last_price' in t_val:
+                                return float(t_val['last_price'])
             except Exception:
                 pass
 
-            # Try Nobitex Market Stats
+            # 1b. Nobitex Orderbook (Try .net first for international DNS, then .ir)
+            for domain in ['api.nobitex.net', 'api.nobitex.ir']:
+                try:
+                    url = f"https://{domain}/v2/orderbook/{nobitex_sym}"
+                    res = await client.get(url, timeout=4.0, headers={'User-Agent': 'Mozilla/5.0'})
+                    if res.status_code == 200:
+                        data = res.json()
+                        if 'bids' in data and len(data['bids']) > 0:
+                            return float(data['bids'][0][0])
+                except Exception:
+                    continue
+
+            # 1c. Nobitex Market Stats (.net then .ir)
+            for domain in ['api.nobitex.net', 'api.nobitex.ir']:
+                try:
+                    url = f"https://{domain}/market/stats"
+                    res = await client.get(url, timeout=4.0, headers={'User-Agent': 'Mozilla/5.0'})
+                    if res.status_code == 200:
+                        data = res.json()
+                        if 'stats' in data:
+                            stats = data['stats']
+                            for k, v in stats.items():
+                                clean_k = k.upper().replace('-', '').replace('RLS', 'TMN').replace('IRT', 'TMN')
+                                if clean_k == sym or k.upper().replace('-', '') == nobitex_sym:
+                                    if 'latestPrice' in v:
+                                        val = float(v['latestPrice'])
+                                        return val / 10.0 if k.endswith('-rls') else val
+                except Exception:
+                    continue
+
+            # 1d. Bitpin API (High availability across global networks)
             try:
-                url = "https://api.nobitex.ir/market/stats"
-                res = await client.get(url, timeout=5.0, headers={'User-Agent': 'Mozilla/5.0'})
-                if res.status_code == 200:
-                    data = res.json()
-                    if 'stats' in data:
-                        stats = data['stats']
-                        for k, v in stats.items():
-                            clean_k = k.upper().replace('-', '').replace('RLS', 'TMN').replace('IRT', 'TMN')
-                            if clean_k == sym or k.upper().replace('-', '') == nobitex_sym:
-                                if 'latestPrice' in v:
-                                    val = float(v['latestPrice'])
-                                    return val / 10.0 if k.endswith('-rls') else val
+                for b_domain in ['api.bitpin.org', 'api.bitpin.ir']:
+                    try:
+                        url_bitpin = f"https://{b_domain}/v1/mkt/markets/"
+                        res = await client.get(url_bitpin, timeout=4.0, headers={'User-Agent': 'Mozilla/5.0'})
+                        if res.status_code == 200:
+                            b_data = res.json()
+                            results = b_data.get('results', [])
+                            for m in results:
+                                code = m.get('code', '').upper().replace('_', '').replace('-', '')
+                                if code in [sym, nobitex_sym, 'USDTIRT', 'USDTTMN']:
+                                    p = m.get('price')
+                                    if p:
+                                        return float(p)
+                            break
+                    except Exception:
+                        continue
             except Exception:
                 pass
 
-            # Try Wallex API fallback
+            # 1e. Wallex API
             try:
                 url = "https://api.wallex.ir/v1/markets"
-                res = await client.get(url, timeout=5.0, headers={'User-Agent': 'Mozilla/5.0'})
+                res = await client.get(url, timeout=4.0, headers={'User-Agent': 'Mozilla/5.0'})
                 if res.status_code == 200:
                     data = res.json()
                     if 'result' in data and 'symbols' in data['result']:
@@ -156,6 +196,21 @@ async def fetch_price_async(client: httpx.AsyncClient, exchange: str, symbol: st
                                 return float(s_data['stats']['lastPrice'])
             except Exception:
                 pass
+
+            # 1f. Tetherland API (Direct Tether / Toman rate)
+            if sym in ['USDTTMN', 'USDTIRT', 'USDT']:
+                try:
+                    url_tetherland = "https://api.tetherland.com/currencies"
+                    res = await client.get(url_tetherland, timeout=4.0, headers={'User-Agent': 'Mozilla/5.0'})
+                    if res.status_code == 200:
+                        t_data = res.json()
+                        if 'data' in t_data and 'currencies' in t_data['data'] and 'USDT' in t_data['data']['currencies']:
+                            usdt_info = t_data['data']['currencies']['USDT']
+                            price = usdt_info.get('price') or usdt_info.get('last_price')
+                            if price:
+                                return float(price)
+                except Exception:
+                    pass
 
         # 2. GLOBAL MACRO / FOREX / US BONDS / STOCKS (e.g. DX-Y.NYB, US10Y, EUR/USD, NVDA, GOLD)
         elif ex in ['global_stocks', 'stocks', 'macro', 'forex', 'bonds', 'wallstreet'] or '-' in sym or 'NYB' in sym or '10Y' in sym:
@@ -385,7 +440,14 @@ async def check_alerts_job():
                     fcm_token=alert.fcm_token,
                     title=f"🚨 هشدار قیمت {alert.symbol}",
                     body=f"قیمت {alert.symbol} به {current_price:,.2f} رسید!\n{note_or_source}",
-                    data_payload={"alert_id": alert.id, "symbol": alert.symbol, "price": str(current_price)}
+                    data_payload={
+                        "alert_id": alert.id,
+                        "symbol": alert.symbol,
+                        "price": str(current_price),
+                        "note": alert.note or "",
+                        "sound": "alarm_siren",
+                        "tts": "true"
+                    }
                 )
                 alert.last_triggered_at = current_time
                 alert.is_active = True # Keep active for 24/7 background monitoring
@@ -494,56 +556,88 @@ async def inspect_market_source(exchange: str, symbol: str):
     final_price = None
 
     async with httpx.AsyncClient() as client:
-        # Test 1: Nobitex Orderbook (for Iranian symbols)
-        if ex in ['nobitex', 'wallex', 'tabdeal', 'ramzinex', 'tetherland', 'abantether', 'bitbarg', 'sarmayex', 'exir']:
+        # Test 1: Iranian Exchanges (Tabdeal, Nobitex, Bitpin, Wallex)
+        if ex in ['tabdeal', 'nobitex', 'wallex', 'bitpin', 'tetherland', 'abantether', 'ramzinex', 'bitbarg', 'sarmayex', 'exir'] or sym.endswith('TMN') or sym.endswith('IRT') or sym.endswith('RLS'):
             nobitex_sym = sym
-            if sym in ['USDTTMN', 'USDTIRT', 'USDT']:
+            if sym in ['USDTTMN', 'USDTIRT', 'USDT', 'USDT-TMN', 'USDT-IRT']:
                 nobitex_sym = 'USDTIRT'
             elif sym.endswith('TMN'):
                 nobitex_sym = sym[:-3] + 'IRT'
+            elif sym.endswith('IRT'):
+                nobitex_sym = sym
 
-            url = f"https://api.nobitex.ir/v2/orderbook/{nobitex_sym}"
+            # Trace 1a: Tabdeal API
+            url_tabdeal = "https://api.tabdeal.org/r/plots/market/information"
             t0 = time.time()
             try:
-                res = await client.get(url, timeout=5.0, headers={'User-Agent': 'Mozilla/5.0'})
+                res = await client.get(url_tabdeal, timeout=4.0, headers={'User-Agent': 'Mozilla/5.0'})
                 latency = round((time.time() - t0) * 1000, 2)
                 if res.status_code == 200:
                     data = res.json()
-                    if 'bids' in data and len(data['bids']) > 0:
-                        p = float(data['bids'][0][0])
-                        traces.append({'source': 'Nobitex Orderbook', 'url': url, 'status_code': 200, 'latency_ms': latency, 'parsed_price': p, 'success': True})
-                        if not final_price: final_price = p
+                    p_tabdeal = None
+                    for t_key, t_val in data.items():
+                        clean_t = t_key.upper().replace('_', '').replace('-', '')
+                        if clean_t in [sym, nobitex_sym, 'USDTTMN', 'USDTIRT']:
+                            if isinstance(t_val, dict) and 'price' in t_val:
+                                p_tabdeal = float(t_val['price'])
+                            elif isinstance(t_val, dict) and 'last_price' in t_val:
+                                p_tabdeal = float(t_val['last_price'])
+                            if p_tabdeal: break
+                    if p_tabdeal:
+                        traces.append({'source': 'Tabdeal Spot API', 'url': url_tabdeal, 'status_code': 200, 'latency_ms': latency, 'parsed_price': p_tabdeal, 'success': True})
+                        if not final_price: final_price = p_tabdeal
                     else:
-                        traces.append({'source': 'Nobitex Orderbook', 'url': url, 'status_code': 200, 'latency_ms': latency, 'error': 'No bids array in JSON', 'success': False})
+                        traces.append({'source': 'Tabdeal Spot API', 'url': url_tabdeal, 'status_code': 200, 'latency_ms': latency, 'error': f'Symbol {sym} not found in Tabdeal', 'success': False})
                 else:
-                    traces.append({'source': 'Nobitex Orderbook', 'url': url, 'status_code': res.status_code, 'latency_ms': latency, 'error': f'HTTP {res.status_code}', 'success': False})
+                    traces.append({'source': 'Tabdeal Spot API', 'url': url_tabdeal, 'status_code': res.status_code, 'latency_ms': latency, 'error': f'HTTP {res.status_code}', 'success': False})
             except Exception as e:
-                traces.append({'source': 'Nobitex Orderbook', 'url': url, 'status_code': 0, 'latency_ms': round((time.time() - t0) * 1000, 2), 'error': str(e), 'success': False})
+                traces.append({'source': 'Tabdeal Spot API', 'url': url_tabdeal, 'status_code': 0, 'latency_ms': round((time.time() - t0) * 1000, 2), 'error': str(e), 'success': False})
+
+            # Trace 1b: Nobitex Orderbook (Try .net and .ir)
+            for domain, label in [('api.nobitex.net', 'Nobitex Global Net'), ('api.nobitex.ir', 'Nobitex Local IR')]:
+                url = f"https://{domain}/v2/orderbook/{nobitex_sym}"
+                t0 = time.time()
+                try:
+                    res = await client.get(url, timeout=4.0, headers={'User-Agent': 'Mozilla/5.0'})
+                    latency = round((time.time() - t0) * 1000, 2)
+                    if res.status_code == 200:
+                        data = res.json()
+                        if 'bids' in data and len(data['bids']) > 0:
+                            p = float(data['bids'][0][0])
+                            traces.append({'source': f'{label} Orderbook', 'url': url, 'status_code': 200, 'latency_ms': latency, 'parsed_price': p, 'success': True})
+                            if not final_price: final_price = p
+                        else:
+                            traces.append({'source': f'{label} Orderbook', 'url': url, 'status_code': 200, 'latency_ms': latency, 'error': 'No bids array in JSON', 'success': False})
+                    else:
+                        traces.append({'source': f'{label} Orderbook', 'url': url, 'status_code': res.status_code, 'latency_ms': latency, 'error': f'HTTP {res.status_code}', 'success': False})
+                except Exception as e:
+                    traces.append({'source': f'{label} Orderbook', 'url': url, 'status_code': 0, 'latency_ms': round((time.time() - t0) * 1000, 2), 'error': str(e), 'success': False})
 
             # Test 1b: Nobitex Market Stats
-            url_stats = "https://api.nobitex.ir/market/stats"
+            # Trace 1c: Bitpin API
+            url_bitpin = "https://api.bitpin.org/v1/mkt/markets/"
             t0 = time.time()
             try:
-                res = await client.get(url_stats, timeout=5.0, headers={'User-Agent': 'Mozilla/5.0'})
+                res = await client.get(url_bitpin, timeout=4.0, headers={'User-Agent': 'Mozilla/5.0'})
                 latency = round((time.time() - t0) * 1000, 2)
                 if res.status_code == 200:
-                    data = res.json()
-                    found = False
-                    if 'stats' in data:
-                        for k, v in data['stats'].items():
-                            clean_k = k.upper().replace('-', '').replace('RLS', 'TMN').replace('IRT', 'TMN')
-                            if clean_k == sym or k.upper().replace('-', '') == nobitex_sym:
-                                if 'latestPrice' in v:
-                                    p = float(v['latestPrice'])
-                                    if k.endswith('-rls'): p /= 10.0
-                                    traces.append({'source': 'Nobitex Stats', 'url': url_stats, 'status_code': 200, 'latency_ms': latency, 'parsed_price': p, 'success': True})
-                                    if not final_price: final_price = p
-                                    found = True
-                                    break
-                    if not found:
-                        traces.append({'source': 'Nobitex Stats', 'url': url_stats, 'status_code': 200, 'latency_ms': latency, 'error': f'Symbol {sym} not found in stats keys', 'success': False})
+                    b_data = res.json()
+                    p_bitpin = None
+                    for m in b_data.get('results', []):
+                        code = m.get('code', '').upper().replace('_', '').replace('-', '')
+                        if code in [sym, nobitex_sym, 'USDTIRT', 'USDTTMN']:
+                            if m.get('price'):
+                                p_bitpin = float(m['price'])
+                                break
+                    if p_bitpin:
+                        traces.append({'source': 'Bitpin Markets API', 'url': url_bitpin, 'status_code': 200, 'latency_ms': latency, 'parsed_price': p_bitpin, 'success': True})
+                        if not final_price: final_price = p_bitpin
+                    else:
+                        traces.append({'source': 'Bitpin Markets API', 'url': url_bitpin, 'status_code': 200, 'latency_ms': latency, 'error': f'{sym} not found in Bitpin', 'success': False})
+                else:
+                    traces.append({'source': 'Bitpin Markets API', 'url': url_bitpin, 'status_code': res.status_code, 'latency_ms': latency, 'error': f'HTTP {res.status_code}', 'success': False})
             except Exception as e:
-                traces.append({'source': 'Nobitex Stats', 'url': url_stats, 'status_code': 0, 'latency_ms': round((time.time() - t0) * 1000, 2), 'error': str(e), 'success': False})
+                traces.append({'source': 'Bitpin Markets API', 'url': url_bitpin, 'status_code': 0, 'latency_ms': round((time.time() - t0) * 1000, 2), 'error': str(e), 'success': False})
 
             # Test 1c: Wallex API
             url_wallex = "https://api.wallex.ir/v1/markets"

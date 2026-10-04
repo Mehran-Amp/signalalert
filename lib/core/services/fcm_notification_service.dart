@@ -5,11 +5,57 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../features/notifications/services/notification_service.dart';
+import '../../features/settings/services/sound_manager.dart';
+import 'tts_service.dart';
+
+/// Top-level background message handler for FCM
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  try {
+    await Firebase.initializeApp();
+  } catch (_) {}
+
+  debugPrint('⚡ [FCM Background] Received push message: ${message.messageId}');
+  final title = message.notification?.title ?? message.data['title'] ?? '🚨 هشدار قیمت';
+  final body = message.notification?.body ?? message.data['body'] ?? 'قیمت ارز به تارگت رسید!';
+  final symbol = message.data['symbol'] ?? '';
+  final priceStr = message.data['price'] ?? '';
+  final note = message.data['note'] ?? '';
+
+  // Show local notification with max priority alarm channel
+  try {
+    final notificationService = NotificationService();
+    await notificationService.showCriticalAlert(
+      id: message.messageId.hashCode,
+      title: title,
+      body: body,
+      soundName: message.data['sound'] ?? 'alarm_siren',
+      soundEnabled: true,
+      vibrationEnabled: true,
+    );
+  } catch (e) {
+    debugPrint('⚠️ [FCM Background] Local notification error: $e');
+  }
+
+  // Vocalize speech via TTS if price/symbol is present
+  try {
+    final parsedPrice = double.tryParse(priceStr) ?? 0.0;
+    final speechText = TtsService.buildAlertSpeech(
+      symbol: symbol.isNotEmpty ? symbol : 'Price Alert',
+      price: parsedPrice,
+      customNote: note.isNotEmpty ? note : null,
+    );
+    await TtsService.instance.speak(text: speechText);
+  } catch (_) {}
+}
+
 /// FCMNotificationService handles Firebase Cloud Messaging (FCM) & Device Token management
 class FCMNotificationService {
   static String? _cachedToken;
   static String? _storageDir;
   static bool _firebaseInitialized = false;
+  static bool _handlersRegistered = false;
 
   /// Initialize Firebase Core & Firebase Messaging to fetch real Google FCM Token
   static Future<void> initialize({String? storageDirectoryPath}) async {
@@ -30,17 +76,51 @@ class FCMNotificationService {
       debugPrint('ℹ️ Firebase Core init note: $e');
     }
 
-    // 2. Try fetching real Google FCM Token if Firebase is active
-    if (_firebaseInitialized) {
+    // 2. Register Background & Foreground Listeners if Firebase is active
+    if (_firebaseInitialized && !_handlersRegistered) {
+      _handlersRegistered = true;
       try {
+        FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+
         final fcm = FirebaseMessaging.instance;
-        // Request permissions
+        // Request high-priority permissions
         await fcm.requestPermission(
           alert: true,
           badge: true,
           sound: true,
+          announcement: true,
+          criticalAlert: true,
           provisional: false,
         );
+
+        // Foreground push message listener
+        FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+          debugPrint('📩 [FCM Foreground] Push received: ${message.notification?.title}');
+          final title = message.notification?.title ?? message.data['title'] ?? '🚨 هشدار قیمت';
+          final body = message.notification?.body ?? message.data['body'] ?? '';
+          final symbol = message.data['symbol'] ?? '';
+          final priceStr = message.data['price'] ?? '';
+          final note = message.data['note'] ?? '';
+
+          // 1. Show immediate high-importance banner with custom sound
+          NotificationService().showCriticalAlert(
+            id: message.messageId.hashCode,
+            title: title,
+            body: body,
+            soundName: message.data['sound'] ?? 'alarm_siren',
+            soundEnabled: true,
+            vibrationEnabled: true,
+          );
+
+          // 2. Instant Voice Speech announcement
+          final parsedPrice = double.tryParse(priceStr) ?? 0.0;
+          final speechText = TtsService.buildAlertSpeech(
+            symbol: symbol.isNotEmpty ? symbol : 'Price Alert',
+            price: parsedPrice,
+            customNote: note.isNotEmpty ? note : null,
+          );
+          TtsService.instance.enqueueSpeech(speechText);
+        });
 
         final token = await fcm.getToken();
         if (token != null && token.isNotEmpty) {
@@ -115,5 +195,6 @@ class FCMNotificationService {
     return _cachedToken ?? 'dev_${DateTime.now().millisecondsSinceEpoch}';
   }
 }
+
 
 
