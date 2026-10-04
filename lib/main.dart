@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import 'app/navigation/app_shell.dart';
 import 'core/localization/app_strings.dart';
+import 'core/services/fcm_notification_service.dart';
 import 'core/services/native_widget_sync_service.dart';
 import 'features/alert_engine/bloc/alert_rules_bloc.dart';
 import 'features/alert_engine/bloc/alert_rules_event.dart';
@@ -37,6 +38,7 @@ void main() async {
 
   final settingsService = SettingsService(dir.path);
   await settingsService.load();
+  await FCMNotificationService.initialize(storageDirectoryPath: dir.path);
 
   // Sync initial widget state with loaded alerts and active theme
   await NativeWidgetSyncService.syncAlerts(

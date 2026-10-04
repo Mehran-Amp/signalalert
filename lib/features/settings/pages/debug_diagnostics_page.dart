@@ -6,6 +6,7 @@ import '../../../core/localization/app_strings.dart';
 import '../../../core/services/fcm_notification_service.dart';
 import '../../../core/services/server_alert_service.dart';
 import '../../../core/theme/tokens.dart';
+import '../../notifications/services/notification_service.dart';
 import '../services/settings_service.dart';
 
 /// Comprehensive Market Diagnostics & Deep Server Debugging Page
@@ -671,6 +672,79 @@ $jsonStr
     );
   }
 
+  Future<void> _triggerLocalNotificationTest(String lang) async {
+    final isFa = lang == 'fa' || lang == 'ar' || lang == 'ckb';
+    final service = NotificationService();
+    await service.showCriticalAlert(
+      title: isFa ? '🔔 هشدار تست زنده در صفحه قفل' : '🔔 Live Lock Screen Test Alert',
+      body: isFa
+          ? 'تست موفقیت‌آمیز! نوتیفیکیشن با حداکثر اولویت (MAX) و صدای اختصاصی در بالای صفحه قفل نمایش داده شد.'
+          : 'Success! Max-priority notification with custom alarm triggered on lock screen.',
+      priority: 'MAX',
+      symbol: 'BTC/USDT',
+      currentPrice: 98500.0,
+      targetPrice: 98000.0,
+      condition: 'ABOVE',
+    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(isFa ? '🚀 اعلان آزمایشی روی صفحه قفل ارسال شد!' : '🚀 Test notification sent to lock screen!'),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
+  void _showEditTokenDialog(BuildContext context, String lang, bool isFa) {
+    final controller = TextEditingController(text: _currentFcmToken ?? '');
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(isFa ? 'ویرایش یا ثبت توکن اختصاصی' : 'Edit Device / FCM Token'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              isFa
+                  ? 'می‌توانید توکن اختصاصی FCM یا شناسه دلخواه دستگاه خود را وارد کنید:'
+                  : 'Enter or paste custom FCM Token or device identifier:',
+              style: const TextStyle(fontSize: 12),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: controller,
+              maxLines: 3,
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
+              decoration: InputDecoration(
+                hintText: 'e.g. dev_xxxx or fcm_token',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(isFa ? 'انصراف' : 'Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final newTok = controller.text.trim();
+              if (newTok.isNotEmpty) {
+                await FCMNotificationService.setCustomToken(newTok);
+                setState(() => _currentFcmToken = newTok);
+              }
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
+            child: Text(isFa ? 'ذخیره' : 'Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
   // TAB 4: Live Server Push Notification Tester
   Widget _buildTestPushTab(BuildContext context, ThemeData theme, String lang, bool isFa) {
     return ListView(
@@ -691,12 +765,32 @@ $jsonStr
               Expanded(
                 child: Text(
                   isFa
-                      ? 'تست زنده دریافت نوتیفیکیشن از سرور ابری به این گوشی. با لمس دکمه زیر، سرور مستقیماً یک پوش نوتیفیکیشن با اولویت بالا به گوشی شما شلیک می‌کند.'
-                      : 'Live Push Delivery Verification. Trigger a real High-Priority FCM Push Notification from the backend directly to this phone.',
+                      ? 'تست زنده دریافت نوتیفیکیشن با حداکثر اولویت (MAX) در صفحه قفل گوشی همراه با آلارم و لرزش.'
+                      : 'Live Push Delivery Verification. Trigger Max-Priority notifications on lock screen with audio & vibration.',
                   style: const TextStyle(fontSize: 11.5, height: 1.4),
                 ),
               ),
             ],
+          ),
+        ),
+        const SizedBox(height: AppTokens.space16),
+
+        // 1-Tap Instant Local Lock-Screen Notification Test
+        SizedBox(
+          width: double.infinity,
+          height: 48,
+          child: ElevatedButton.icon(
+            onPressed: () => _triggerLocalNotificationTest(lang),
+            icon: const Icon(Icons.notifications_active_rounded, size: 20),
+            label: Text(
+              isFa ? '⚡ تست فوری اعلان و آلارم در صفحه قفل گوشی' : '⚡ Test Lock Screen Alarm (Instant Local)',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF10B981),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
           ),
         ),
         const SizedBox(height: AppTokens.space16),
@@ -716,23 +810,32 @@ $jsonStr
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    isFa ? 'توکن اختصاصی این دستگاه (FCM Token)' : 'Device FCM Push Token',
+                    isFa ? 'توکن اختصاصی این دستگاه (Device Token)' : 'Device FCM / Push Token',
                     style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
                   ),
-                  if (_currentFcmToken != null)
-                    IconButton(
-                      icon: const Icon(Icons.copy_rounded, size: 18),
-                      tooltip: isFa ? 'کپی توکن' : 'Copy Token',
-                      onPressed: () {
-                        Clipboard.setData(ClipboardData(text: _currentFcmToken!));
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(isFa ? 'توکن FCM کپی شد!' : 'FCM Token copied!'),
-                            duration: const Duration(seconds: 2),
-                          ),
-                        );
-                      },
-                    ),
+                  Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.edit_rounded, size: 18),
+                        tooltip: isFa ? 'ویرایش توکن' : 'Edit Token',
+                        onPressed: () => _showEditTokenDialog(context, lang, isFa),
+                      ),
+                      if (_currentFcmToken != null)
+                        IconButton(
+                          icon: const Icon(Icons.copy_rounded, size: 18),
+                          tooltip: isFa ? 'کپی توکن' : 'Copy Token',
+                          onPressed: () {
+                            Clipboard.setData(ClipboardData(text: _currentFcmToken!));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(isFa ? 'توکن کپی شد!' : 'Token copied!'),
+                                duration: const Duration(seconds: 2),
+                              ),
+                            );
+                          },
+                        ),
+                    ],
+                  ),
                 ],
               ),
               const SizedBox(height: 6),
@@ -743,11 +846,9 @@ $jsonStr
                   color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Text(
-                  _currentFcmToken ?? (isFa ? 'در حال دریافت توکن از سرویس گوگل...' : 'Loading FCM token...'),
-                  style: const TextStyle(fontSize: 10.5, fontFamily: 'monospace'),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+                child: SelectableText(
+                  _currentFcmToken ?? 'Loading device token...',
+                  style: const TextStyle(fontSize: 11, fontFamily: 'monospace', fontWeight: FontWeight.w600),
                 ),
               ),
             ],
@@ -755,7 +856,7 @@ $jsonStr
         ),
         const SizedBox(height: AppTokens.space16),
 
-        // Action Button: Send Test Push
+        // Action Button: Send Test Push from Server
         SizedBox(
           width: double.infinity,
           height: 48,
@@ -767,7 +868,7 @@ $jsonStr
             label: Text(
               _isSendingTestPush
                   ? (isFa ? 'در حال ارسال پیام تست از سرور...' : 'Sending Test Push from Server...')
-                  : (isFa ? '🚀 ارسال نوتیفیکیشن تست از سرور به گوشی' : '🚀 Send Live Test Push to Device'),
+                  : (isFa ? '🚀 ارسال نوتیفیکیشن تست از سرور به گوشی' : '🚀 Send Live Test Push via Server'),
               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
             ),
             style: ElevatedButton.styleFrom(
@@ -815,9 +916,9 @@ $jsonStr
                   color: Colors.black45,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const SelectableText(
-                  'python test_push.py "App is connected to server! 🚀"',
-                  style: TextStyle(fontFamily: 'monospace', fontSize: 11.5, color: Color(0xFF4ADE80)),
+                child: SelectableText(
+                  'python test_push.py "App is connected to server! 🚀" "Live Push Active" "${_currentFcmToken ?? "YOUR_TOKEN"}"',
+                  style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: Color(0xFF4ADE80)),
                 ),
               ),
             ],
