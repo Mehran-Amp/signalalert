@@ -52,6 +52,10 @@ class AlertCreate(BaseModel):
     check_interval_seconds: int = 10  # Flexible interval (seconds, converted from min/hours in app)
     note: Optional[str] = None
     trigger_mode: Optional[str] = "oneShot" # 'oneShot' | 'recurring'
+    sound_enabled: bool = True
+    vibration_enabled: bool = True
+    tts_enabled: bool = True
+    sound: Optional[str] = "alarm_siren"
 
 class Alert(AlertCreate):
     id: str
@@ -451,8 +455,10 @@ async def check_alerts_job():
                         "symbol": alert.symbol,
                         "price": str(current_price),
                         "note": alert.note or "",
-                        "sound": "alarm_siren",
-                        "tts": "true"
+                        "sound_enabled": "true" if alert.sound_enabled else "false",
+                        "vibration_enabled": "true" if alert.vibration_enabled else "false",
+                        "tts_enabled": "true" if alert.tts_enabled else "false",
+                        "sound": alert.sound or "alarm_siren"
                     }
                 )
                 alert.last_triggered_at = current_time
@@ -504,6 +510,10 @@ def create_alert(alert_in: AlertCreate):
         check_interval_seconds=alert_in.check_interval_seconds,
         note=alert_in.note,
         trigger_mode=alert_in.trigger_mode or "oneShot",
+        sound_enabled=alert_in.sound_enabled,
+        vibration_enabled=alert_in.vibration_enabled,
+        tts_enabled=alert_in.tts_enabled,
+        sound=alert_in.sound or "alarm_siren",
         is_active=True,
         created_at=datetime.utcnow().isoformat(),
         last_checked_at=0.0,
@@ -542,6 +552,10 @@ def sync_user_alerts(payload: dict):
             check_interval_seconds=int(item.get('check_interval_seconds', 10)),
             note=item.get('note'),
             trigger_mode=item.get('trigger_mode', 'oneShot'),
+            sound_enabled=bool(item.get('sound_enabled', True)),
+            vibration_enabled=bool(item.get('vibration_enabled', True)),
+            tts_enabled=bool(item.get('tts_enabled', True)),
+            sound=item.get('sound', 'alarm_siren'),
             is_active=bool(item.get('is_active', True)),
             created_at=item.get('created_at') or datetime.utcnow().isoformat(),
             last_checked_at=0.0,

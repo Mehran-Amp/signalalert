@@ -199,7 +199,7 @@ class NotificationService {
       ticker: '⚡ Price Alert Triggered',
       enableVibration: vibrationEnabled,
       vibrationPattern: vibrationPattern,
-      playSound: true,
+      playSound: soundEnabled,
       fullScreenIntent: true,
       category: AndroidNotificationCategory.alarm,
       audioAttributesUsage: AudioAttributesUsage.alarm,

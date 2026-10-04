@@ -22,6 +22,10 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   final symbol = message.data['symbol'] ?? '';
   final priceStr = message.data['price'] ?? '';
   final note = message.data['note'] ?? '';
+  final soundEnabled = message.data['sound_enabled'] != 'false';
+  final vibrationEnabled = message.data['vibration_enabled'] != 'false';
+  final ttsEnabled = message.data['tts_enabled'] != 'false';
+  final customSound = message.data['sound'] ?? 'alarm_siren';
 
   // Show local notification with max priority alarm channel
   try {
@@ -30,24 +34,26 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       id: message.messageId.hashCode,
       title: title,
       body: body,
-      soundName: message.data['sound'] ?? 'alarm_siren',
-      soundEnabled: true,
-      vibrationEnabled: true,
+      soundName: customSound,
+      soundEnabled: soundEnabled,
+      vibrationEnabled: vibrationEnabled,
     );
   } catch (e) {
     debugPrint('⚠️ [FCM Background] Local notification error: $e');
   }
 
-  // Vocalize speech via TTS if price/symbol is present
-  try {
-    final parsedPrice = double.tryParse(priceStr) ?? 0.0;
-    final speechText = TtsService.buildAlertSpeech(
-      symbol: symbol.isNotEmpty ? symbol : 'Price Alert',
-      price: parsedPrice,
-      customNote: note.isNotEmpty ? note : null,
-    );
-    await TtsService.instance.speak(text: speechText);
-  } catch (_) {}
+  // Vocalize speech via TTS if price/symbol is present and TTS is enabled
+  if (ttsEnabled) {
+    try {
+      final parsedPrice = double.tryParse(priceStr) ?? 0.0;
+      final speechText = TtsService.buildAlertSpeech(
+        symbol: symbol.isNotEmpty ? symbol : 'Price Alert',
+        price: parsedPrice,
+        customNote: note.isNotEmpty ? note : null,
+      );
+      await TtsService.instance.speak(text: speechText);
+    } catch (_) {}
+  }
 }
 
 /// FCMNotificationService handles Firebase Cloud Messaging (FCM) & Device Token management
@@ -56,6 +62,7 @@ class FCMNotificationService {
   static String? _storageDir;
   static bool _firebaseInitialized = false;
   static bool _handlersRegistered = false;
+  static final Map<String, int> _recentTriggerCache = {};
 
   /// Initialize Firebase Core & Firebase Messaging to fetch real Google FCM Token
   static Future<void> initialize({String? storageDirectoryPath}) async {
@@ -96,30 +103,47 @@ class FCMNotificationService {
         // Foreground push message listener
         FirebaseMessaging.onMessage.listen((RemoteMessage message) {
           debugPrint('📩 [FCM Foreground] Push received: ${message.notification?.title}');
-          final title = message.notification?.title ?? message.data['title'] ?? '🚨 Price Alert';
-          final body = message.notification?.body ?? message.data['body'] ?? '';
+          final alertId = message.data['alert_id'] ?? '';
           final symbol = message.data['symbol'] ?? '';
           final priceStr = message.data['price'] ?? '';
           final note = message.data['note'] ?? '';
+          final soundEnabled = message.data['sound_enabled'] != 'false';
+          final vibrationEnabled = message.data['vibration_enabled'] != 'false';
+          final ttsEnabled = message.data['tts_enabled'] != 'false';
+          final customSound = message.data['sound'] ?? 'alarm_siren';
 
-          // 1. Show immediate high-importance banner with custom sound
+          final dedupKey = alertId.isNotEmpty ? alertId : '$symbol-$priceStr';
+          final nowMs = DateTime.now().millisecondsSinceEpoch;
+          final lastTrigger = _recentTriggerCache[dedupKey] ?? 0;
+          if (nowMs - lastTrigger < 8000) {
+            debugPrint('ℹ️ [FCM Foreground] Suppressing duplicate push trigger for $dedupKey');
+            return;
+          }
+          _recentTriggerCache[dedupKey] = nowMs;
+
+          final title = message.notification?.title ?? message.data['title'] ?? '🚨 Price Alert';
+          final body = message.notification?.body ?? message.data['body'] ?? '';
+
+          // 1. Show immediate high-importance banner with user configured sound/vibration
           NotificationService().showCriticalAlert(
             id: message.messageId.hashCode,
             title: title,
             body: body,
-            soundName: message.data['sound'] ?? 'alarm_siren',
-            soundEnabled: true,
-            vibrationEnabled: true,
+            soundName: customSound,
+            soundEnabled: soundEnabled,
+            vibrationEnabled: vibrationEnabled,
           );
 
-          // 2. Instant Voice Speech announcement
-          final parsedPrice = double.tryParse(priceStr) ?? 0.0;
-          final speechText = TtsService.buildAlertSpeech(
-            symbol: symbol.isNotEmpty ? symbol : 'Price Alert',
-            price: parsedPrice,
-            customNote: note.isNotEmpty ? note : null,
-          );
-          TtsService.instance.enqueueSpeech(speechText);
+          // 2. Instant Voice Speech announcement if enabled
+          if (ttsEnabled) {
+            final parsedPrice = double.tryParse(priceStr) ?? 0.0;
+            final speechText = TtsService.buildAlertSpeech(
+              symbol: symbol.isNotEmpty ? symbol : 'Price Alert',
+              price: parsedPrice,
+              customNote: note.isNotEmpty ? note : null,
+            );
+            TtsService.instance.enqueueSpeech(speechText);
+          }
         });
 
         final token = await fcm.getToken();

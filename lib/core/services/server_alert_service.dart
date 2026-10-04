@@ -78,6 +78,10 @@ class ServerAlertService {
           'check_interval_seconds': rule.checkIntervalSeconds,
           'note': rule.customNote ?? rule.upperNote ?? rule.lowerNote,
           'trigger_mode': trigMode,
+          'sound_enabled': rule.soundEnabled,
+          'vibration_enabled': rule.vibrationEnabled,
+          'tts_enabled': rule.ttsEnabled,
+          'sound': rule.customSound ?? 'alarm_siren',
           'is_active': rule.isActive,
           'fcm_token': fcmToken,
         };

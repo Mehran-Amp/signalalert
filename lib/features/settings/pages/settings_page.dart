@@ -122,7 +122,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     final l = _supportedLanguages[index];
                     final isSelected = currentLang == l['code'];
                     return Material(
-                      color: Colors.transparent,
+                      color: theme.colorScheme.surface,
                       child: ListTile(
                         leading: Text(l['flag']!, style: const TextStyle(fontSize: 22)),
                         title: Text(
