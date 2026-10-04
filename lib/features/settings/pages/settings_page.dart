@@ -850,6 +850,12 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           const SizedBox(height: AppTokens.space20),
 
+          // Section 2.5: 24/7 Background Alert Delivery Guide (Xiaomi, Samsung & Android Setup)
+          _buildSectionHeader(isFa ? 'پایش ۲۴/۷ و تنظیمات پس‌زمینه گوشی' : '24/7 Background Alert Reliability', theme),
+          const SizedBox(height: AppTokens.space8),
+          _buildBackgroundReliabilityCard(context, theme, lang, isFa),
+          const SizedBox(height: AppTokens.space20),
+
           // Section 3: Themes & Colors (Theme & Color Schema)
           _buildSectionHeader(AppStrings.get('theme_and_colors', lang), theme),
           const SizedBox(height: AppTokens.space8),
@@ -1021,6 +1027,216 @@ class _SettingsPageState extends State<SettingsPage> {
         fontSize: 13,
         fontWeight: FontWeight.bold,
         color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
+      ),
+    );
+  }
+
+  Widget _buildBackgroundReliabilityCard(
+    BuildContext context,
+    ThemeData theme,
+    String lang,
+    bool isFa,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(AppTokens.space16),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: theme.colorScheme.primary.withValues(alpha: 0.35),
+          width: 1.2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: theme.colorScheme.primary.withValues(alpha: 0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.bolt_rounded, color: theme.colorScheme.primary, size: 20),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      isFa ? 'راهنمای دریافت ۲۴/۷ هشدارها (حتی با بستن اپ)' : '24/7 Background Alert Reliability Guide',
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.bold,
+                        color: theme.colorScheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      isFa ? 'تنظیمات ضروری برای گوشی‌های شیائومی (MIUI)، سامسونگ و اندروید' : 'Essential steps for Xiaomi (MIUI), Samsung & Android OS',
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Divider(height: 1, color: theme.dividerColor),
+          const SizedBox(height: 12),
+
+          // Step 1: Autostart
+          _buildSetupStep(
+            number: isFa ? '۱' : '1',
+            title: isFa ? 'فعال‌سازی شروع خودکار (Autostart)' : 'Enable Autostart',
+            description: isFa
+                ? 'تنظیمات گوشی ➔ Apps (برنامه‌ها) ➔ Manage Apps (مدیریت برنامه‌ها) ➔ برنامه SignalAlert ➔ گزینه Autostart (شروع خودکار) را روشن (ON) کنید.'
+                : 'Settings ➔ Apps ➔ Manage Apps ➔ SignalAlert ➔ Turn Autostart ON.',
+            icon: Icons.power_settings_new_rounded,
+            theme: theme,
+          ),
+          const SizedBox(height: 10),
+
+          // Step 2: Battery Optimization
+          _buildSetupStep(
+            number: isFa ? '۲' : '2',
+            title: isFa ? 'برداشتن محدودیت باتری (No restrictions)' : 'Remove Battery Restrictions',
+            description: isFa
+                ? 'در همان صفحه، روی Battery saver (صرفه‌جویی باتری) بزنید و آن را روی No restrictions (بدون محدودیت) قرار دهید.'
+                : 'In App settings ➔ Battery Saver ➔ Select "No restrictions".',
+            icon: Icons.battery_charging_full_rounded,
+            theme: theme,
+            trailingWidget: TextButton.icon(
+              onPressed: () => _requestBatteryExemption(lang),
+              icon: Icon(
+                _isBatteryExempt ? Icons.check_circle_rounded : Icons.offline_bolt_outlined,
+                size: 14,
+                color: _isBatteryExempt ? AppTokens.positive : theme.colorScheme.primary,
+              ),
+              label: Text(
+                _isBatteryExempt
+                    ? (isFa ? 'فعال شد ✅' : 'Exempted ✅')
+                    : (isFa ? 'اعمال مستقیم' : 'Grant'),
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: _isBatteryExempt ? AppTokens.positive : theme.colorScheme.primary,
+                ),
+              ),
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                backgroundColor: (_isBatteryExempt ? AppTokens.positive : theme.colorScheme.primary).withValues(alpha: 0.1),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+
+          // Step 3: Lock in Recent Apps
+          _buildSetupStep(
+            number: isFa ? '۳' : '3',
+            title: isFa ? 'قفل کردن برنامه در برنامه‌های اخیر (Recent Apps)' : 'Lock in Recent Apps',
+            description: isFa
+                ? 'در صفحه برنامه‌های اخیر (Recent Apps)، انگشت خود را روی پنجره برنامه نگه داشته و آیکون 🔒 قفل را بزنید تا هنگام پاک‌کردن برنامه‌ها بسته نشود.'
+                : 'Open Recent Apps ➔ Long press SignalAlert window ➔ Tap the 🔒 Lock icon.',
+            icon: Icons.lock_outline_rounded,
+            theme: theme,
+          ),
+          const SizedBox(height: 14),
+
+          // Quick Action Button to open app settings
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () => openAppSettings(),
+              icon: const Icon(Icons.settings_outlined, size: 16),
+              label: Text(
+                isFa ? 'باز کردن تنظیمات برنامه در گوشی' : 'Open System App Settings',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: theme.colorScheme.primary,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                padding: const EdgeInsets.symmetric(vertical: 11),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSetupStep({
+    required String number,
+    required String title,
+    required String description,
+    required IconData icon,
+    required ThemeData theme,
+    Widget? trailingWidget,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.primary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Icon(icon, size: 16, color: theme.colorScheme.primary),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '$number. $title',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: theme.colorScheme.onSurface,
+                        ),
+                      ),
+                    ),
+                    if (trailingWidget != null) trailingWidget,
+                  ],
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  description,
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

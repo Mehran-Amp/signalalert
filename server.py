@@ -242,30 +242,30 @@ async def fetch_price_async(client: httpx.AsyncClient, exchange: str, symbol: st
 def get_exchange_display_name(exchange_id: str) -> str:
     ex = (exchange_id or '').lower()
     mapping = {
-        'nobitex': 'نوبیتکس (Nobitex)',
-        'wallex': 'والکس (Wallex)',
-        'binance': 'بایننس (Binance)',
-        'tabdeal': 'تبدیل (Tabdeal)',
-        'ramzinex': 'رمزینکس (Ramzinex)',
-        'kucoin': 'کوکوین (KuCoin)',
-        'mexc': 'ام‌اکس‌سی (MEXC)',
-        'gateio': 'گیت (Gate.io)',
-        'gate': 'گیت (Gate.io)',
-        'coinex': 'کوینکس (CoinEx)',
-        'okx': 'اوکی‌ایکس (OKX)',
-        'bybit': 'بای‌بیت (Bybit)',
-        'bitbarg': 'بیت‌برگ (BitBarg)',
-        'tetherland': 'تترلند (Tetherland)',
-        'abantether': 'آبان‌تتر (AbanTether)',
-        'global_stocks': 'سهام بین‌الملل (Global Stocks)',
-        'stocks': 'بازار سهام (Stocks)',
-        'forex': 'بازار فارکس (Forex)',
-        'macro': 'شاخص‌های کلان (Macro)',
-        'bonds': 'سند و اوراق قرضه (Bonds)',
-        'wallstreet': 'وال‌استریت (Wall Street)',
-        'iran_market': 'طلا و ارز ایران (Iran Market)'
+        'nobitex': 'Nobitex',
+        'wallex': 'Wallex',
+        'binance': 'Binance',
+        'tabdeal': 'Tabdeal',
+        'ramzinex': 'Ramzinex',
+        'kucoin': 'KuCoin',
+        'mexc': 'MEXC',
+        'gateio': 'Gate.io',
+        'gate': 'Gate.io',
+        'coinex': 'CoinEx',
+        'okx': 'OKX',
+        'bybit': 'Bybit',
+        'bitbarg': 'BitBarg',
+        'tetherland': 'Tetherland',
+        'abantether': 'AbanTether',
+        'global_stocks': 'Global Stocks',
+        'stocks': 'Stocks',
+        'forex': 'Forex',
+        'macro': 'Macro',
+        'bonds': 'Bonds',
+        'wallstreet': 'Wall Street',
+        'iran_market': 'Iran Market'
     }
-    return mapping.get(ex, exchange_id.capitalize() if exchange_id else 'ناشناخته')
+    return mapping.get(ex, exchange_id.capitalize() if exchange_id else 'Unknown')
 
 def send_fcm_notification(fcm_token: str, title: str, body: str, data_payload: dict = None):
     if not firebase_admin._apps:

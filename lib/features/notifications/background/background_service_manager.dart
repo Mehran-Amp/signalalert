@@ -61,6 +61,11 @@ class BackgroundServiceManager {
           onBackground: onIosBackground,
         ),
       );
+
+      final isRunning = await service.isRunning();
+      if (!isRunning) {
+        await service.startService();
+      }
     } catch (_) {}
   }
 
@@ -73,6 +78,22 @@ class BackgroundServiceManager {
   @pragma('vm:entry-point')
   static void onBackgroundServiceStart(ServiceInstance service) async {
     DartPluginRegistrant.ensureInitialized();
+
+    if (service is AndroidServiceInstance) {
+      service.on('setAsForeground').listen((event) {
+        service.setAsForegroundService();
+      });
+
+      service.on('setAsBackground').listen((event) {
+        service.setAsBackgroundService();
+      });
+
+      service.setAsForegroundService();
+      service.setForegroundNotificationInfo(
+        title: 'SignalAlert',
+        content: 'سرویس پایش ۲۴/۷ بازار فعال است',
+      );
+    }
 
     try {
       final notificationService = NotificationService();

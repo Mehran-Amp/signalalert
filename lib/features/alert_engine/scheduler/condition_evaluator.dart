@@ -57,29 +57,29 @@ abstract class ConditionEvaluator {
   static String getFormattedExchangeName(String exchangeId) {
     final ex = exchangeId.toLowerCase();
     switch (ex) {
-      case 'nobitex': return 'نوبیتکس (Nobitex)';
-      case 'wallex': return 'والکس (Wallex)';
-      case 'binance': return 'بایننس (Binance)';
-      case 'tabdeal': return 'تبدیل (Tabdeal)';
-      case 'ramzinex': return 'رمزینکس (Ramzinex)';
-      case 'kucoin': return 'کوکوین (KuCoin)';
-      case 'mexc': return 'ام‌اکس‌سی (MEXC)';
+      case 'nobitex': return 'Nobitex';
+      case 'wallex': return 'Wallex';
+      case 'binance': return 'Binance';
+      case 'tabdeal': return 'Tabdeal';
+      case 'ramzinex': return 'Ramzinex';
+      case 'kucoin': return 'KuCoin';
+      case 'mexc': return 'MEXC';
       case 'gateio':
-      case 'gate': return 'گیت (Gate.io)';
-      case 'coinex': return 'کوینکس (CoinEx)';
-      case 'okx': return 'اوکی‌ایکس (OKX)';
-      case 'bybit': return 'بای‌بیت (Bybit)';
-      case 'bitbarg': return 'بیت‌برگ (BitBarg)';
-      case 'tetherland': return 'تترلند (Tetherland)';
-      case 'abantether': return 'آبان‌تتر (AbanTether)';
+      case 'gate': return 'Gate.io';
+      case 'coinex': return 'CoinEx';
+      case 'okx': return 'OKX';
+      case 'bybit': return 'Bybit';
+      case 'bitbarg': return 'BitBarg';
+      case 'tetherland': return 'Tetherland';
+      case 'abantether': return 'AbanTether';
       case 'global_stocks':
       case 'stocks':
-      case 'wallstreet': return 'سهام بین‌الملل (Global Stocks)';
-      case 'forex': return 'بازار فارکس (Forex)';
+      case 'wallstreet': return 'Global Stocks';
+      case 'forex': return 'Forex';
       case 'macro':
-      case 'bonds': return 'شاخص‌های کلان (Macro)';
-      case 'iran_market': return 'طلا و ارز ایران (Iran Market)';
-      default: return exchangeId.isNotEmpty ? '${exchangeId[0].toUpperCase()}${exchangeId.substring(1)}' : 'ناشناخته';
+      case 'bonds': return 'Macro / Bonds';
+      case 'iran_market': return 'Iran Market';
+      default: return exchangeId.isNotEmpty ? '${exchangeId[0].toUpperCase()}${exchangeId.substring(1)}' : 'Unknown';
     }
   }
 
