@@ -42,8 +42,8 @@ class BackgroundServiceManager {
           autoStart: true,
           isForegroundMode: false,
           notificationChannelId: notificationChannelId,
-          initialNotificationTitle: null,
-          initialNotificationContent: null,
+          initialNotificationTitle: '',
+          initialNotificationContent: '',
           foregroundServiceNotificationId: notificationId,
         ),
         iosConfiguration: IosConfiguration(
