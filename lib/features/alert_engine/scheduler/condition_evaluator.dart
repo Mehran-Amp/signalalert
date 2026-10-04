@@ -84,14 +84,12 @@ abstract class ConditionEvaluator {
   }
 
   static String _buildBodyText(AlertRule rule, double currentPrice) {
+    final exName = getFormattedExchangeName(rule.exchangeId);
     final customNote = rule.customNote?.trim();
     if (customNote != null && customNote.isNotEmpty) {
-      if (customNote.startsWith('📝')) {
-        return customNote;
-      }
-      return '📝 $customNote';
+      final cleanNote = customNote.startsWith('📝') ? customNote : '📝 $customNote';
+      return '🏛️ $exName\n$cleanNote';
     }
-    final exName = getFormattedExchangeName(rule.exchangeId);
     return '🏛️ $exName';
   }
 

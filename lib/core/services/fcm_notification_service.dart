@@ -27,32 +27,30 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   final ttsEnabled = message.data['tts_enabled'] != 'false';
   final customSound = message.data['sound'] ?? 'alarm_siren';
 
-  // Show local notification with max priority alarm channel
+  final parsedPrice = double.tryParse(priceStr) ?? 0.0;
+  final speechText = ttsEnabled
+      ? TtsService.buildAlertSpeech(
+          symbol: symbol.isNotEmpty ? symbol : 'Price Alert',
+          price: parsedPrice,
+          customNote: note.isNotEmpty ? note : null,
+        )
+      : null;
+
+  // Show local notification with max priority alarm channel sequentially
   try {
     final notificationService = NotificationService();
-    await notificationService.showCriticalAlert(
+    notificationService.enqueueCriticalAlert(
       id: message.messageId.hashCode,
       title: title,
       body: body,
       soundName: customSound,
       soundEnabled: soundEnabled,
       vibrationEnabled: vibrationEnabled,
+      ttsEnabled: ttsEnabled,
+      speechText: speechText,
     );
   } catch (e) {
     debugPrint('⚠️ [FCM Background] Local notification error: $e');
-  }
-
-  // Vocalize speech via TTS if price/symbol is present and TTS is enabled
-  if (ttsEnabled) {
-    try {
-      final parsedPrice = double.tryParse(priceStr) ?? 0.0;
-      final speechText = TtsService.buildAlertSpeech(
-        symbol: symbol.isNotEmpty ? symbol : 'Price Alert',
-        price: parsedPrice,
-        customNote: note.isNotEmpty ? note : null,
-      );
-      await TtsService.instance.speak(text: speechText);
-    } catch (_) {}
   }
 }
 
@@ -124,26 +122,26 @@ class FCMNotificationService {
           final title = message.notification?.title ?? message.data['title'] ?? '🚨 Price Alert';
           final body = message.notification?.body ?? message.data['body'] ?? '';
 
-          // 1. Show immediate high-importance banner with user configured sound/vibration
-          NotificationService().showCriticalAlert(
+          final parsedPrice = double.tryParse(priceStr) ?? 0.0;
+          final speechText = ttsEnabled
+              ? TtsService.buildAlertSpeech(
+                  symbol: symbol.isNotEmpty ? symbol : 'Price Alert',
+                  price: parsedPrice,
+                  customNote: note.isNotEmpty ? note : null,
+                )
+              : null;
+
+          // Enqueue critical alert so sound, vibration, banner, and voice run sequentially
+          NotificationService().enqueueCriticalAlert(
             id: message.messageId.hashCode,
             title: title,
             body: body,
             soundName: customSound,
             soundEnabled: soundEnabled,
             vibrationEnabled: vibrationEnabled,
+            ttsEnabled: ttsEnabled,
+            speechText: speechText,
           );
-
-          // 2. Instant Voice Speech announcement if enabled
-          if (ttsEnabled) {
-            final parsedPrice = double.tryParse(priceStr) ?? 0.0;
-            final speechText = TtsService.buildAlertSpeech(
-              symbol: symbol.isNotEmpty ? symbol : 'Price Alert',
-              price: parsedPrice,
-              customNote: note.isNotEmpty ? note : null,
-            );
-            TtsService.instance.enqueueSpeech(speechText);
-          }
         });
 
         final token = await fcm.getToken();

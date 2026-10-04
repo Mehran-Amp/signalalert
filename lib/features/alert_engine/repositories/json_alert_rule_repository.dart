@@ -110,7 +110,7 @@ class JsonAlertRuleRepository {
   }
 
   /// Saves or updates an alert rule using its UUID and persists to disk
-  Future<void> saveRule(AlertRule rule) async {
+  Future<void> saveRule(AlertRule rule, {bool syncToServer = true}) async {
     if (!_isLoaded) await load();
     final index = _rules.indexWhere((r) => r.uuid == rule.uuid);
     if (index >= 0) {
@@ -118,7 +118,7 @@ class JsonAlertRuleRepository {
     } else {
       _rules.add(rule);
     }
-    _notify();
+    _notify(syncToServer: syncToServer);
     await _persist();
   }
 
@@ -245,12 +245,14 @@ class JsonAlertRuleRepository {
     }
   }
 
-  void _notify() {
+  void _notify({bool syncToServer = true}) {
     if (!_rulesStreamController.isClosed) {
       _rulesStreamController.add(List.unmodifiable(_rules));
     }
     NativeWidgetSyncService.syncAlerts(_rules);
-    ServerAlertService.syncAllRulesToServer(_rules);
+    if (syncToServer) {
+      ServerAlertService.syncAllRulesToServer(_rules);
+    }
   }
 
   /// Asynchronous atomic write: writes to alerts.json.tmp, then renames to alerts.json

@@ -136,7 +136,11 @@ class SchedulerService {
       final ticker = await _getLiveTicker(rule, now);
 
       // Never process non-positive or corrupted prices
-      if (ticker == null || ticker.lastPrice <= 0) return false;
+      if (ticker == null || ticker.lastPrice <= 0) {
+        final updatedRule = rule.copyWith(lastCheckedAt: now);
+        await _alertRuleRepository.saveRule(updatedRule, syncToServer: false);
+        return false;
+      }
 
       // 2. Evaluate condition synchronously (pure functions, zero I/O)
       final result = ConditionEvaluator.evaluate(
@@ -162,7 +166,17 @@ class SchedulerService {
         final effectiveVibration = (settings?.vibrationEnabled ?? true) && rule.vibrationEnabled;
         final effectiveTts = (settings?.ttsEnabled ?? true) && rule.ttsEnabled;
 
-        // Use sequential alert queue so multiple simultaneous alerts never overlap
+        final speechText = effectiveTts
+            ? TtsService.buildAlertSpeech(
+                symbol: rule.pair.displayName,
+                baseCurrency: rule.baseCurrency,
+                counterCurrency: rule.counterCurrency,
+                price: ticker.lastPrice,
+                customNote: rule.note,
+              )
+            : null;
+
+        // Use sequential alert queue so notification + sound + vibration + voice run sequentially
         _notificationService.enqueueCriticalAlert(
           id: rule.uuid.hashCode,
           title: result.title,
@@ -172,19 +186,9 @@ class SchedulerService {
           volume: settings?.alarmVolume ?? 1.0,
           soundEnabled: effectiveSound,
           vibrationEnabled: effectiveVibration,
+          ttsEnabled: effectiveTts,
+          speechText: speechText,
         );
-
-        // Vocalize speech sequentially via enqueueSpeech if TTS enabled (fully read, never cut off)
-        if (effectiveTts) {
-          final speechText = TtsService.buildAlertSpeech(
-            symbol: rule.pair.displayName,
-            baseCurrency: rule.baseCurrency,
-            counterCurrency: rule.counterCurrency,
-            price: ticker.lastPrice,
-            customNote: rule.note,
-          );
-          TtsService.instance.enqueueSpeech(speechText);
-        }
 
         // Save notification log
         if (_notificationRepository != null) {
@@ -215,8 +219,8 @@ class SchedulerService {
         _triggeredController.add(updatedRule);
       }
 
-      // 4. Save updated rule to repository
-      await _alertRuleRepository.saveRule(updatedRule);
+      // 4. Save updated rule to repository (only sync to cloud server when alert state changes)
+      await _alertRuleRepository.saveRule(updatedRule, syncToServer: result.isTriggered);
       NativeWidgetSyncService.syncAlerts(_alertRuleRepository.allRules);
       return true;
     } catch (_) {

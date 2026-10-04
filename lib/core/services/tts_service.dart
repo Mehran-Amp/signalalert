@@ -374,9 +374,13 @@ class TtsService {
         ? '$spokenAssetName $priceStr $spokenUnit'
         : '$spokenAssetName $priceStr';
 
-    // Append custom note if present
+    // Append custom note if present and written in English (Latin characters)
     if (customNote != null && customNote.trim().isNotEmpty) {
-      sentence += '. Note: ${customNote.trim()}';
+      final cleanNote = customNote.trim().replaceAll(RegExp(r'^[📝📌ℹ️🚨⚠️\s]+'), '');
+      final isEnglish = RegExp(r'^[A-Za-z0-9\s.,!?:;%+\-\$/]+$').hasMatch(cleanNote);
+      if (isEnglish && cleanNote.isNotEmpty) {
+        sentence += ', Note: $cleanNote';
+      }
     }
 
     return sentence;

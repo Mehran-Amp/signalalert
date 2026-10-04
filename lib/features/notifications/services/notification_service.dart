@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'dart:ui';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import '../../../core/services/tts_service.dart';
 import '../../settings/services/sound_manager.dart';
 
 /// Service responsible for dispatching mission-critical system notifications.
@@ -119,7 +120,7 @@ class NotificationService {
   bool _isProcessingAlertQueue = false;
 
   /// Enqueues critical alert notifications so simultaneous triggers appear sequentially
-  /// and do not overlap on top of each other.
+  /// and wait for voice reading to finish completely before the next notification displays.
   void enqueueCriticalAlert({
     required int id,
     required String title,
@@ -129,17 +130,32 @@ class NotificationService {
     double volume = 1.0,
     bool soundEnabled = true,
     bool vibrationEnabled = true,
+    bool ttsEnabled = false,
+    String? speechText,
   }) {
-    _alertQueue.add(() => showCriticalAlert(
-          id: id,
-          title: title,
-          body: body,
-          payload: payload,
-          soundName: soundName,
-          volume: volume,
-          soundEnabled: soundEnabled,
-          vibrationEnabled: vibrationEnabled,
-        ));
+    _alertQueue.add(() async {
+      // 1. Show notification banner with optional sound & vibration
+      await showCriticalAlert(
+        id: id,
+        title: title,
+        body: body,
+        payload: payload,
+        soundName: soundName,
+        volume: volume,
+        soundEnabled: soundEnabled,
+        vibrationEnabled: vibrationEnabled,
+      );
+
+      // 2. If TTS is enabled, vocalize and wait for speech utterance to finish completely
+      if (ttsEnabled && speechText != null && speechText.trim().isNotEmpty) {
+        await TtsService.instance.speak(text: speechText);
+        final wordCount = speechText.split(RegExp(r'\s+')).length;
+        final estimatedDurationMs = (wordCount * 280 + 2000).clamp(2800, 15000);
+        await Future.delayed(Duration(milliseconds: estimatedDurationMs));
+      } else {
+        await Future.delayed(const Duration(milliseconds: 1800));
+      }
+    });
 
     if (!_isProcessingAlertQueue) {
       _processAlertQueue();

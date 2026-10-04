@@ -440,19 +440,48 @@ async def check_alerts_job():
             if is_one_shot or (current_time - last_trig) >= min_cooldown:
                 print(f"🔔 [ALERT TRIGGERED & FCM PUSH SENT] {alert.symbol} @ {current_price} (Target: {alert.target_price})")
 
-                # Show custom note if provided; otherwise show exchange / market source name in English
-                exchange_name = get_exchange_display_name(alert.exchange)
-                note_or_source = f"Note: {alert.note.strip()}" if (alert.note and alert.note.strip()) else f"Exchange: {exchange_name}"
+                # Format standardized uniform Title & Body matching applet design
+                is_above = alert.condition.upper() == 'ABOVE'
+                emoji = '🟢' if is_above else '🔴'
+                arrow = '▲' if is_above else '▼'
+                sign = '+' if is_above else '-'
 
-                price_formatted = f"{current_price:,.4f}".rstrip('0').rstrip('.') if current_price < 1 else f"{current_price:,.2f}"
+                if alert.target_price > 0:
+                    pct_diff = abs(((current_price - alert.target_price) / alert.target_price) * 100.0)
+                    pct_str = f"{sign}{pct_diff:.2f}%"
+                else:
+                    pct_str = ""
+
+                price_formatted = f"${current_price:,.4f}".rstrip('0').rstrip('.') if current_price < 1 else f"${current_price:,.2f}"
+                if alert.symbol.endswith('TMN') or alert.symbol.endswith('IRT'):
+                    price_formatted = f"{int(current_price):,} TMN"
+
+                display_symbol = alert.symbol
+                if '/' not in display_symbol:
+                    for quote in ['USDT', 'USDC', 'BUSD', 'FDUSD', 'EUR', 'USD', 'TMN', 'IRT', 'BTC', 'ETH']:
+                        if display_symbol.endswith(quote):
+                            base = display_symbol[:-len(quote)]
+                            display_symbol = f"{base}/{quote}"
+                            break
+
+                title = f"{emoji} {display_symbol} {pct_str} {price_formatted} {arrow}".replace('  ', ' ')
+
+                exchange_name = get_exchange_display_name(alert.exchange)
+                body_lines = [f"🏛️ {exchange_name}"]
+                if alert.note and alert.note.strip():
+                    clean_note = alert.note.strip()
+                    if not clean_note.startswith('📝'):
+                        clean_note = f"📝 {clean_note}"
+                    body_lines.append(clean_note)
+                body = "\n".join(body_lines)
 
                 send_fcm_notification(
                     fcm_token=alert.fcm_token,
-                    title=f"🚨 Price Alert: {alert.symbol}",
-                    body=f"{alert.symbol} reached {price_formatted} ({exchange_name})\n{note_or_source}",
+                    title=title,
+                    body=body,
                     data_payload={
                         "alert_id": alert.id,
-                        "symbol": alert.symbol,
+                        "symbol": display_symbol,
                         "price": str(current_price),
                         "note": alert.note or "",
                         "sound_enabled": "true" if alert.sound_enabled else "false",
@@ -532,6 +561,9 @@ def sync_user_alerts(payload: dict):
     fcm_token = payload.get('fcm_token', '')
     alerts_data = payload.get('alerts', [])
     
+    # Map existing alerts to preserve trigger timestamps & state
+    existing_map = {a.id: a for a in ALERTS_DB if (a.user_id == user_id or a.fcm_token == fcm_token)}
+
     # Remove old alerts for this user or matching this device FCM token
     if fcm_token and len(fcm_token) > 10:
         ALERTS_DB = [a for a in ALERTS_DB if (a.user_id != user_id and a.fcm_token != fcm_token)]
@@ -541,6 +573,17 @@ def sync_user_alerts(payload: dict):
     added_count = 0
     for item in alerts_data:
         rule_id = item.get('id') or str(uuid.uuid4())
+        existing = existing_map.get(rule_id)
+
+        # Preserve last_triggered_at if existing, so sync doesn't reset cooldowns or trigger loops
+        last_trig = existing.last_triggered_at if existing else 0.0
+        last_chk = existing.last_checked_at if existing else 0.0
+        
+        # If the alert was deactivated on server (e.g. triggered oneShot), respect server deactivation!
+        is_act = bool(item.get('is_active', True))
+        if existing and not existing.is_active and getattr(existing, 'trigger_mode', 'oneShot') == 'oneShot':
+            is_act = False
+
         alert_obj = Alert(
             id=rule_id,
             user_id=user_id,
@@ -556,10 +599,10 @@ def sync_user_alerts(payload: dict):
             vibration_enabled=bool(item.get('vibration_enabled', True)),
             tts_enabled=bool(item.get('tts_enabled', True)),
             sound=item.get('sound', 'alarm_siren'),
-            is_active=bool(item.get('is_active', True)),
+            is_active=is_act,
             created_at=item.get('created_at') or datetime.utcnow().isoformat(),
-            last_checked_at=0.0,
-            last_triggered_at=0.0
+            last_checked_at=last_chk,
+            last_triggered_at=last_trig
         )
         ALERTS_DB.append(alert_obj)
         added_count += 1
