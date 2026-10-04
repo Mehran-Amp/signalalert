@@ -308,6 +308,10 @@ async def check_alerts_job():
         if current_price is None:
             continue
 
+        # Ignore corrupted/legacy test rules saved previously with invalid target price
+        if current_price > 100.0 and alert.target_price < (current_price / 10.0):
+            continue
+
         triggered = False
         if alert.condition == 'ABOVE' and current_price >= alert.target_price:
             triggered = True
@@ -337,9 +341,16 @@ async def check_alerts_job():
 # -------------------------------------------------------------------
 @app.on_event("startup")
 async def startup_event():
-    scheduler.add_job(check_alerts_job, 'interval', seconds=1)
+    scheduler.add_job(
+        check_alerts_job,
+        'interval',
+        seconds=2,
+        max_instances=5,
+        coalesce=True,
+        misfire_grace_time=15
+    )
     scheduler.start()
-    print("🚀 SignalAlert Enterprise Engine Online (1s Precision Scheduler).")
+    print("🚀 SignalAlert Enterprise Engine Online (2s High-Performance Precision Scheduler).")
 
 @app.get("/")
 def read_root():

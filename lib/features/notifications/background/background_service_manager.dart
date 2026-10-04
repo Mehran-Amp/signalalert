@@ -40,15 +40,11 @@ class BackgroundServiceManager {
         androidConfiguration: AndroidConfiguration(
           onStart: onBackgroundServiceStart,
           autoStart: true,
-          isForegroundMode: true,
+          isForegroundMode: false,
           notificationChannelId: notificationChannelId,
-          initialNotificationTitle: 'Alarmer',
-          initialNotificationContent: '● Active',
+          initialNotificationTitle: null,
+          initialNotificationContent: null,
           foregroundServiceNotificationId: notificationId,
-          foregroundServiceTypes: [
-            // Android 14+ explicit foreground service type
-            AndroidForegroundType.dataSync,
-          ],
         ),
         iosConfiguration: IosConfiguration(
           autoStart: true,
@@ -71,26 +67,6 @@ class BackgroundServiceManager {
 
     service.on('stopService').listen((event) {
       service.stopSelf();
-    });
-
-    if (service is AndroidServiceInstance) {
-      service.setAsForegroundService();
-      service.setForegroundNotificationInfo(
-        title: 'Alarmer',
-        content: '● Active',
-      );
-    }
-
-    // Keep periodic alive ping for Doze mode resilience with minimal text
-    Timer.periodic(const Duration(minutes: 1), (timer) async {
-      if (service is AndroidServiceInstance) {
-        if (await service.isForegroundService()) {
-          service.setForegroundNotificationInfo(
-            title: 'Alarmer',
-            content: '● Active',
-          );
-        }
-      }
     });
   }
 }
