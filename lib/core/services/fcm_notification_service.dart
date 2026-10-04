@@ -17,8 +17,8 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   } catch (_) {}
 
   debugPrint('⚡ [FCM Background] Received push message: ${message.messageId}');
-  final title = message.notification?.title ?? message.data['title'] ?? '🚨 هشدار قیمت';
-  final body = message.notification?.body ?? message.data['body'] ?? 'قیمت ارز به تارگت رسید!';
+  final title = message.notification?.title ?? message.data['title'] ?? '🚨 Price Alert';
+  final body = message.notification?.body ?? message.data['body'] ?? 'Target price reached!';
   final symbol = message.data['symbol'] ?? '';
   final priceStr = message.data['price'] ?? '';
   final note = message.data['note'] ?? '';
@@ -96,7 +96,7 @@ class FCMNotificationService {
         // Foreground push message listener
         FirebaseMessaging.onMessage.listen((RemoteMessage message) {
           debugPrint('📩 [FCM Foreground] Push received: ${message.notification?.title}');
-          final title = message.notification?.title ?? message.data['title'] ?? '🚨 هشدار قیمت';
+          final title = message.notification?.title ?? message.data['title'] ?? '🚨 Price Alert';
           final body = message.notification?.body ?? message.data['body'] ?? '';
           final symbol = message.data['symbol'] ?? '';
           final priceStr = message.data['price'] ?? '';

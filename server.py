@@ -51,6 +51,7 @@ class AlertCreate(BaseModel):
     fcm_token: str           # Target device FCM token
     check_interval_seconds: int = 10  # Flexible interval (seconds, converted from min/hours in app)
     note: Optional[str] = None
+    trigger_mode: Optional[str] = "oneShot" # 'oneShot' | 'recurring'
 
 class Alert(AlertCreate):
     id: str
@@ -425,18 +426,26 @@ async def check_alerts_job():
             triggered = True
 
         if triggered:
-            # Check cooldown so we don't spam FCM push faster than alert's check_interval_seconds
+            # Check cooldown and one-shot vs recurring trigger behavior
             last_trig = getattr(alert, 'last_triggered_at', 0.0)
-            if (current_time - last_trig) >= alert.check_interval_seconds:
+            is_one_shot = getattr(alert, 'trigger_mode', 'oneShot') == 'oneShot'
+
+            # For oneShot, only fire once and deactivate so it never spams continuously
+            # For recurring, enforce at least 60s cooldown (or alert's interval if longer)
+            min_cooldown = max(60.0, float(alert.check_interval_seconds))
+            if is_one_shot or (current_time - last_trig) >= min_cooldown:
                 print(f"🔔 [ALERT TRIGGERED & FCM PUSH SENT] {alert.symbol} @ {current_price} (Target: {alert.target_price})")
-                
-                # Show custom note if provided; otherwise show exchange / market source name
-                note_or_source = f"📝 {alert.note.strip()}" if (alert.note and alert.note.strip()) else f"🏛️ {get_exchange_display_name(alert.exchange)}"
-                
+
+                # Show custom note if provided; otherwise show exchange / market source name in English
+                exchange_name = get_exchange_display_name(alert.exchange)
+                note_or_source = f"Note: {alert.note.strip()}" if (alert.note and alert.note.strip()) else f"Exchange: {exchange_name}"
+
+                price_formatted = f"{current_price:,.4f}".rstrip('0').rstrip('.') if current_price < 1 else f"{current_price:,.2f}"
+
                 send_fcm_notification(
                     fcm_token=alert.fcm_token,
-                    title=f"🚨 هشدار قیمت {alert.symbol}",
-                    body=f"قیمت {alert.symbol} به {current_price:,.2f} رسید!\n{note_or_source}",
+                    title=f"🚨 Price Alert: {alert.symbol}",
+                    body=f"{alert.symbol} reached {price_formatted} ({exchange_name})\n{note_or_source}",
                     data_payload={
                         "alert_id": alert.id,
                         "symbol": alert.symbol,
@@ -447,7 +456,8 @@ async def check_alerts_job():
                     }
                 )
                 alert.last_triggered_at = current_time
-                alert.is_active = True # Keep active for 24/7 background monitoring
+                if is_one_shot:
+                    alert.is_active = False # Deactivate one-shot alert after trigger so it doesn't repeat!
                 updated = True
 
     if updated:
@@ -493,6 +503,7 @@ def create_alert(alert_in: AlertCreate):
         fcm_token=alert_in.fcm_token,
         check_interval_seconds=alert_in.check_interval_seconds,
         note=alert_in.note,
+        trigger_mode=alert_in.trigger_mode or "oneShot",
         is_active=True,
         created_at=datetime.utcnow().isoformat(),
         last_checked_at=0.0,
@@ -527,6 +538,7 @@ def sync_user_alerts(payload: dict):
             fcm_token=item.get('fcm_token') or fcm_token,
             check_interval_seconds=int(item.get('check_interval_seconds', 10)),
             note=item.get('note'),
+            trigger_mode=item.get('trigger_mode', 'oneShot'),
             is_active=bool(item.get('is_active', True)),
             created_at=item.get('created_at') or datetime.utcnow().isoformat(),
             last_checked_at=0.0,

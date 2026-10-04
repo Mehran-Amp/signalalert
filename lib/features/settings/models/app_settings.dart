@@ -31,8 +31,8 @@ class AppSettings {
   final String accountType; // 'guest' | 'google'
 
   const AppSettings({
-    this.themePalette = AppThemePalette.darkGreen,
-    this.language = 'fa',
+    this.themePalette = AppThemePalette.lightPurpleBlue,
+    this.language = 'en',
     this.ttsVoiceLanguage = 'app_default',
     this.soundEnabled = true,
     this.vibrationEnabled = true,
@@ -110,7 +110,7 @@ class AppSettings {
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) {
-    AppThemePalette palette = AppThemePalette.darkGreen;
+    AppThemePalette palette = AppThemePalette.lightPurpleBlue;
     final paletteName = json['themePalette'] as String?;
     if (paletteName != null) {
       for (final p in AppThemePalette.values) {
@@ -123,7 +123,7 @@ class AppSettings {
 
     return AppSettings(
       themePalette: palette,
-      language: (json['language'] as String?) ?? 'fa',
+      language: (json['language'] as String?) ?? 'en',
       ttsVoiceLanguage: (json['ttsVoiceLanguage'] as String?) ?? 'app_default',
       soundEnabled: (json['soundEnabled'] as bool?) ?? true,
       vibrationEnabled: (json['vibrationEnabled'] as bool?) ?? true,

@@ -68,6 +68,7 @@ class ServerAlertService {
       final alertsPayload = activeRules.map((rule) {
         final effectiveTarget = rule.targetPrice ?? rule.upperTargetPrice ?? rule.lowerTargetPrice ?? 0.0;
         final conditionStr = (rule.direction == AlertDirection.below) ? 'BELOW' : 'ABOVE';
+        final trigMode = (rule.triggerMode == TriggerMode.recurring) ? 'recurring' : 'oneShot';
         return {
           'id': rule.uuid,
           'exchange': rule.exchangeId.toLowerCase(),
@@ -76,6 +77,7 @@ class ServerAlertService {
           'condition': conditionStr,
           'check_interval_seconds': rule.checkIntervalSeconds,
           'note': rule.customNote ?? rule.upperNote ?? rule.lowerNote,
+          'trigger_mode': trigMode,
           'is_active': rule.isActive,
           'fcm_token': fcmToken,
         };
