@@ -169,4 +169,27 @@ class ServerAlertService {
     }
     return [];
   }
+
+  /// Sends a test verification push notification from server to verify live mobile delivery
+  static Future<Map<String, dynamic>> sendTestPush({String? customTitle, String? customBody}) async {
+    try {
+      final token = await FCMNotificationService.getFCMToken();
+      final uri = Uri.parse('$_baseUrl/api/test/push').replace(
+        queryParameters: {
+          if (token != null && token.isNotEmpty) 'fcm_token': token,
+          if (customTitle != null && customTitle.isNotEmpty) 'title': customTitle,
+          if (customBody != null && customBody.isNotEmpty) 'body': customBody,
+        },
+      );
+      final response = await http.get(uri).timeout(const Duration(seconds: 10));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data is Map<String, dynamic>) return data;
+      }
+      return {'success': false, 'error': 'Server returned HTTP ${response.statusCode}'};
+    } catch (e) {
+      debugPrint('❌ Error sending test push: $e');
+      return {'success': false, 'error': e.toString()};
+    }
+  }
 }

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../../core/localization/app_strings.dart';
+import '../../../core/services/fcm_notification_service.dart';
 import '../../../core/services/server_alert_service.dart';
 import '../../../core/theme/tokens.dart';
 import '../services/settings_service.dart';
@@ -29,6 +30,10 @@ class _DebugDiagnosticsPageState extends State<DebugDiagnosticsPage> with Single
   bool _isPingingExchanges = false;
   Map<String, Map<String, dynamic>> _pingResults = {};
 
+  bool _isSendingTestPush = false;
+  Map<String, dynamic>? _testPushResult;
+  String? _currentFcmToken;
+
   final List<Map<String, String>> _exchanges = const [
     {'id': 'nobitex', 'name': 'نوبیتکس (Nobitex)'},
     {'id': 'wallex', 'name': 'والکس (Wallex)'},
@@ -47,8 +52,35 @@ class _DebugDiagnosticsPageState extends State<DebugDiagnosticsPage> with Single
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     _fetchServerLogs();
+    _loadFcmToken();
+  }
+
+  Future<void> _loadFcmToken() async {
+    final token = await FCMNotificationService.getFCMToken();
+    if (mounted) {
+      setState(() => _currentFcmToken = token);
+    }
+  }
+
+  Future<void> _sendLiveTestPush() async {
+    setState(() {
+      _isSendingTestPush = true;
+      _testPushResult = null;
+    });
+
+    final res = await ServerAlertService.sendTestPush(
+      customTitle: '🔔 [SignalAlert Live Test]',
+      customBody: '✅ App is connected to server! Live Push Channel Active.',
+    );
+
+    if (mounted) {
+      setState(() {
+        _isSendingTestPush = false;
+        _testPushResult = res;
+      });
+    }
   }
 
   @override
@@ -178,11 +210,14 @@ $jsonStr
           ),
           bottom: TabBar(
             controller: _tabController,
+            isScrollable: true,
+            tabAlignment: TabAlignment.start,
             indicatorColor: theme.colorScheme.primary,
             labelColor: theme.colorScheme.primary,
             unselectedLabelColor: theme.colorScheme.onSurface.withValues(alpha: 0.6),
             tabs: [
               Tab(text: isFa ? '🔍 تست نماد' : 'Inspect Symbol'),
+              Tab(text: isFa ? '🔔 تست پوش سرور' : 'Test Push'),
               Tab(text: isFa ? '📜 لاگ‌های سرور' : 'Server Logs'),
               Tab(text: isFa ? '🌐 مانیتورینگ صرافی' : 'Health Matrix'),
             ],
@@ -192,6 +227,7 @@ $jsonStr
           controller: _tabController,
           children: [
             _buildSymbolInspectorTab(context, theme, lang, isFa),
+            _buildTestPushTab(context, theme, lang, isFa),
             _buildServerLogsTab(context, theme, lang, isFa),
             _buildHealthMatrixTab(context, theme, lang, isFa),
           ],
@@ -629,6 +665,209 @@ $jsonStr
                 ),
               );
             },
+          ),
+        ],
+      ],
+    );
+  }
+
+  // TAB 4: Live Server Push Notification Tester
+  Widget _buildTestPushTab(BuildContext context, ThemeData theme, String lang, bool isFa) {
+    return ListView(
+      padding: const EdgeInsets.all(AppTokens.space16),
+      children: [
+        // Description Card
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.primary.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.2)),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.mark_email_read_rounded, color: theme.colorScheme.primary, size: 24),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  isFa
+                      ? 'تست زنده دریافت نوتیفیکیشن از سرور ابری به این گوشی. با لمس دکمه زیر، سرور مستقیماً یک پوش نوتیفیکیشن با اولویت بالا به گوشی شما شلیک می‌کند.'
+                      : 'Live Push Delivery Verification. Trigger a real High-Priority FCM Push Notification from the backend directly to this phone.',
+                  style: const TextStyle(fontSize: 11.5, height: 1.4),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: AppTokens.space16),
+
+        // Device Token Card
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: theme.dividerColor),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    isFa ? 'توکن اختصاصی این دستگاه (FCM Token)' : 'Device FCM Push Token',
+                    style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
+                  ),
+                  if (_currentFcmToken != null)
+                    IconButton(
+                      icon: const Icon(Icons.copy_rounded, size: 18),
+                      tooltip: isFa ? 'کپی توکن' : 'Copy Token',
+                      onPressed: () {
+                        Clipboard.setData(ClipboardData(text: _currentFcmToken!));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(isFa ? 'توکن FCM کپی شد!' : 'FCM Token copied!'),
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                      },
+                    ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  _currentFcmToken ?? (isFa ? 'در حال دریافت توکن از سرویس گوگل...' : 'Loading FCM token...'),
+                  style: const TextStyle(fontSize: 10.5, fontFamily: 'monospace'),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: AppTokens.space16),
+
+        // Action Button: Send Test Push
+        SizedBox(
+          width: double.infinity,
+          height: 48,
+          child: ElevatedButton.icon(
+            onPressed: _isSendingTestPush ? null : _sendLiveTestPush,
+            icon: _isSendingTestPush
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : const Icon(Icons.send_rounded, size: 18),
+            label: Text(
+              _isSendingTestPush
+                  ? (isFa ? 'در حال ارسال پیام تست از سرور...' : 'Sending Test Push from Server...')
+                  : (isFa ? '🚀 ارسال نوتیفیکیشن تست از سرور به گوشی' : '🚀 Send Live Test Push to Device'),
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: theme.colorScheme.primary,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+          ),
+        ),
+        const SizedBox(height: AppTokens.space16),
+
+        // Terminal CLI Guide Card
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0F172A),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: Colors.white12),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.terminal_rounded, color: Color(0xFF38BDF8), size: 18),
+                  const SizedBox(width: 8),
+                  Text(
+                    isFa ? 'دستور تست از ترمینال سرور (CLI)' : 'Server Terminal CLI Test Command',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.white),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                isFa
+                    ? 'روی سرور یا سیستم خود، دستور زیر را برای تست مستقیم ارسال کنید:'
+                    : 'Run this command on your host/VPS to test push delivery:',
+                style: const TextStyle(fontSize: 10.5, color: Colors.white70),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.black45,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const SelectableText(
+                  'python test_push.py "App is connected to server! 🚀"',
+                  style: TextStyle(fontFamily: 'monospace', fontSize: 11.5, color: Color(0xFF4ADE80)),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: AppTokens.space16),
+
+        // Test Push Result
+        if (_testPushResult != null) ...[
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surface,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: _testPushResult!['success'] == true
+                    ? AppTokens.positive.withValues(alpha: 0.5)
+                    : AppTokens.negative.withValues(alpha: 0.5),
+                width: 1.4,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      _testPushResult!['success'] == true ? Icons.check_circle_rounded : Icons.error_rounded,
+                      color: _testPushResult!['success'] == true ? AppTokens.positive : AppTokens.negative,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      _testPushResult!['success'] == true
+                          ? (isFa ? '✅ نوتیفیکیشن با موفقیت توسط سرور شلیک شد!' : '✅ Push Notification Dispatched Successfully!')
+                          : (isFa ? '❌ خطا در ارسال نوتیفیکیشن' : '❌ Push Dispatch Failed'),
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  const JsonEncoder.withIndent('  ').convert(_testPushResult),
+                  style: TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 10.5,
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ],

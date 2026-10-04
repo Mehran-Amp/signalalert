@@ -646,3 +646,49 @@ def get_debug_logs():
         "count": len(RECENT_DIAGNOSTICS),
         "logs": RECENT_DIAGNOSTICS
     }
+
+@app.get("/api/test/push")
+@app.post("/api/test/push")
+async def test_push_notification(fcm_token: Optional[str] = None, title: Optional[str] = None, body: Optional[str] = None):
+    """
+    Sends an instant verification test push notification to verify mobile app connectivity.
+    Can be triggered via GET/POST /api/test/push or terminal CLI (test_push.py).
+    """
+    token_to_use = fcm_token
+    if not token_to_use:
+        # Check active alerts for recent real token
+        for a in ALERTS_DB:
+            if a.fcm_token and not any(k in a.fcm_token.lower() for k in ['sample', 'pending', 'device_token_']):
+                token_to_use = a.fcm_token
+                break
+
+    test_title = title or "🔔 [SignalAlert Live Connection]"
+    test_body = body or "✅ App is successfully connected to the server! Live push notification channel is online."
+
+    if not token_to_use:
+        return {
+            "success": False,
+            "error": "No real FCM device token found. Please open the mobile app or pass ?fcm_token=YOUR_TOKEN",
+            "firebase_initialized": bool(firebase_admin._apps),
+            "service_account_key_found": os.path.exists("serviceAccountKey.json"),
+            "active_alerts_count": len(ALERTS_DB),
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
+    sent = send_fcm_notification(
+        fcm_token=token_to_use,
+        title=test_title,
+        body=test_body,
+        data_payload={"type": "test_ping", "timestamp": str(time.time()), "source": "api_test_endpoint"}
+    )
+
+    return {
+        "success": sent,
+        "fcm_token_used": f"{token_to_use[:12]}...{token_to_use[-6:]}" if len(token_to_use) > 20 else token_to_use,
+        "firebase_initialized": bool(firebase_admin._apps),
+        "service_account_key_found": os.path.exists("serviceAccountKey.json"),
+        "title_sent": test_title,
+        "body_sent": test_body,
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
