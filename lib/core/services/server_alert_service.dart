@@ -104,9 +104,6 @@ class ServerAlertService {
     return false;
   }
 
-  /// Get current base URL
-  static String get baseUrl => _baseUrl;
-
   /// Helper method to convert (unitValue, CheckUnit) into total seconds
   static int calculateIntervalInSeconds(int unitValue, CheckUnit unit) {
     final val = unitValue <= 0 ? 10 : unitValue;
