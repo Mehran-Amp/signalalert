@@ -174,7 +174,8 @@ try:
                 aps=messaging.Aps(
                     sound="default",
                     badge=1,
-                    interruption_level="time-sensitive"
+                    content_available=True,
+                    custom_data={"interruption-level": "time-sensitive"}
                 )
             )
         )

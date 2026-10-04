@@ -307,7 +307,8 @@ def send_fcm_notification(fcm_token: str, title: str, body: str, data_payload: d
                     aps=messaging.Aps(
                         sound='default',
                         badge=1,
-                        interruption_level='time-sensitive'
+                        content_available=True,
+                        custom_data={'interruption-level': 'time-sensitive'}
                     )
                 )
             )
