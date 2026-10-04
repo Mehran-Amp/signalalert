@@ -13,6 +13,7 @@ import '../models/app_settings.dart';
 import '../services/settings_service.dart';
 import '../services/sound_manager.dart';
 import '../../../core/services/tts_service.dart';
+import 'debug_diagnostics_page.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -989,6 +990,24 @@ class _SettingsPageState extends State<SettingsPage> {
             icon: Icons.delete_outline_rounded,
             color: AppTokens.negative,
             onTap: () => _clearHistory(context, lang),
+          ),
+          const SizedBox(height: AppTokens.space20),
+
+          // Section 5: Deep Debug & Diagnostics Center
+          _buildSectionHeader(isFa ? 'مرکز عیب‌یابی و دیباگ هوشمند' : 'Debug & Diagnostics Center', theme),
+          const SizedBox(height: AppTokens.space8),
+
+          _buildActionTile(
+            context: context,
+            title: isFa ? '🛠️ عیب‌یابی و تست عمیق نمادها و صرافی‌ها' : '🛠️ Deep Market & Server Diagnostics',
+            subtitle: isFa ? 'تست لحظه‌ای دریافت قیمت هر نماد با گزارش دقیق قابل کپی جهت ارسال به پشتیبان' : 'Step-by-step trace and diagnostic inspection for any failing market symbol',
+            icon: Icons.bug_report_rounded,
+            color: theme.colorScheme.primary,
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const DebugDiagnosticsPage()),
+              );
+            },
           ),
         ],
       ),

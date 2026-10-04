@@ -416,3 +416,184 @@ async def get_live_price(exchange: str, symbol: str):
             }
         else:
             raise HTTPException(status_code=502, detail="Unable to fetch price from market source")
+
+# -------------------------------------------------------------------
+# 8. Powerful Deep Diagnostics & Debug Center API
+# -------------------------------------------------------------------
+RECENT_DIAGNOSTICS: List[Dict] = []
+
+@app.get("/api/debug/inspect/{exchange}/{symbol}")
+@app.get("/debug/inspect/{exchange}/{symbol}")
+async def inspect_market_source(exchange: str, symbol: str):
+    """Deeply tests and traces every single API endpoint for a specific symbol & exchange."""
+    start_time = time.time()
+    ex = exchange.lower()
+    sym = symbol.upper().replace('/', '').replace(' ', '')
+    traces = []
+    final_price = None
+
+    async with httpx.AsyncClient() as client:
+        # Test 1: Nobitex Orderbook (for Iranian symbols)
+        if ex in ['nobitex', 'wallex', 'tabdeal', 'ramzinex', 'tetherland', 'abantether', 'bitbarg', 'sarmayex', 'exir']:
+            nobitex_sym = sym
+            if sym in ['USDTTMN', 'USDTIRT', 'USDT']:
+                nobitex_sym = 'USDTIRT'
+            elif sym.endswith('TMN'):
+                nobitex_sym = sym[:-3] + 'IRT'
+
+            url = f"https://api.nobitex.ir/v2/orderbook/{nobitex_sym}"
+            t0 = time.time()
+            try:
+                res = await client.get(url, timeout=5.0, headers={'User-Agent': 'Mozilla/5.0'})
+                latency = round((time.time() - t0) * 1000, 2)
+                if res.status_code == 200:
+                    data = res.json()
+                    if 'bids' in data and len(data['bids']) > 0:
+                        p = float(data['bids'][0][0])
+                        traces.append({'source': 'Nobitex Orderbook', 'url': url, 'status_code': 200, 'latency_ms': latency, 'parsed_price': p, 'success': True})
+                        if not final_price: final_price = p
+                    else:
+                        traces.append({'source': 'Nobitex Orderbook', 'url': url, 'status_code': 200, 'latency_ms': latency, 'error': 'No bids array in JSON', 'success': False})
+                else:
+                    traces.append({'source': 'Nobitex Orderbook', 'url': url, 'status_code': res.status_code, 'latency_ms': latency, 'error': f'HTTP {res.status_code}', 'success': False})
+            except Exception as e:
+                traces.append({'source': 'Nobitex Orderbook', 'url': url, 'status_code': 0, 'latency_ms': round((time.time() - t0) * 1000, 2), 'error': str(e), 'success': False})
+
+            # Test 1b: Nobitex Market Stats
+            url_stats = "https://api.nobitex.ir/market/stats"
+            t0 = time.time()
+            try:
+                res = await client.get(url_stats, timeout=5.0, headers={'User-Agent': 'Mozilla/5.0'})
+                latency = round((time.time() - t0) * 1000, 2)
+                if res.status_code == 200:
+                    data = res.json()
+                    found = False
+                    if 'stats' in data:
+                        for k, v in data['stats'].items():
+                            clean_k = k.upper().replace('-', '').replace('RLS', 'TMN').replace('IRT', 'TMN')
+                            if clean_k == sym or k.upper().replace('-', '') == nobitex_sym:
+                                if 'latestPrice' in v:
+                                    p = float(v['latestPrice'])
+                                    if k.endswith('-rls'): p /= 10.0
+                                    traces.append({'source': 'Nobitex Stats', 'url': url_stats, 'status_code': 200, 'latency_ms': latency, 'parsed_price': p, 'success': True})
+                                    if not final_price: final_price = p
+                                    found = True
+                                    break
+                    if not found:
+                        traces.append({'source': 'Nobitex Stats', 'url': url_stats, 'status_code': 200, 'latency_ms': latency, 'error': f'Symbol {sym} not found in stats keys', 'success': False})
+            except Exception as e:
+                traces.append({'source': 'Nobitex Stats', 'url': url_stats, 'status_code': 0, 'latency_ms': round((time.time() - t0) * 1000, 2), 'error': str(e), 'success': False})
+
+            # Test 1c: Wallex API
+            url_wallex = "https://api.wallex.ir/v1/markets"
+            t0 = time.time()
+            try:
+                res = await client.get(url_wallex, timeout=5.0, headers={'User-Agent': 'Mozilla/5.0'})
+                latency = round((time.time() - t0) * 1000, 2)
+                if res.status_code == 200:
+                    data = res.json()
+                    if 'result' in data and 'symbols' in data['result']:
+                        found = False
+                        for s_key, s_data in data['result']['symbols'].items():
+                            if s_key.upper().replace('-', '') == sym or s_key.upper() == sym:
+                                p = float(s_data['stats']['lastPrice'])
+                                traces.append({'source': 'Wallex Markets', 'url': url_wallex, 'status_code': 200, 'latency_ms': latency, 'parsed_price': p, 'success': True})
+                                if not final_price: final_price = p
+                                found = True
+                                break
+                        if not found:
+                            traces.append({'source': 'Wallex Markets', 'url': url_wallex, 'status_code': 200, 'latency_ms': latency, 'error': f'Symbol {sym} not found in Wallex symbols', 'success': False})
+            except Exception as e:
+                traces.append({'source': 'Wallex Markets', 'url': url_wallex, 'status_code': 0, 'latency_ms': round((time.time() - t0) * 1000, 2), 'error': str(e), 'success': False})
+
+        # Test 2: Yahoo Finance (Stocks, Macro, Forex, Commodities)
+        elif ex in ['global_stocks', 'stocks', 'macro', 'forex', 'bonds', 'wallstreet'] or '-' in sym or 'NYB' in sym or '10Y' in sym:
+            yf_symbol = sym
+            if 'DX-Y' in sym or 'DXY' in sym: yf_symbol = 'DX-Y.NYB'
+            elif 'US10Y' in sym or '10Y' in sym or 'TNX' in sym: yf_symbol = '^TNX'
+            elif 'EURUSD' in sym or 'EUR/USD' in sym: yf_symbol = 'EURUSD=X'
+            elif 'GOLD' in sym or 'XAU' in sym: yf_symbol = 'GC=F'
+
+            url = f"https://query1.finance.yahoo.com/v8/finance/chart/{yf_symbol}?interval=1m&range=1d"
+            t0 = time.time()
+            try:
+                res = await client.get(url, timeout=5.0, headers={'User-Agent': 'Mozilla/5.0'})
+                latency = round((time.time() - t0) * 1000, 2)
+                if res.status_code == 200:
+                    data = res.json()
+                    if 'chart' in data and 'result' in data['chart'] and data['chart']['result']:
+                        meta = data['chart']['result'][0]['meta']
+                        price = meta.get('regularMarketPrice')
+                        if price and float(price) > 0:
+                            traces.append({'source': 'Yahoo Finance', 'url': url, 'status_code': 200, 'latency_ms': latency, 'parsed_price': float(price), 'success': True})
+                            final_price = float(price)
+                        else:
+                            traces.append({'source': 'Yahoo Finance', 'url': url, 'status_code': 200, 'latency_ms': latency, 'error': 'Missing regularMarketPrice field', 'success': False})
+                else:
+                    traces.append({'source': 'Yahoo Finance', 'url': url, 'status_code': res.status_code, 'latency_ms': latency, 'error': f'HTTP {res.status_code}', 'success': False})
+            except Exception as e:
+                traces.append({'source': 'Yahoo Finance', 'url': url, 'status_code': 0, 'latency_ms': round((time.time() - t0) * 1000, 2), 'error': str(e), 'success': False})
+
+        # Test 3: Crypto Gateways (Binance, MEXC, KuCoin, Gate.io, CoinEx)
+        crypto_sym = sym
+        if not crypto_sym.endswith('USDT') and not crypto_sym.endswith('BUSD') and not crypto_sym.endswith('BTC') and not crypto_sym.endswith('USDC'):
+            crypto_sym = crypto_sym + 'USDT'
+
+        # Binance Test
+        url_bin = f"https://api.binance.com/api/v3/ticker/price?symbol={crypto_sym}"
+        t0 = time.time()
+        try:
+            res = await client.get(url_bin, timeout=4.0)
+            latency = round((time.time() - t0) * 1000, 2)
+            if res.status_code == 200:
+                p = float(res.json()['price'])
+                traces.append({'source': 'Binance Spot', 'url': url_bin, 'status_code': 200, 'latency_ms': latency, 'parsed_price': p, 'success': True})
+                if not final_price: final_price = p
+            else:
+                traces.append({'source': 'Binance Spot', 'url': url_bin, 'status_code': res.status_code, 'latency_ms': latency, 'error': f'HTTP {res.status_code}', 'success': False})
+        except Exception as e:
+            traces.append({'source': 'Binance Spot', 'url': url_bin, 'status_code': 0, 'latency_ms': round((time.time() - t0) * 1000, 2), 'error': str(e), 'success': False})
+
+        # MEXC Test
+        url_mexc = f"https://api.mexc.com/api/v3/ticker/price?symbol={crypto_sym}"
+        t0 = time.time()
+        try:
+            res = await client.get(url_mexc, timeout=4.0)
+            latency = round((time.time() - t0) * 1000, 2)
+            if res.status_code == 200:
+                p = float(res.json()['price'])
+                traces.append({'source': 'MEXC Spot', 'url': url_mexc, 'status_code': 200, 'latency_ms': latency, 'parsed_price': p, 'success': True})
+                if not final_price: final_price = p
+            else:
+                traces.append({'source': 'MEXC Spot', 'url': url_mexc, 'status_code': res.status_code, 'latency_ms': latency, 'error': f'HTTP {res.status_code}', 'success': False})
+        except Exception as e:
+            traces.append({'source': 'MEXC Spot', 'url': url_mexc, 'status_code': 0, 'latency_ms': round((time.time() - t0) * 1000, 2), 'error': str(e), 'success': False})
+
+    elapsed_total = round((time.time() - start_time) * 1000, 2)
+
+    report = {
+        'status': 'OK' if final_price is not None else 'FAILED',
+        'exchange': exchange,
+        'symbol': symbol,
+        'normalized_symbol': sym,
+        'resolved_price': final_price,
+        'total_duration_ms': elapsed_total,
+        'timestamp': datetime.utcnow().isoformat(),
+        'traces': traces,
+        'recommendation': 'Price resolved successfully' if final_price else f'Unable to fetch {symbol} on {exchange}. Verify symbol format or check if market source is active.'
+    }
+
+    # Record in memory diagnostics
+    RECENT_DIAGNOSTICS.insert(0, report)
+    if len(RECENT_DIAGNOSTICS) > 50:
+        RECENT_DIAGNOSTICS.pop()
+
+    return report
+
+@app.get("/api/debug/logs")
+@app.get("/debug/logs")
+def get_debug_logs():
+    return {
+        "count": len(RECENT_DIAGNOSTICS),
+        "logs": RECENT_DIAGNOSTICS
+    }

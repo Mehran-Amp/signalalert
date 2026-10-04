@@ -134,4 +134,39 @@ class ServerAlertService {
     }
     return null;
   }
+
+  /// Run deep server-side diagnostics on a specific exchange & market symbol
+  static Future<Map<String, dynamic>?> inspectMarketSource(String exchange, String symbol) async {
+    try {
+      final sanitizedSym = symbol.replaceAll('/', '').replaceAll(' ', '');
+      final url = Uri.parse('$_baseUrl/api/debug/inspect/${exchange.toLowerCase()}/$sanitizedSym');
+      final response = await http.get(url).timeout(const Duration(seconds: 12));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data is Map<String, dynamic>) return data;
+      }
+    } catch (e) {
+      debugPrint('❌ Error running deep server inspection: $e');
+    }
+    return null;
+  }
+
+  /// Fetch recent server diagnostic logs
+  static Future<List<Map<String, dynamic>>> fetchDebugLogs() async {
+    try {
+      final url = Uri.parse('$_baseUrl/api/debug/logs');
+      final response = await http.get(url).timeout(const Duration(seconds: 8));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data is Map && data.containsKey('logs') && data['logs'] is List) {
+          return (data['logs'] as List).cast<Map<String, dynamic>>();
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Error fetching debug logs: $e');
+    }
+    return [];
+  }
 }
