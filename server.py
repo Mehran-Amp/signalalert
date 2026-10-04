@@ -17,16 +17,27 @@ from firebase_admin import credentials, messaging
 # 1. Firebase Initialization
 # -------------------------------------------------------------------
 SERVICE_ACCOUNT_FILE = "serviceAccountKey.json"
+firebase_initialized = False
 
 if os.path.exists(SERVICE_ACCOUNT_FILE):
     try:
         cred = credentials.Certificate(SERVICE_ACCOUNT_FILE)
         firebase_admin.initialize_app(cred)
-        print("✅ فایربیس با موفقیت متصل شد.")
+        firebase_initialized = True
+        print("✅ فایربیس با موفقیت از فایل کلید محلی متصل شد.")
     except Exception as e:
         print(f"⚠️ خطای اتصال فایربیس: {e}")
+elif os.getenv("FIREBASE_SERVICE_ACCOUNT"):
+    try:
+        cred_dict = json.loads(os.getenv("FIREBASE_SERVICE_ACCOUNT"))
+        cred = credentials.Certificate(cred_dict)
+        firebase_admin.initialize_app(cred)
+        firebase_initialized = True
+        print("✅ فایربیس با موفقیت از متغیر محیطی متصل شد.")
+    except Exception as e:
+        print(f"⚠️ خطای اتصال فایربیس از متغیر محیطی: {e}")
 else:
-    print(f"⚠️ هشدار: فایل {SERVICE_ACCOUNT_FILE} یافت نشد! نوتیفیکیشن غیرفعال است.")
+    print(f"ℹ️ فایل '{SERVICE_ACCOUNT_FILE}' در ریپازیتوری وجود ندارد (جهت امنیت در .gitignore قرار دارد). برای فعال‌سازی پوش‌نوتیفیکیشن، فایل کلید را در سیستم محلی خود قرار دهید.")
 
 # -------------------------------------------------------------------
 # 2. Data Models & Persistent Storage

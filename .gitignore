@@ -6,3 +6,11 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Sensitive Firebase & Service Account Keys
+serviceAccountKey.json
+*serviceAccount*.json
+*.pem
+*.key
+.last_fcm_token
+alerts_data.json
