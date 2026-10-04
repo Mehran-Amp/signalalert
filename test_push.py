@@ -14,7 +14,7 @@ import sys
 import os
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 print("\n" + "="*60)
 print("🚀 SignalAlert Terminal Push Notification Tester")
@@ -170,7 +170,8 @@ try:
         token=target_token,
         android=messaging.AndroidConfig(
             priority="high",
-            ttl=0,
+            ttl=timedelta(days=1),
+            direct_boot_ok=True,
             notification=messaging.AndroidNotification(
                 sound="default",
                 channel_id="alarmer_critical_price_alerts",

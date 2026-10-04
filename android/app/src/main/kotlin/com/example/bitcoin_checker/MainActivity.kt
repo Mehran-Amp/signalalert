@@ -227,8 +227,4 @@ class MainActivity : FlutterActivity(), TextToSpeech.OnInitListener {
         } catch (_: Exception) {}
         super.onDestroy()
     }
-
-    override fun onBackPressed() {
-        moveTaskToBack(true)
-    }
 }

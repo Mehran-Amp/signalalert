@@ -347,7 +347,8 @@ def send_fcm_notification(fcm_token: str, title: str, body: str, data_payload: d
             token=fcm_token,
             android=messaging.AndroidConfig(
                 priority='high',
-                ttl=0, # Immediate delivery
+                ttl=datetime.timedelta(days=1),
+                direct_boot_ok=True,
                 notification=messaging.AndroidNotification(
                     sound='default',
                     channel_id='alarmer_critical_price_alerts',
