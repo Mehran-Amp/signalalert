@@ -278,12 +278,13 @@ def get_exchange_display_name(exchange_id: str) -> str:
     }
     return mapping.get(ex, exchange_id.capitalize() if exchange_id else 'Unknown')
 
-def send_fcm_notification(fcm_token: str, title: str, body: str, data_payload: dict = None):
+def send_fcm_notification(fcm_token: str, title: str, body: str, data_payload: dict = None) -> tuple[bool, str]:
     if not firebase_admin._apps:
-        return False
-    if not fcm_token or 'sample' in fcm_token.lower() or 'pending' in fcm_token.lower() or fcm_token.startswith('device_token_'):
-        print(f"⚠️ [FCM] Waiting for real device token from mobile app (Current token: {fcm_token})")
-        return False
+        return False, "Firebase Admin SDK is not initialized."
+    if not fcm_token:
+        return False, "FCM token is empty."
+    if fcm_token.startswith('dev_') or fcm_token.startswith('device_token_') or len(fcm_token) < 40:
+        return False, f"Token '{fcm_token}' is a local device ID, not a Google FCM registration token. Use in-app local test for lock screen verification."
     try:
         message = messaging.Message(
             notification=messaging.Notification(title=title, body=body),
@@ -315,10 +316,10 @@ def send_fcm_notification(fcm_token: str, title: str, body: str, data_payload: d
         )
         response = messaging.send(message)
         print(f"🚀 FCM High-Priority Push Sent: {response}")
-        return True
+        return True, f"FCM Message ID: {response}"
     except Exception as e:
         print(f"❌ FCM Push Error: {e}")
-        return False
+        return False, str(e)
 
 # -------------------------------------------------------------------
 # 6. High-Precision Concurrent Worker
@@ -687,7 +688,7 @@ async def test_push_notification(fcm_token: Optional[str] = None, title: Optiona
             "timestamp": datetime.utcnow().isoformat()
         }
 
-    sent = send_fcm_notification(
+    sent_ok, sent_msg = send_fcm_notification(
         fcm_token=token_to_use,
         title=test_title,
         body=test_body,
@@ -695,8 +696,9 @@ async def test_push_notification(fcm_token: Optional[str] = None, title: Optiona
     )
 
     return {
-        "success": sent,
-        "fcm_token_used": f"{token_to_use[:12]}...{token_to_use[-6:]}" if len(token_to_use) > 20 else token_to_use,
+        "success": sent_ok,
+        "details": sent_msg,
+        "fcm_token_used": token_to_use,
         "firebase_initialized": bool(firebase_admin._apps),
         "service_account_key_found": os.path.exists("serviceAccountKey.json"),
         "title_sent": test_title,
