@@ -32,12 +32,16 @@ class _DebugDiagnosticsPageState extends State<DebugDiagnosticsPage> with Single
   final List<Map<String, String>> _exchanges = const [
     {'id': 'nobitex', 'name': 'نوبیتکس (Nobitex)'},
     {'id': 'wallex', 'name': 'والکس (Wallex)'},
+    {'id': 'tabdeal', 'name': 'تبدیل (Tabdeal)'},
+    {'id': 'ramzinex', 'name': 'رمزینکس (Ramzinex)'},
+    {'id': 'tetherland', 'name': 'تترلند (Tetherland)'},
+    {'id': 'abantether', 'name': 'آبان‌تتر (AbanTether)'},
     {'id': 'binance', 'name': 'بایننس (Binance)'},
     {'id': 'kucoin', 'name': 'کوکوین (KuCoin)'},
     {'id': 'mexc', 'name': 'مکسی (MEXC)'},
     {'id': 'gateio', 'name': 'گیت (Gate.io)'},
     {'id': 'coinex', 'name': 'کوین‌اکس (CoinEx)'},
-    {'id': 'global_stocks', 'name': 'سهام و جفت‌ارزهای جهانی (Yahoo Finance)'},
+    {'id': 'global_stocks', 'name': 'سهام، جفت‌ارزها و طلا (Yahoo Finance)'},
   ];
 
   @override
@@ -93,12 +97,18 @@ class _DebugDiagnosticsPageState extends State<DebugDiagnosticsPage> with Single
     final testTargets = [
       {'ex': 'nobitex', 'sym': 'USDTTMN', 'label': 'Nobitex (تتر/تومان)'},
       {'ex': 'wallex', 'sym': 'USDTTMN', 'label': 'Wallex (تتر/تومان)'},
+      {'ex': 'tabdeal', 'sym': 'USDTTMN', 'label': 'Tabdeal (تتر/تومان)'},
+      {'ex': 'ramzinex', 'sym': 'USDTTMN', 'label': 'Ramzinex (تتر/تومان)'},
       {'ex': 'binance', 'sym': 'BTCUSDT', 'label': 'Binance Spot'},
       {'ex': 'mexc', 'sym': 'BTCUSDT', 'label': 'MEXC Spot'},
       {'ex': 'kucoin', 'sym': 'BTCUSDT', 'label': 'KuCoin Spot'},
       {'ex': 'gateio', 'sym': 'BTCUSDT', 'label': 'Gate.io Spot'},
-      {'ex': 'global_stocks', 'sym': 'GOLD', 'label': 'طلا جهانی (Yahoo Finance)'},
-      {'ex': 'global_stocks', 'sym': 'EURUSD', 'label': 'یورو/دلار (Forex)'},
+      {'ex': 'coinex', 'sym': 'BTCUSDT', 'label': 'CoinEx Spot'},
+      {'ex': 'global_stocks', 'sym': 'GOLD', 'label': 'انس طلا جهانی (XAU/USD)'},
+      {'ex': 'global_stocks', 'sym': 'EURUSD', 'label': 'یورو / دلار (Forex)'},
+      {'ex': 'global_stocks', 'sym': 'DX-Y', 'label': 'شاخص دلار (DXY)'},
+      {'ex': 'global_stocks', 'sym': 'US10Y', 'label': 'اوراق ۱۰ ساله آمریکا (US10Y)'},
+      {'ex': 'global_stocks', 'sym': 'NVDA', 'label': 'سهام انویدیا (NVIDIA / WallStreet)'},
     ];
 
     // Run all ping tests concurrently in parallel (Fast & Non-blocking)

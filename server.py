@@ -239,6 +239,34 @@ async def fetch_price_async(client: httpx.AsyncClient, exchange: str, symbol: st
 # -------------------------------------------------------------------
 # 5. Direct FCM High-Priority Notification Engine
 # -------------------------------------------------------------------
+def get_exchange_display_name(exchange_id: str) -> str:
+    ex = (exchange_id or '').lower()
+    mapping = {
+        'nobitex': 'نوبیتکس (Nobitex)',
+        'wallex': 'والکس (Wallex)',
+        'binance': 'بایننس (Binance)',
+        'tabdeal': 'تبدیل (Tabdeal)',
+        'ramzinex': 'رمزینکس (Ramzinex)',
+        'kucoin': 'کوکوین (KuCoin)',
+        'mexc': 'ام‌اکس‌سی (MEXC)',
+        'gateio': 'گیت (Gate.io)',
+        'gate': 'گیت (Gate.io)',
+        'coinex': 'کوینکس (CoinEx)',
+        'okx': 'اوکی‌ایکس (OKX)',
+        'bybit': 'بای‌بیت (Bybit)',
+        'bitbarg': 'بیت‌برگ (BitBarg)',
+        'tetherland': 'تترلند (Tetherland)',
+        'abantether': 'آبان‌تتر (AbanTether)',
+        'global_stocks': 'سهام بین‌الملل (Global Stocks)',
+        'stocks': 'بازار سهام (Stocks)',
+        'forex': 'بازار فارکس (Forex)',
+        'macro': 'شاخص‌های کلان (Macro)',
+        'bonds': 'سند و اوراق قرضه (Bonds)',
+        'wallstreet': 'وال‌استریت (Wall Street)',
+        'iran_market': 'طلا و ارز ایران (Iran Market)'
+    }
+    return mapping.get(ex, exchange_id.capitalize() if exchange_id else 'ناشناخته')
+
 def send_fcm_notification(fcm_token: str, title: str, body: str, data_payload: dict = None):
     if not firebase_admin._apps:
         return False
@@ -323,10 +351,14 @@ async def check_alerts_job():
             last_trig = getattr(alert, 'last_triggered_at', 0.0)
             if (current_time - last_trig) >= alert.check_interval_seconds:
                 print(f"🔔 [ALERT TRIGGERED & FCM PUSH SENT] {alert.symbol} @ {current_price} (Target: {alert.target_price})")
+                
+                # Show custom note if provided; otherwise show exchange / market source name
+                note_or_source = f"📝 {alert.note.strip()}" if (alert.note and alert.note.strip()) else f"🏛️ منبع: {get_exchange_display_name(alert.exchange)}"
+                
                 send_fcm_notification(
                     fcm_token=alert.fcm_token,
                     title=f"🚨 هشدار قیمت {alert.symbol}",
-                    body=f"قیمت {alert.symbol} در صرافی {alert.exchange.capitalize()} به {current_price:,.2f} رسید!",
+                    body=f"قیمت {alert.symbol} به {current_price:,.2f} رسید!\n{note_or_source}",
                     data_payload={"alert_id": alert.id, "symbol": alert.symbol, "price": str(current_price)}
                 )
                 alert.last_triggered_at = current_time

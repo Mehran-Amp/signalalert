@@ -54,6 +54,35 @@ abstract class ConditionEvaluator {
     return FormatUtils.formatPrice(val, currencySymbol: currencySymbol);
   }
 
+  static String getFormattedExchangeName(String exchangeId) {
+    final ex = exchangeId.toLowerCase();
+    switch (ex) {
+      case 'nobitex': return 'نوبیتکس (Nobitex)';
+      case 'wallex': return 'والکس (Wallex)';
+      case 'binance': return 'بایننس (Binance)';
+      case 'tabdeal': return 'تبدیل (Tabdeal)';
+      case 'ramzinex': return 'رمزینکس (Ramzinex)';
+      case 'kucoin': return 'کوکوین (KuCoin)';
+      case 'mexc': return 'ام‌اکس‌سی (MEXC)';
+      case 'gateio':
+      case 'gate': return 'گیت (Gate.io)';
+      case 'coinex': return 'کوینکس (CoinEx)';
+      case 'okx': return 'اوکی‌ایکس (OKX)';
+      case 'bybit': return 'بای‌بیت (Bybit)';
+      case 'bitbarg': return 'بیت‌برگ (BitBarg)';
+      case 'tetherland': return 'تترلند (Tetherland)';
+      case 'abantether': return 'آبان‌تتر (AbanTether)';
+      case 'global_stocks':
+      case 'stocks':
+      case 'wallstreet': return 'سهام بین‌الملل (Global Stocks)';
+      case 'forex': return 'بازار فارکس (Forex)';
+      case 'macro':
+      case 'bonds': return 'شاخص‌های کلان (Macro)';
+      case 'iran_market': return 'طلا و ارز ایران (Iran Market)';
+      default: return exchangeId.isNotEmpty ? '${exchangeId[0].toUpperCase()}${exchangeId.substring(1)}' : 'ناشناخته';
+    }
+  }
+
   static String _buildBodyText(AlertRule rule, double currentPrice) {
     final customNote = rule.customNote?.trim();
     if (customNote != null && customNote.isNotEmpty) {
@@ -62,7 +91,8 @@ abstract class ConditionEvaluator {
       }
       return '📝 $customNote';
     }
-    return '';
+    final exName = getFormattedExchangeName(rule.exchangeId);
+    return '🏛️ منبع: $exName';
   }
 
   /// 1. Price Threshold (One-shot or Both Way Channel):
