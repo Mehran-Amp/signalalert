@@ -676,15 +676,15 @@ $jsonStr
     final isFa = lang == 'fa' || lang == 'ar' || lang == 'ckb';
     final service = NotificationService();
     await service.showCriticalAlert(
+      id: 999,
       title: isFa ? '🔔 هشدار تست زنده در صفحه قفل' : '🔔 Live Lock Screen Test Alert',
       body: isFa
           ? 'تست موفقیت‌آمیز! نوتیفیکیشن با حداکثر اولویت (MAX) و صدای اختصاصی در بالای صفحه قفل نمایش داده شد.'
           : 'Success! Max-priority notification with custom alarm triggered on lock screen.',
-      priority: 'MAX',
-      symbol: 'BTC/USDT',
-      currentPrice: 98500.0,
-      targetPrice: 98000.0,
-      condition: 'ABOVE',
+      soundName: 'alarm_siren',
+      volume: 1.0,
+      soundEnabled: true,
+      vibrationEnabled: true,
     );
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
