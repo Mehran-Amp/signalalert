@@ -572,35 +572,35 @@ async def inspect_market_source(exchange: str, symbol: str):
             if not crypto_sym.endswith('USDT') and not crypto_sym.endswith('BUSD') and not crypto_sym.endswith('BTC') and not crypto_sym.endswith('USDC'):
                 crypto_sym = crypto_sym + 'USDT'
 
-        # Binance Test
-        url_bin = f"https://api.binance.com/api/v3/ticker/price?symbol={crypto_sym}"
-        t0 = time.time()
-        try:
-            res = await client.get(url_bin, timeout=4.0)
-            latency = round((time.time() - t0) * 1000, 2)
-            if res.status_code == 200:
-                p = float(res.json()['price'])
-                traces.append({'source': 'Binance Spot', 'url': url_bin, 'status_code': 200, 'latency_ms': latency, 'parsed_price': p, 'success': True})
-                if not final_price: final_price = p
-            else:
-                traces.append({'source': 'Binance Spot', 'url': url_bin, 'status_code': res.status_code, 'latency_ms': latency, 'error': f'HTTP {res.status_code}', 'success': False})
-        except Exception as e:
-            traces.append({'source': 'Binance Spot', 'url': url_bin, 'status_code': 0, 'latency_ms': round((time.time() - t0) * 1000, 2), 'error': str(e), 'success': False})
+            # Binance Test
+            url_bin = f"https://api.binance.com/api/v3/ticker/price?symbol={crypto_sym}"
+            t0 = time.time()
+            try:
+                res = await client.get(url_bin, timeout=4.0)
+                latency = round((time.time() - t0) * 1000, 2)
+                if res.status_code == 200:
+                    p = float(res.json()['price'])
+                    traces.append({'source': 'Binance Spot', 'url': url_bin, 'status_code': 200, 'latency_ms': latency, 'parsed_price': p, 'success': True})
+                    if not final_price: final_price = p
+                else:
+                    traces.append({'source': 'Binance Spot', 'url': url_bin, 'status_code': res.status_code, 'latency_ms': latency, 'error': f'HTTP {res.status_code}', 'success': False})
+            except Exception as e:
+                traces.append({'source': 'Binance Spot', 'url': url_bin, 'status_code': 0, 'latency_ms': round((time.time() - t0) * 1000, 2), 'error': str(e), 'success': False})
 
-        # MEXC Test
-        url_mexc = f"https://api.mexc.com/api/v3/ticker/price?symbol={crypto_sym}"
-        t0 = time.time()
-        try:
-            res = await client.get(url_mexc, timeout=4.0)
-            latency = round((time.time() - t0) * 1000, 2)
-            if res.status_code == 200:
-                p = float(res.json()['price'])
-                traces.append({'source': 'MEXC Spot', 'url': url_mexc, 'status_code': 200, 'latency_ms': latency, 'parsed_price': p, 'success': True})
-                if not final_price: final_price = p
-            else:
-                traces.append({'source': 'MEXC Spot', 'url': url_mexc, 'status_code': res.status_code, 'latency_ms': latency, 'error': f'HTTP {res.status_code}', 'success': False})
-        except Exception as e:
-            traces.append({'source': 'MEXC Spot', 'url': url_mexc, 'status_code': 0, 'latency_ms': round((time.time() - t0) * 1000, 2), 'error': str(e), 'success': False})
+            # MEXC Test
+            url_mexc = f"https://api.mexc.com/api/v3/ticker/price?symbol={crypto_sym}"
+            t0 = time.time()
+            try:
+                res = await client.get(url_mexc, timeout=4.0)
+                latency = round((time.time() - t0) * 1000, 2)
+                if res.status_code == 200:
+                    p = float(res.json()['price'])
+                    traces.append({'source': 'MEXC Spot', 'url': url_mexc, 'status_code': 200, 'latency_ms': latency, 'parsed_price': p, 'success': True})
+                    if not final_price: final_price = p
+                else:
+                    traces.append({'source': 'MEXC Spot', 'url': url_mexc, 'status_code': res.status_code, 'latency_ms': latency, 'error': f'HTTP {res.status_code}', 'success': False})
+            except Exception as e:
+                traces.append({'source': 'MEXC Spot', 'url': url_mexc, 'status_code': 0, 'latency_ms': round((time.time() - t0) * 1000, 2), 'error': str(e), 'success': False})
 
     elapsed_total = round((time.time() - start_time) * 1000, 2)
 
