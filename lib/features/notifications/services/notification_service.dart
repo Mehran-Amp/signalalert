@@ -1,10 +1,12 @@
 import 'dart:typed_data';
+import 'dart:ui';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../../settings/services/sound_manager.dart';
 
 /// Service responsible for dispatching mission-critical system notifications.
-/// Uses Time-Sensitive notifications on iOS and Maximum High-Priority Alarm channels on Android.
+/// Uses Time-Sensitive notifications on iOS and Maximum High-Priority Alarm channels on Android
+/// with public lockscreen visibility to guarantee it displays at the top of the lock screen.
 class NotificationService {
   final FlutterLocalNotificationsPlugin _notificationsPlugin =
       FlutterLocalNotificationsPlugin();
@@ -49,6 +51,7 @@ class NotificationService {
       vibrationPattern: vibrationPattern,
       showBadge: true,
       enableLights: true,
+      ledColor: const Color.fromARGB(255, 255, 0, 0),
       audioAttributesUsage: AudioAttributesUsage.alarm,
     );
 
@@ -193,7 +196,7 @@ class NotificationService {
       channelDescription: channelDescription,
       importance: Importance.max,
       priority: Priority.max,
-      ticker: 'Alarmer Price Alert',
+      ticker: '⚡ Price Alert Triggered',
       enableVibration: vibrationEnabled,
       vibrationPattern: vibrationPattern,
       playSound: true,
@@ -201,10 +204,18 @@ class NotificationService {
       category: AndroidNotificationCategory.alarm,
       audioAttributesUsage: AudioAttributesUsage.alarm,
       visibility: NotificationVisibility.public,
+      showWhen: true,
+      when: DateTime.now().millisecondsSinceEpoch,
+      enableLights: true,
+      ledColor: const Color.fromARGB(255, 255, 0, 0),
+      ledOnMs: 1000,
+      ledOffMs: 500,
+      color: const Color(0xFF0284C7),
+      colorized: true,
       styleInformation: BigTextStyleInformation(
         body,
         contentTitle: title,
-        summaryText: 'Alarmer',
+        summaryText: 'SignalAlert',
       ),
     );
 

@@ -283,8 +283,21 @@ def send_fcm_notification(fcm_token: str, title: str, body: str, data_payload: d
                 ttl=0, # Immediate delivery
                 notification=messaging.AndroidNotification(
                     sound='default',
-                    channel_id='price_alerts_channel',
-                    priority='max'
+                    channel_id='alarmer_critical_price_alerts',
+                    priority='max',
+                    visibility='public',
+                    default_sound=True,
+                    default_vibrate_timings=True,
+                    default_light_settings=True
+                )
+            ),
+            apns=messaging.APNSConfig(
+                payload=messaging.APNSPayload(
+                    aps=messaging.Aps(
+                        sound='default',
+                        badge=1,
+                        interruption_level='time-sensitive'
+                    )
                 )
             )
         )
