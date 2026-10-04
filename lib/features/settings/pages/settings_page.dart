@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../../core/localization/app_strings.dart';
 import '../../../core/services/google_auth_service.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../core/utils/app_lifecycle_helper.dart';
 import '../../alert_engine/repositories/json_alert_rule_repository.dart';
 import '../../notifications/repositories/notification_repository.dart';
 import '../../notifications/services/notification_service.dart';
@@ -1102,10 +1103,36 @@ class _SettingsPageState extends State<SettingsPage> {
             number: isFa ? '۱' : '1',
             title: isFa ? 'فعال‌سازی شروع خودکار (Autostart)' : 'Enable Autostart',
             description: isFa
-                ? 'تنظیمات گوشی ➔ Apps (برنامه‌ها) ➔ Manage Apps (مدیریت برنامه‌ها) ➔ برنامه SignalAlert ➔ گزینه Autostart (شروع خودکار) را روشن (ON) کنید.'
-                : 'Settings ➔ Apps ➔ Manage Apps ➔ SignalAlert ➔ Turn Autostart ON.',
+                ? 'برای دریافت پایدار و همیشگی هشدارها، گزینه Autostart برنامه SignalAlert را در گوشی خود فعال کنید.'
+                : 'Turn Autostart ON for SignalAlert in your phone settings to receive 24/7 background alerts.',
             icon: Icons.power_settings_new_rounded,
             theme: theme,
+            trailingWidget: TextButton.icon(
+              onPressed: () async {
+                final opened = await AppLifecycleHelper.openAutostartSettings();
+                if (!opened) {
+                  await openAppSettings();
+                }
+              },
+              icon: Icon(
+                Icons.launch_rounded,
+                size: 14,
+                color: theme.colorScheme.primary,
+              ),
+              label: Text(
+                isFa ? 'باز کردن خودکار' : 'Open Direct',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: theme.colorScheme.primary,
+                ),
+              ),
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.1),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+            ),
           ),
           const SizedBox(height: 10),
 
@@ -1114,8 +1141,8 @@ class _SettingsPageState extends State<SettingsPage> {
             number: isFa ? '۲' : '2',
             title: isFa ? 'برداشتن محدودیت باتری (No restrictions)' : 'Remove Battery Restrictions',
             description: isFa
-                ? 'در همان صفحه، روی Battery saver (صرفه‌جویی باتری) بزنید و آن را روی No restrictions (بدون محدودیت) قرار دهید.'
-                : 'In App settings ➔ Battery Saver ➔ Select "No restrictions".',
+                ? 'روی دکمه «اعمال مستقیم» بزنید یا در تنظیمات باتری گزینه بدون محدودیت (No restrictions) را انتخاب کنید.'
+                : 'Tap "Grant" or set Battery saver to "No restrictions".',
             icon: Icons.battery_charging_full_rounded,
             theme: theme,
             trailingWidget: TextButton.icon(
@@ -1156,23 +1183,48 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           const SizedBox(height: 14),
 
-          // Quick Action Button to open app settings
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: () => openAppSettings(),
-              icon: const Icon(Icons.settings_outlined, size: 16),
-              label: Text(
-                isFa ? 'باز کردن تنظیمات برنامه در گوشی' : 'Open System App Settings',
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+          // Quick Action Buttons
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () async {
+                    final opened = await AppLifecycleHelper.openAutostartSettings();
+                    if (!opened) {
+                      await openAppSettings();
+                    }
+                  },
+                  icon: const Icon(Icons.rocket_launch_rounded, size: 15),
+                  label: Text(
+                    isFa ? 'مدیریت Autostart گوشی' : 'Autostart Manager',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11.5),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: theme.colorScheme.primary,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                  ),
+                ),
               ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: theme.colorScheme.primary,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                padding: const EdgeInsets.symmetric(vertical: 11),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => openAppSettings(),
+                  icon: const Icon(Icons.settings_outlined, size: 15),
+                  label: Text(
+                    isFa ? 'اطلاعات برنامه در سیستم' : 'App Details',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11.5),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: theme.colorScheme.onSurface,
+                    side: BorderSide(color: theme.dividerColor),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
         ],
       ),

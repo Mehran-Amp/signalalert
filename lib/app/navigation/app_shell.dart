@@ -21,6 +21,7 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   int _currentIndex = 1;
+  final List<int> _tabHistory = [1];
 
   final List<Widget> _pages = const [
     NotificationHistoryPage(),
@@ -38,6 +39,39 @@ class _AppShellState extends State<AppShell> {
     });
   }
 
+  void _onTabSelected(int index) {
+    if (_currentIndex == index) return;
+    setState(() {
+      _tabHistory.remove(index);
+      _tabHistory.add(index);
+      _currentIndex = index;
+    });
+  }
+
+  Future<void> _handlePop() async {
+    // 1. If we have previous tabs in history, go back step-by-step
+    if (_tabHistory.length > 1) {
+      setState(() {
+        _tabHistory.removeLast();
+        _currentIndex = _tabHistory.last;
+      });
+      return;
+    }
+
+    // 2. If we are not on the default root tab (Tab 1: Alerts), return to home tab
+    if (_currentIndex != 1) {
+      setState(() {
+        _currentIndex = 1;
+        _tabHistory.clear();
+        _tabHistory.add(1);
+      });
+      return;
+    }
+
+    // 3. We are on the root Home screen. Send app safely to background (don't terminate process)
+    await AppLifecycleHelper.moveToBackground();
+  }
+
   @override
   Widget build(BuildContext context) {
     final settingsService = context.watch<SettingsService>();
@@ -49,9 +83,7 @@ class _AppShellState extends State<AppShell> {
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
-        // Pressing Back anywhere in the app moves app to background (mimicking home button)
-        // so the app continues running permanently in the background.
-        await AppLifecycleHelper.moveToBackground();
+        await _handlePop();
       },
       child: Scaffold(
         backgroundColor: theme.scaffoldBackgroundColor,
@@ -60,57 +92,57 @@ class _AppShellState extends State<AppShell> {
           children: _pages,
         ),
         bottomNavigationBar: Container(
-        height: 72,
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surface,
-          border: Border(
-            top: BorderSide(color: theme.dividerColor, width: 1.0),
+          height: 72,
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            border: Border(
+              top: BorderSide(color: theme.dividerColor, width: 1.0),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.08),
+                blurRadius: 12,
+                offset: const Offset(0, -3),
+              ),
+            ],
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.08),
-              blurRadius: 12,
-              offset: const Offset(0, -3),
-            ),
-          ],
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            // 1. History Tab
-            _buildNavItem(
-              index: 0,
-              icon: Icons.notifications_none_rounded,
-              activeIcon: Icons.notifications_active_rounded,
-              label: AppStrings.get('history', lang),
-              activeColor: theme.colorScheme.primary,
-              unselectedColor: unselectedColor,
-            ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              // 1. History Tab
+              _buildNavItem(
+                index: 0,
+                icon: Icons.notifications_none_rounded,
+                activeIcon: Icons.notifications_active_rounded,
+                label: AppStrings.get('history', lang),
+                activeColor: theme.colorScheme.primary,
+                unselectedColor: unselectedColor,
+              ),
 
-            // 2. Middle Floating Alerts Tab
-            _buildCenterAlertsButton(
-              label: AppStrings.get('my_alerts', lang),
-              primaryColor: theme.colorScheme.primary,
-              surfaceElevated: theme.colorScheme.surfaceContainerHighest,
-              borderColor: theme.dividerColor,
-              unselectedColor: unselectedColor,
-            ),
+              // 2. Middle Floating Alerts Tab
+              _buildCenterAlertsButton(
+                label: AppStrings.get('my_alerts', lang),
+                primaryColor: theme.colorScheme.primary,
+                surfaceElevated: theme.colorScheme.surfaceContainerHighest,
+                borderColor: theme.dividerColor,
+                unselectedColor: unselectedColor,
+              ),
 
-            // 3. Settings Tab
-            _buildNavItem(
-              index: 2,
-              icon: Icons.settings_outlined,
-              activeIcon: Icons.settings_rounded,
-              label: AppStrings.get('settings', lang),
-              activeColor: theme.colorScheme.primary,
-              unselectedColor: unselectedColor,
-            ),
-          ],
+              // 3. Settings Tab
+              _buildNavItem(
+                index: 2,
+                icon: Icons.settings_outlined,
+                activeIcon: Icons.settings_rounded,
+                label: AppStrings.get('settings', lang),
+                activeColor: theme.colorScheme.primary,
+                unselectedColor: unselectedColor,
+              ),
+            ],
+          ),
         ),
       ),
-    ),
-  );
-}
+    );
+  }
 
   Widget _buildNavItem({
     required int index,
@@ -122,7 +154,7 @@ class _AppShellState extends State<AppShell> {
   }) {
     final isSelected = _currentIndex == index;
     return InkWell(
-      onTap: () => setState(() => _currentIndex = index),
+      onTap: () => _onTabSelected(index),
       borderRadius: BorderRadius.circular(16),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -158,7 +190,7 @@ class _AppShellState extends State<AppShell> {
   }) {
     final isSelected = _currentIndex == 1;
     return GestureDetector(
-      onTap: () => setState(() => _currentIndex = 1),
+      onTap: () => _onTabSelected(1),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [

@@ -544,6 +544,21 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
     }
   }
 
+  void _handleBackNavigation() {
+    if (widget.initialRule != null) {
+      Navigator.of(context).pop();
+    } else if (_step > 1) {
+      setState(() => _step--);
+    } else if (_flowType != MarketFlowType.none) {
+      setState(() {
+        _flowType = MarketFlowType.none;
+        _step = 1;
+      });
+    } else {
+      Navigator.of(context).pop();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -552,38 +567,32 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
 
     final isEditMode = widget.initialRule != null;
 
-    return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: AppBar(
-        backgroundColor: theme.colorScheme.surface,
-        elevation: 0,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back_rounded, color: theme.colorScheme.onSurface),
-          onPressed: () {
-            if (isEditMode) {
-              Navigator.of(context).pop();
-            } else if (_step > 1) {
-              setState(() => _step--);
-            } else if (_flowType != MarketFlowType.none) {
-              setState(() {
-                _flowType = MarketFlowType.none;
-                _step = 1;
-              });
-            } else {
-              Navigator.of(context).pop();
-            }
-          },
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        _handleBackNavigation();
+      },
+      child: Scaffold(
+        backgroundColor: theme.scaffoldBackgroundColor,
+        appBar: AppBar(
+          backgroundColor: theme.colorScheme.surface,
+          elevation: 0,
+          leading: IconButton(
+            icon: Icon(Icons.arrow_back_rounded, color: theme.colorScheme.onSurface),
+            onPressed: _handleBackNavigation,
+          ),
+          title: Text(
+            isEditMode
+                ? AppStrings.get('edit_alert_title', lang)
+                : (_flowType == MarketFlowType.none
+                    ? AppStrings.get('choose_market_step', lang)
+                    : (_flowType == MarketFlowType.crypto ? AppStrings.get('crypto_market_title', lang) : AppStrings.get('macro_market_title', lang))),
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
+          ),
         ),
-        title: Text(
-          isEditMode
-              ? AppStrings.get('edit_alert_title', lang)
-              : (_flowType == MarketFlowType.none
-                  ? AppStrings.get('choose_market_step', lang)
-                  : (_flowType == MarketFlowType.crypto ? AppStrings.get('crypto_market_title', lang) : AppStrings.get('macro_market_title', lang))),
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
-        ),
+        body: _buildCurrentBody(theme, lang),
       ),
-      body: _buildCurrentBody(theme, lang),
     );
   }
 

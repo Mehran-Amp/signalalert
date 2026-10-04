@@ -19,4 +19,14 @@ class AppLifecycleHelper {
       } catch (_) {}
     }
   }
+
+  /// Opens the OEM-specific Autostart permission screen directly (Xiaomi, Samsung, Huawei, Oppo, Vivo, etc.)
+  static Future<bool> openAutostartSettings() async {
+    try {
+      final result = await _channel.invokeMethod<bool>('openAutostartSettings');
+      return result == true;
+    } catch (_) {
+      return false;
+    }
+  }
 }
