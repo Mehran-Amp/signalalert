@@ -950,21 +950,74 @@ $jsonStr
                       color: _testPushResult!['success'] == true ? AppTokens.positive : AppTokens.negative,
                     ),
                     const SizedBox(width: 8),
-                    Text(
-                      _testPushResult!['success'] == true
-                          ? (isFa ? '✅ نوتیفیکیشن با موفقیت توسط سرور شلیک شد!' : '✅ Push Notification Dispatched Successfully!')
-                          : (isFa ? '❌ خطا در ارسال نوتیفیکیشن' : '❌ Push Dispatch Failed'),
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                    Expanded(
+                      child: Text(
+                        _testPushResult!['success'] == true
+                            ? (isFa ? '✅ نوتیفیکیشن با موفقیت توسط سرور شلیک شد!' : '✅ Push Notification Dispatched Successfully!')
+                            : (isFa ? '❌ خطا در ارسال نوتیفیکیشن' : '❌ Push Dispatch Failed'),
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.copy_rounded, size: 18),
+                      tooltip: isFa ? 'کپی متن خطا و گزارش' : 'Copy Error & Report',
+                      onPressed: () {
+                        final rawJson = const JsonEncoder.withIndent('  ').convert(_testPushResult);
+                        Clipboard.setData(ClipboardData(text: rawJson));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(isFa ? '📋 متن خطا و گزارش سرور کپی شد!' : '📋 Error & Report copied to clipboard!'),
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                      },
                     ),
                   ],
                 ),
+                const SizedBox(height: 8),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: SelectableText(
+                    const JsonEncoder.withIndent('  ').convert(_testPushResult),
+                    style: TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 11,
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.9),
+                    ),
+                  ),
+                ),
                 const SizedBox(height: 10),
-                Text(
-                  const JsonEncoder.withIndent('  ').convert(_testPushResult),
-                  style: TextStyle(
-                    fontFamily: 'monospace',
-                    fontSize: 10.5,
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      final rawJson = const JsonEncoder.withIndent('  ').convert(_testPushResult);
+                      Clipboard.setData(ClipboardData(text: rawJson));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(isFa ? '📋 متن خطا و گزارش سرور کپی شد!' : '📋 Error & Report copied to clipboard!'),
+                          duration: const Duration(seconds: 2),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.copy_rounded, size: 16),
+                    label: Text(
+                      isFa ? '📋 کپی متن کامل خطای سرور جهت ارسال' : '📋 Copy Full Error Log',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: _testPushResult!['success'] == true ? AppTokens.positive : AppTokens.negative,
+                      side: BorderSide(
+                        color: _testPushResult!['success'] == true ? AppTokens.positive : AppTokens.negative,
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
                   ),
                 ),
               ],

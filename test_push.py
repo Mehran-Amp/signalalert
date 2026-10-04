@@ -137,6 +137,18 @@ try:
 except Exception:
     pass
 
+# Check if token is local device ID or real Google FCM token
+if target_token.startswith("dev_") or len(target_token) < 40:
+    print("\n" + "="*60)
+    print(f"ℹ️ توجه: توکن '{target_token}' شناسه محلی دستگاه (Local Device ID) است.")
+    print("📌 سرور Google FCM برای ارسال پیام از راه دور، توکن صادرشده توسط گوگل (۱۵۰+ کاراکتر) را می‌پذیرد.")
+    print("\n💡 نحوه تست اعلان و آلارم صفحه قفل:")
+    print("   • در گوشی وارد اپ شوید -> تنظیمات (⚙️) -> مرکز عیب‌یابی (🛠️) -> تست پوش (🔔)")
+    print("   • دکمه سبز «⚡ تست فوری اعلان و آلارم در صفحه قفل گوشی» را لمس کنید تا فوراً هشدار با صدای آژیر و ویبره در صفحه قفل تست شود.")
+    print("   • اپلیکیشن به صورت Local-First و مستقیم روی خود گوشی قیمت‌ها را پایش می‌کند و مستقل از فایربیس کار می‌کند.")
+    print("="*60 + "\n")
+    sys.exit(0)
+
 print(f"\n📤 Sending High-Priority Test Notification:")
 print(f"   • Title: {title}")
 print(f"   • Body:  {body}")
