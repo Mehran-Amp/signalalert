@@ -535,9 +535,10 @@ async def inspect_market_source(exchange: str, symbol: str):
                 traces.append({'source': 'Yahoo Finance', 'url': url, 'status_code': 0, 'latency_ms': round((time.time() - t0) * 1000, 2), 'error': str(e), 'success': False})
 
         # Test 3: Crypto Gateways (Binance, MEXC, KuCoin, Gate.io, CoinEx)
-        crypto_sym = sym
-        if not crypto_sym.endswith('USDT') and not crypto_sym.endswith('BUSD') and not crypto_sym.endswith('BTC') and not crypto_sym.endswith('USDC'):
-            crypto_sym = crypto_sym + 'USDT'
+        else:
+            crypto_sym = sym
+            if not crypto_sym.endswith('USDT') and not crypto_sym.endswith('BUSD') and not crypto_sym.endswith('BTC') and not crypto_sym.endswith('USDC'):
+                crypto_sym = crypto_sym + 'USDT'
 
         # Binance Test
         url_bin = f"https://api.binance.com/api/v3/ticker/price?symbol={crypto_sym}"

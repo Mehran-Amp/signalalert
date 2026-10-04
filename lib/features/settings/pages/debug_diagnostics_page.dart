@@ -101,21 +101,28 @@ class _DebugDiagnosticsPageState extends State<DebugDiagnosticsPage> with Single
       {'ex': 'global_stocks', 'sym': 'EURUSD', 'label': 'یورو/دلار (Forex)'},
     ];
 
-    for (final target in testTargets) {
+    // Run all ping tests concurrently in parallel (Fast & Non-blocking)
+    final futures = testTargets.map((target) async {
       final res = await ServerAlertService.inspectMarketSource(target['ex']!, target['sym']!);
-      if (mounted) {
-        setState(() {
-          _pingResults[target['label']!] = res ?? {
-            'status': 'FAILED',
-            'resolved_price': null,
-            'recommendation': 'Timeout or Server Unreachable'
-          };
-        });
-      }
-    }
+      return MapEntry(
+        target['label']!,
+        res ?? {
+          'status': 'FAILED',
+          'resolved_price': null,
+          'recommendation': 'Server Unreachable or Timeout'
+        },
+      );
+    }).toList();
+
+    final resultsList = await Future.wait(futures);
 
     if (mounted) {
-      setState(() => _isPingingExchanges = false);
+      setState(() {
+        for (final entry in resultsList) {
+          _pingResults[entry.key] = entry.value;
+        }
+        _isPingingExchanges = false;
+      });
     }
   }
 
