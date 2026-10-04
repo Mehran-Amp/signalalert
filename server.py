@@ -469,6 +469,7 @@ async def startup_event():
     scheduler.start()
     print("🚀 SignalAlert Enterprise Engine Online (2s High-Performance Precision Scheduler).")
 
+@app.api_route("/", methods=["GET", "HEAD"])
 @app.get("/")
 def read_root():
     print("🌐 [API] Health check requested.")
