@@ -1,23 +1,51 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 import '../../features/alert_engine/models/alert_rule.dart';
 import '../../features/watchlist/pages/create_alert_flow.dart' show CheckUnit;
 import 'fcm_notification_service.dart';
 
 /// ServerAlertService handles communication with the Python Alert Engine backend
 class ServerAlertService {
-  // Configurable base URL for the Python server (Primary domain: https://aisocialfeed.com)
+  // Configurable base URL for the Python server (Primary domain: https://aisocialfeed.com or custom IP)
   static String _baseUrl = 'https://aisocialfeed.com';
+  static bool _initialized = false;
 
-  /// Set or update the server base URL dynamically
-  static void setBaseUrl(String url) {
-    if (url.isNotEmpty) {
-      // Remove trailing slash if present
-      _baseUrl = url.endsWith('/') ? url.substring(0, url.length - 1) : url;
+  /// Load persisted server URL from disk on startup
+  static Future<void> initialize() async {
+    if (_initialized) return;
+    _initialized = true;
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final file = File('${dir.path}/server_url.txt');
+      if (await file.exists()) {
+        final saved = (await file.readAsString()).trim();
+        if (saved.isNotEmpty) {
+          _baseUrl = saved.endsWith('/') ? saved.substring(0, saved.length - 1) : saved;
+          debugPrint('🌐 Loaded persisted Server Base URL: $_baseUrl');
+        }
+      }
+    } catch (_) {}
+  }
+
+  /// Set or update the server base URL dynamically and persist to disk
+  static Future<void> setBaseUrl(String url) async {
+    if (url.trim().isNotEmpty) {
+      final cleanUrl = url.trim().endsWith('/') ? url.trim().substring(0, url.trim().length - 1) : url.trim();
+      _baseUrl = cleanUrl;
       debugPrint('🌐 ServerAlertService Base URL updated to: $_baseUrl');
+      try {
+        final dir = await getApplicationDocumentsDirectory();
+        final file = File('${dir.path}/server_url.txt');
+        await file.writeAsString(cleanUrl);
+      } catch (_) {}
     }
   }
+
+  /// Get current base URL
+  static String get baseUrl => _baseUrl;
 
   /// Bulk sync all local alert rules to Python server with real FCM Token
   static Future<bool> syncAllRulesToServer(List<AlertRule> rules, {String userId = 'user_default'}) async {
@@ -177,8 +205,8 @@ class ServerAlertService {
           if (p > 0) return p;
         }
       }
-    } catch (e) {
-      debugPrint('⚠️ Error proxying price via server ($exchange / $symbol): $e');
+    } catch (_) {
+      // Gracefully return null so scheduler seamlessly uses direct local fetch
     }
     return null;
   }

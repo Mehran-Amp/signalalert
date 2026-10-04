@@ -696,6 +696,54 @@ $jsonStr
     }
   }
 
+  void _showEditServerUrlDialog(BuildContext context, String lang, bool isFa) {
+    final controller = TextEditingController(text: ServerAlertService.baseUrl);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(isFa ? 'تنظیم آدرس سرور (IP یا دامنه)' : 'Edit Server URL / IP'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              isFa
+                  ? 'آدرس IP سرور یا دامنه خود را وارد کنید (مثال: http://194.5.188.10:8000 یا https://aisocialfeed.com):'
+                  : 'Enter your server IP or domain (e.g. http://194.5.188.10:8000 or https://aisocialfeed.com):',
+              style: const TextStyle(fontSize: 12),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: controller,
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+              decoration: InputDecoration(
+                hintText: 'http://127.0.0.1:8000',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(isFa ? 'انصراف' : 'Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final newUrl = controller.text.trim();
+              if (newUrl.isNotEmpty) {
+                await ServerAlertService.setBaseUrl(newUrl);
+                setState(() {});
+              }
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
+            child: Text(isFa ? 'ذخیره' : 'Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showEditTokenDialog(BuildContext context, String lang, bool isFa) {
     final controller = TextEditingController(text: _currentFcmToken ?? '');
     showDialog(
@@ -791,6 +839,55 @@ $jsonStr
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
+          ),
+        ),
+        const SizedBox(height: AppTokens.space16),
+
+        // Server URL & Host Configuration Card
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: theme.dividerColor),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.dns_rounded, size: 18, color: theme.colorScheme.primary),
+                      const SizedBox(width: 8),
+                      Text(
+                        isFa ? 'آدرس سرور مرکزی (Server Address):' : 'Server Engine Address:',
+                        style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
+                      ),
+                    ],
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.edit_rounded, size: 18),
+                    tooltip: isFa ? 'تغییر IP / دامنه سرور' : 'Edit Server IP',
+                    onPressed: () => _showEditServerUrlDialog(context, lang, isFa),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: SelectableText(
+                  ServerAlertService.baseUrl,
+                  style: const TextStyle(fontSize: 11, fontFamily: 'monospace', fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
           ),
         ),
         const SizedBox(height: AppTokens.space16),

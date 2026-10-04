@@ -81,7 +81,7 @@ class SchedulerService {
       return cached.$1;
     }
 
-    // 1. If rule was determined to prefer server proxy (during alert creation), go straight to server proxy!
+    // 1. If rule was determined to prefer server proxy (during alert creation), try server proxy first!
     if (rule.preferServerProxy) {
       final serverPrice = await ServerAlertService.fetchPriceViaServer(rule.exchangeId, rule.pair.marketSymbol);
       if (serverPrice != null && serverPrice > 0) {
@@ -97,7 +97,7 @@ class SchedulerService {
       }
     }
 
-    // 2. Otherwise try local direct fetch first (5-second timeout for weak internet)
+    // 2. Try direct local fetch (5-second timeout for weak internet)
     final exchange = _exchangeRegistry.get(rule.exchangeId);
     if (exchange != null) {
       try {
@@ -111,18 +111,20 @@ class SchedulerService {
       }
     }
 
-    // 3. Fallback: Query server proxy if local fetch failed
-    final serverPrice = await ServerAlertService.fetchPriceViaServer(rule.exchangeId, rule.pair.marketSymbol);
-    if (serverPrice != null && serverPrice > 0) {
-      final t = MarketTicker(
-        exchangeId: rule.exchangeId,
-        pair: rule.pair,
-        lastPrice: serverPrice,
-        volume24h: 0.0,
-        timestamp: now,
-      );
-      _recentTickers[cacheKey] = (t, now);
-      return t;
+    // 3. Fallback: Query server proxy if not already tried
+    if (!rule.preferServerProxy) {
+      final serverPrice = await ServerAlertService.fetchPriceViaServer(rule.exchangeId, rule.pair.marketSymbol);
+      if (serverPrice != null && serverPrice > 0) {
+        final t = MarketTicker(
+          exchangeId: rule.exchangeId,
+          pair: rule.pair,
+          lastPrice: serverPrice,
+          volume24h: 0.0,
+          timestamp: now,
+        );
+        _recentTickers[cacheKey] = (t, now);
+        return t;
+      }
     }
 
     return null;

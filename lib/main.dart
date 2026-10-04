@@ -39,6 +39,7 @@ void main() async {
 
   final settingsService = SettingsService(dir.path);
   await settingsService.load();
+  await ServerAlertService.initialize();
   await FCMNotificationService.initialize(storageDirectoryPath: dir.path);
 
   // Sync all active alert rules to Python server for 24/7 background FCM monitoring
