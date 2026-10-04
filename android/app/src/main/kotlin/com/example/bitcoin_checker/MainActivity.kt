@@ -74,6 +74,30 @@ class MainActivity : FlutterActivity(), TextToSpeech.OnInitListener {
                     val opened = openAutostartPermissionScreen()
                     result.success(opened)
                 }
+                "openAppSettings" -> {
+                    try {
+                        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                            data = Uri.parse("package:$packageName")
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        startActivity(intent)
+                        result.success(true)
+                    } catch (_: Exception) {
+                        result.success(false)
+                    }
+                }
+                "openBatteryOptimizationSettings" -> {
+                    try {
+                        val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        startActivity(intent)
+                        result.success(true)
+                    } catch (_: Exception) {
+                        val opened = openAutostartPermissionScreen()
+                        result.success(opened)
+                    }
+                }
                 "updateWidgetList" -> {
                     val json = call.argument<String>("json") ?: ""
                     val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)

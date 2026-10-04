@@ -29,4 +29,24 @@ class AppLifecycleHelper {
       return false;
     }
   }
+
+  /// Opens the app's system details settings page directly
+  static Future<bool> openAppSettings() async {
+    try {
+      final result = await _channel.invokeMethod<bool>('openAppSettings');
+      return result == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Opens system battery optimization settings
+  static Future<bool> openBatteryOptimizationSettings() async {
+    try {
+      final result = await _channel.invokeMethod<bool>('openBatteryOptimizationSettings');
+      return result == true;
+    } catch (_) {
+      return false;
+    }
+  }
 }
