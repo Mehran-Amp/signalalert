@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-SignalAlert Enterprise Engine v2.5.0
+SignalAlert Enterprise Engine v2.6.0
 High-Performance, Multi-Source Async Real-Time Alert Engine for Crypto, Forex, Macro & Iran Markets.
 Features:
  - Async Non-Blocking Architecture with Persistent HTTP Connection Pooling
@@ -19,19 +19,101 @@ import json
 import asyncio
 import ipaddress
 import html
+import hmac
+import math
+import re
+import socket
 from urllib.parse import urlparse
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Dict, Any, Tuple
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
-from pydantic import BaseModel, Field
+from fastapi.responses import HTMLResponse
+from pydantic import BaseModel
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import httpx
 import firebase_admin
 from firebase_admin import credentials, messaging
+
+APP_VERSION = "2.6.0"
+
+# -------------------------------------------------------------------
+# 0. Security Configuration, Auth Dependencies & Validation Helpers
+# -------------------------------------------------------------------
+API_KEY = os.getenv("API_KEY", "").strip()          # shared key the mobile app sends as X-API-Key
+ADMIN_KEY = os.getenv("ADMIN_KEY", "").strip()      # operator key: /status, /debug/*, /test/push
+CORS_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
+
+SYMBOL_RE = re.compile(r'^[A-Za-z0-9^.=_/\-]{1,32}$')
+EXCHANGE_RE = re.compile(r'^[a-z0-9_.\-]{1,32}$')
+CHAT_ID_RE = re.compile(r'^(-?\d{1,20}|@[A-Za-z0-9_]{3,64})$')
+MAX_ALERTS_PER_USER = 200
+MAX_NOTE_LEN = 500
+MAX_WEBHOOK_LEN = 500
+
+def _key_matches(provided: Optional[str], expected: str) -> bool:
+    return bool(provided) and bool(expected) and hmac.compare_digest(provided.encode("utf-8"), expected.encode("utf-8"))
+
+async def require_api_key(x_api_key: Optional[str] = Header(None)):
+    if not API_KEY:
+        raise HTTPException(status_code=503, detail="API key is not configured on the server.")
+    if not (_key_matches(x_api_key, API_KEY) or _key_matches(x_api_key, ADMIN_KEY)):
+        raise HTTPException(status_code=401, detail="Invalid or missing API key.")
+
+async def require_admin(x_admin_key: Optional[str] = Header(None), admin_key: Optional[str] = None):
+    if not ADMIN_KEY:
+        raise HTTPException(status_code=503, detail="Admin key is not configured on the server.")
+    if not (_key_matches(x_admin_key, ADMIN_KEY) or _key_matches(admin_key, ADMIN_KEY)):
+        raise HTTPException(status_code=401, detail="Invalid or missing admin key.")
+
+API_DEP = [Depends(require_api_key)]
+ADMIN_DEP = [Depends(require_admin)]
+
+def _scrub(value: Any) -> str:
+    text = str(value)
+    return text.replace(TELEGRAM_BOT_TOKEN, "***") if TELEGRAM_BOT_TOKEN else text
+
+def _clamp_interval(value: Any) -> int:
+    try:
+        v = int(value)
+    except (TypeError, ValueError):
+        v = 180
+    return max(180, min(86400, v))
+
+def _validate_market_args(exchange: str, symbol: str) -> None:
+    if not EXCHANGE_RE.match((exchange or '').lower()) or not SYMBOL_RE.match(symbol or ''):
+        raise HTTPException(status_code=400, detail="Invalid exchange or symbol.")
+
+def _normalize_sync_item(item: Any) -> Dict[str, Any]:
+    if not isinstance(item, dict):
+        raise ValueError("alert item must be an object")
+    out = dict(item)
+    out['exchange'] = str(item.get('exchange') or 'nobitex').strip().lower()
+    out['symbol'] = str(item.get('symbol') or 'USDTIRT').strip().upper()
+    if not EXCHANGE_RE.match(out['exchange']) or not SYMBOL_RE.match(out['symbol']):
+        raise ValueError("invalid exchange or symbol")
+    tp = float(item.get('target_price', 0.0))
+    if not math.isfinite(tp):
+        raise ValueError("invalid target_price")
+    out['target_price'] = tp
+    out['condition'] = str(item.get('condition') or 'ABOVE').strip().upper()
+    out['check_interval_seconds'] = _clamp_interval(item.get('check_interval_seconds', 180))
+    note = item.get('note')
+    out['note'] = str(note)[:MAX_NOTE_LEN] if note is not None else None
+    for k in ('id', 'created_at', 'sound', 'trigger_mode', 'alert_nature'):
+        if item.get(k) is not None:
+            out[k] = str(item[k])[:128]
+    chat = item.get('telegram_chat_id')
+    if chat is not None and str(chat).strip():
+        chat = str(chat).strip()
+        if not CHAT_ID_RE.match(chat):
+            raise ValueError("invalid telegram_chat_id")
+        out['telegram_chat_id'] = chat
+    else:
+        out['telegram_chat_id'] = None
+    return out
 
 # -------------------------------------------------------------------
 # 1. Firebase Initialization (Robust Multi-Source Key Loader)
@@ -123,6 +205,29 @@ class Alert(AlertCreate):
     last_checked_at: float = 0.0
     last_triggered_at: float = 0.0
 
+class AlertPublic(BaseModel):
+    # Same as Alert but WITHOUT fcm_token (never returned to API clients)
+    id: str
+    user_id: str
+    exchange: str
+    symbol: str
+    target_price: float
+    condition: str
+    check_interval_seconds: int = 180
+    note: Optional[str] = None
+    trigger_mode: Optional[str] = "oneShot"
+    alert_nature: Optional[str] = "price"
+    sound_enabled: bool = True
+    vibration_enabled: bool = True
+    tts_enabled: bool = True
+    sound: Optional[str] = "alarm_siren"
+    telegram_chat_id: Optional[str] = None
+    webhook_url: Optional[str] = None
+    is_active: bool = True
+    created_at: str
+    last_checked_at: float = 0.0
+    last_triggered_at: float = 0.0
+
 DB_FILE = "alerts_data.json"
 
 def load_alerts_from_disk() -> List[Alert]:
@@ -167,6 +272,10 @@ async def lifespan(app: FastAPI):
     limits = httpx.Limits(max_keepalive_connections=50, max_connections=100)
     timeout = httpx.Timeout(5.0, connect=3.0)
     http_client = httpx.AsyncClient(limits=limits, timeout=timeout)
+    if not API_KEY:
+        print("🚨 [Security] API_KEY is not set: all /api endpoints will answer 503 until it is configured.")
+    if not ADMIN_KEY:
+        print("🚨 [Security] ADMIN_KEY is not set: /status, /debug/* and /test/push are disabled.")
 
     # Initialize Telegram Bot & launch polling worker
     await init_telegram_bot(http_client)
@@ -194,16 +303,16 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="SignalAlert Production Engine",
-    version="2.5.0",
+    version=APP_VERSION,
     lifespan=lifespan
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=CORS_ORIGINS,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "DELETE"],
+    allow_headers=["X-API-Key", "X-Admin-Key", "Content-Type"],
 )
 
 BULK_MARKET_RESPONSE_CACHE: Dict[str, Tuple[Any, float]] = {}
@@ -250,7 +359,7 @@ async def fetch_price_with_trace(
             except Exception:
                 pass
 
-        req_headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) SignalAlert/2.7'}
+        req_headers = {'User-Agent': f'Mozilla/5.0 (Windows NT 10.0; Win64; x64) SignalAlert/{APP_VERSION}'}
         if headers:
             req_headers.update(headers)
         try:
@@ -288,13 +397,14 @@ async def fetch_price_with_trace(
 
         # 1a. Tabdeal
         def _extract_tabdeal(data):
-            for k, v in data.items():
-                if normalize_symbol(k) in matching_keys:
-                    if isinstance(v, dict):
-                        p = v.get('price') or v.get('last_price')
-                        if p and float(p) > 0:
-                            val = float(p)
-                            return val / 10.0 if (val > 500000 and 'USDT' in sym_clean) else val
+            if isinstance(data, dict):
+                for k, v in data.items():
+                    if normalize_symbol(k) in matching_keys:
+                        if isinstance(v, dict):
+                            p = v.get('price') or v.get('last_price')
+                            if p and float(p) > 0:
+                                val = float(p)
+                                return val / 10.0 if (val > 500000 and 'USDT' in sym_clean) else val
             return None
 
         p = await _try_fetch('Tabdeal Spot API', 'https://api.tabdeal.org/r/plots/market/information', _extract_tabdeal)
@@ -303,7 +413,7 @@ async def fetch_price_with_trace(
         # 1b. Nobitex Orderbook (.net then .ir)
         for domain, label in [('api.nobitex.net', 'Nobitex Global Net'), ('api.nobitex.ir', 'Nobitex Local IR')]:
             def _extract_nobitex_ob(data):
-                if 'bids' in data and len(data['bids']) > 0:
+                if isinstance(data, dict) and 'bids' in data and len(data['bids']) > 0:
                     val = float(data['bids'][0][0])
                     return val / 10.0 if (val > 500000 and 'USDT' in sym_clean) else val
                 return None
@@ -312,10 +422,11 @@ async def fetch_price_with_trace(
 
         # 1c. Bitpin
         def _extract_bitpin(data):
-            for m in data.get('results', []):
-                if normalize_symbol(m.get('code', '')) in matching_keys:
-                    val = float(m.get('price', 0))
-                    return val / 10.0 if (val > 500000 and 'USDT' in sym_clean) else val
+            if isinstance(data, dict):
+                for m in data.get('results', []):
+                    if normalize_symbol(m.get('code', '')) in matching_keys:
+                        val = float(m.get('price', 0))
+                        return val / 10.0 if (val > 500000 and 'USDT' in sym_clean) else val
             return None
 
         p = await _try_fetch('Bitpin Markets API', 'https://api.bitpin.org/v1/mkt/markets/', _extract_bitpin)
@@ -323,10 +434,11 @@ async def fetch_price_with_trace(
 
         # 1d. Wallex
         def _extract_wallex(data):
-            symbols = data.get('result', {}).get('symbols', {})
-            for k, v in symbols.items():
-                if normalize_symbol(k) == sym_clean:
-                    return v.get('stats', {}).get('lastPrice')
+            if isinstance(data, dict):
+                symbols = data.get('result', {}).get('symbols', {})
+                for k, v in symbols.items():
+                    if normalize_symbol(k) == sym_clean:
+                        return v.get('stats', {}).get('lastPrice')
             return None
 
         p = await _try_fetch('Wallex Markets API', 'https://api.wallex.ir/v1/markets', _extract_wallex)
@@ -335,8 +447,10 @@ async def fetch_price_with_trace(
         # 1e. Tetherland (For USDT/TMN direct)
         if sym_clean in ['USDTTMN', 'USDTIRT', 'USDT']:
             def _extract_tetherland(data):
-                usdt_info = data.get('data', {}).get('currencies', {}).get('USDT', {})
-                return usdt_info.get('price') or usdt_info.get('last_price')
+                if isinstance(data, dict):
+                    usdt_info = data.get('data', {}).get('currencies', {}).get('USDT', {})
+                    return usdt_info.get('price') or usdt_info.get('last_price')
+                return None
 
             p = await _try_fetch('Tetherland API', 'https://api.tetherland.com/currencies', _extract_tetherland)
             if p and not collect_all_traces: return p, traces
@@ -354,9 +468,10 @@ async def fetch_price_with_trace(
         elif 'GOLD' in sym_clean or 'XAU' in sym_clean: yf_symbol = 'GC=F'
 
         def _extract_yf(data):
-            chart = data.get('chart', {}).get('result', [])
-            if chart:
-                return chart[0].get('meta', {}).get('regularMarketPrice')
+            if isinstance(data, dict):
+                chart = data.get('chart', {}).get('result', [])
+                if chart and isinstance(chart, list) and len(chart) > 0:
+                    return chart[0].get('meta', {}).get('regularMarketPrice')
             return None
 
         p = await _try_fetch('Yahoo Finance API', f'https://query1.finance.yahoo.com/v8/finance/chart/{yf_symbol}?interval=1m&range=1d', _extract_yf)
@@ -371,28 +486,30 @@ async def fetch_price_with_trace(
             crypto_sym = crypto_sym + 'USDT'
 
         # 3a. Binance
-        p = await _try_fetch('Binance Spot API', f'https://api.binance.com/api/v3/ticker/price?symbol={crypto_sym}', lambda d: d.get('price'))
+        p = await _try_fetch('Binance Spot API', f'https://api.binance.com/api/v3/ticker/price?symbol={crypto_sym}', lambda d: d.get('price') if isinstance(d, dict) else None)
         if p and not collect_all_traces: return p, traces
 
         # 3b. MEXC
-        p = await _try_fetch('MEXC Spot API', f'https://api.mexc.com/api/v3/ticker/price?symbol={crypto_sym}', lambda d: d.get('price'))
+        p = await _try_fetch('MEXC Spot API', f'https://api.mexc.com/api/v3/ticker/price?symbol={crypto_sym}', lambda d: d.get('price') if isinstance(d, dict) else None)
         if p and not collect_all_traces: return p, traces
 
         # 3c. KuCoin
         kucoin_sym = f"{crypto_sym[:-4]}-USDT" if crypto_sym.endswith('USDT') else crypto_sym
-        p = await _try_fetch('KuCoin Spot API', f'https://api.kucoin.com/api/v1/market/orderbook/level1?symbol={kucoin_sym}', lambda d: d.get('data', {}).get('price'))
+        p = await _try_fetch('KuCoin Spot API', f'https://api.kucoin.com/api/v1/market/orderbook/level1?symbol={kucoin_sym}', lambda d: d.get('data', {}).get('price') if isinstance(d, dict) else None)
         if p and not collect_all_traces: return p, traces
 
         # 3d. Gate.io
         gate_sym = f"{crypto_sym[:-4]}_USDT" if crypto_sym.endswith('USDT') else crypto_sym
-        p = await _try_fetch('Gate.io Spot API', f'https://api.gateio.ws/api/v4/spot/tickers?currency_pair={gate_sym}', lambda d: d[0].get('last') if d and len(d) > 0 else None)
+        p = await _try_fetch('Gate.io Spot API', f'https://api.gateio.ws/api/v4/spot/tickers?currency_pair={gate_sym}', lambda d: d[0].get('last') if isinstance(d, list) and len(d) > 0 else None)
         if p and not collect_all_traces: return p, traces
 
         # 3e. CoinEx
-        p = await _try_fetch('CoinEx Spot API', f'https://api.coinex.com/v1/market/ticker?market={crypto_sym}', lambda d: d.get('data', {}).get('ticker', {}).get('last'))
+        p = await _try_fetch('CoinEx Spot API', f'https://api.coinex.com/v1/market/ticker?market={crypto_sym}', lambda d: d.get('data', {}).get('ticker', {}).get('last') if isinstance(d, dict) else None)
         if p and not collect_all_traces: return p, traces
 
     return final_price, traces
+
+OUTLIER_STREAK: Dict[str, int] = {}
 
 async def get_cached_price(client: httpx.AsyncClient, exchange: str, symbol: str) -> Optional[float]:
     """Fetches price with in-memory TTL caching and Outlier Protection filter"""
@@ -407,14 +524,18 @@ async def get_cached_price(client: httpx.AsyncClient, exchange: str, symbol: str
     METRICS["cache_misses"] += 1
     price, _ = await fetch_price_with_trace(client, exchange, symbol, collect_all_traces=False)
     if price is not None and price > 0:
-        # Outlier Protection: Ignore sudden 50%+ suspicious price jumps/drops compared to last known price
-        if cached and cached[0] > 0:
+        # Outlier Protection: suspicious 50%+ jumps must be confirmed 3 times in a row before acceptance
+        if cached and cached[0] > 0 and (now - cached[1]) < 300:
             last_p = cached[0]
             dev = abs(price - last_p) / last_p
             if dev > 0.50 and last_p > 1.0:
-                print(f"⚠️ [Outlier Filter] Suppressed suspicious price jump for {cache_key}: {last_p} -> {price} ({dev*100:.1f}% deviation)")
-                return cached[0]
+                streak = OUTLIER_STREAK.get(cache_key, 0) + 1
+                if streak < 3:
+                    OUTLIER_STREAK[cache_key] = streak
+                    print(f"⚠️ [Outlier Filter] {cache_key}: {last_p} -> {price} ({dev*100:.1f}%), confirm {streak}/3")
+                    return cached[0]
 
+        OUTLIER_STREAK.pop(cache_key, None)
         PRICE_CACHE[cache_key] = (price, now)
         return price
     return None
@@ -446,9 +567,7 @@ def is_safe_webhook_url(url_str: str) -> bool:
         # Parse directly if IP address
         try:
             ip = ipaddress.ip_address(hostname)
-            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved:
-                return False
-            if str(ip) == '169.254.169.254': # Cloud Metadata IP
+            if not _ip_is_public(ip):
                 return False
         except ValueError:
             if hostname.endswith('.local') or hostname.endswith('.internal'):
@@ -458,11 +577,41 @@ def is_safe_webhook_url(url_str: str) -> bool:
     except Exception:
         return False
 
+def _ip_is_public(ip) -> bool:
+    if ip.version == 6 and ip.ipv4_mapped:
+        ip = ip.ipv4_mapped
+    return ip.is_global and not ip.is_multicast
+
+async def is_safe_webhook_url_async(url_str: str) -> bool:
+    """Static checks + DNS resolution: every resolved address must be public (blocks internal-host SSRF)."""
+    if not url_str or len(url_str) > MAX_WEBHOOK_LEN or not is_safe_webhook_url(url_str):
+        return False
+    host = (urlparse(url_str).hostname or '').strip()
+    try:
+        ipaddress.ip_address(host)
+        return True  # literal IP already vetted by is_safe_webhook_url
+    except ValueError:
+        pass
+    try:
+        loop = asyncio.get_running_loop()
+        infos = await asyncio.wait_for(loop.getaddrinfo(host, 443, type=socket.SOCK_STREAM), timeout=3.0)
+    except Exception:
+        return False
+    if not infos:
+        return False
+    for info in infos:
+        try:
+            if not _ip_is_public(ipaddress.ip_address(info[4][0].split('%')[0])):
+                return False
+        except ValueError:
+            return False
+    return True
+
 def _send_fcm_sync(fcm_token: str, title: str, body: str, data_payload: dict = None, ttl_seconds: int = 300) -> Tuple[bool, str]:
     if not firebase_admin._apps:
         return False, "Firebase Admin SDK not initialized."
     if not fcm_token or fcm_token.startswith('dev_') or fcm_token.startswith('device_token_') or len(fcm_token) < 40:
-        return False, f"Token '{fcm_token}' is not a valid Google FCM registration token."
+        return False, "Not a valid Google FCM registration token."
 
     try:
         full_data = {"title": str(title), "body": str(body), **(data_payload or {})}
@@ -497,7 +646,7 @@ async def send_telegram_alert(client: httpx.AsyncClient, chat_id: str, message: 
         await client.post(url, json={"chat_id": chat_id, "text": message, "parse_mode": "HTML", "disable_web_page_preview": True}, timeout=6.0)
         METRICS["telegram_sent"] += 1
     except Exception as e:
-        print(f"⚠️ [Telegram Dispatch Error] {e}")
+        print(f"⚠️ [Telegram Dispatch Error] {_scrub(e)}")
 
 async def init_telegram_bot(client: httpx.AsyncClient):
     global TELEGRAM_BOT_METADATA
@@ -513,10 +662,11 @@ async def init_telegram_bot(client: httpx.AsyncClient):
             TELEGRAM_BOT_METADATA["is_connected"] = True
             print(f"🤖 [Telegram Bot] Connected to @{TELEGRAM_BOT_METADATA['username']} ({TELEGRAM_BOT_METADATA['first_name']})")
     except Exception as e:
-        print(f"⚠️ [Telegram Bot Init Note] {e}")
+        print(f"⚠️ [Telegram Bot Init Note] {_scrub(e)}")
 
 async def telegram_bot_polling_loop():
     """Background listener for user interactions: /start, /myalerts, /clear, /stop, /help"""
+    global ALERTS_DB
     if not TELEGRAM_BOT_TOKEN:
         return
     offset = 0
@@ -538,7 +688,7 @@ async def telegram_bot_polling_loop():
                     chat = msg.get("chat") or {}
                     chat_id = chat.get("id")
                     text = (msg.get("text") or "").strip()
-                    user_name = chat.get("first_name") or chat.get("username") or "کاربر گرامی"
+                    user_name = html.escape(str(chat.get("first_name") or chat.get("username") or "کاربر گرامی"))
 
                     if not chat_id:
                         continue
@@ -549,7 +699,6 @@ async def telegram_bot_polling_loop():
 
                     # 1. /clear or /stop - Stop all alerts for this chat_id
                     if text_lower.startswith("/clear") or text_lower.startswith("/stop"):
-                        global ALERTS_DB
                         async with _db_lock:
                             initial_len = len(ALERTS_DB)
                             ALERTS_DB = [a for a in ALERTS_DB if (a.telegram_chat_id or "").strip() != chat_id_str]
@@ -584,7 +733,7 @@ async def telegram_bot_polling_loop():
                             lines = [f"📋 <b>لیست هشدارهای متصل به تلگرام شما ({len(user_alerts)} مورد):</b>\n"]
                             for i, a in enumerate(user_alerts, 1):
                                 st = "🟢 فعال" if a.is_active else "⚪ تکمیل شده"
-                                lines.append(f"{i}. <b>{a.symbol}</b> ({get_exchange_display_name(a.exchange)}) - تارگت: <code>{a.target_price:,.2f}</code> | {st}")
+                                lines.append(f"{i}. <b>{html.escape(a.symbol)}</b> ({get_exchange_display_name(a.exchange)}) - تارگت: <code>{a.target_price:,.2f}</code> | {st}")
                             lines.append("\n💡 <i>برای لغو تمامی هشدارها دستور /clear را بفرستید.</i>")
                             resp_text = "\n".join(lines)
 
@@ -631,16 +780,23 @@ async def telegram_bot_polling_loop():
                             "parse_mode": "HTML",
                             "disable_web_page_preview": True
                         }, timeout=5.0)
+            else:
+                print(f"⚠️ [Telegram Polling] HTTP {res.status_code}: {res.text[:120]}")
+                await asyncio.sleep(15 if res.status_code in (401, 409, 429) else 5)
         except asyncio.CancelledError:
             break
         except Exception as e:
+            print(f"⚠️ [Telegram Polling Error] {_scrub(e)}")
             await asyncio.sleep(4)
 
 async def send_webhook_alert(client: httpx.AsyncClient, webhook_url: str, payload: dict):
     if not webhook_url:
         return
+    if not await is_safe_webhook_url_async(webhook_url):
+        print("⚠️ [Webhook Blocked] Unsafe or unresolvable webhook URL.")
+        return
     try:
-        await client.post(webhook_url, json=payload, timeout=4.0)
+        await client.post(webhook_url, json=payload, timeout=4.0, follow_redirects=False)
         METRICS["webhook_sent"] += 1
     except Exception as e:
         print(f"⚠️ [Webhook Dispatch Error] {e}")
@@ -683,13 +839,16 @@ async def check_alerts_job():
             prices[f"{ex.lower()}:{normalize_symbol(sym)}"] = float(price)
 
     updated = False
-    for alert in ready_alerts:
-        alert.last_checked_at = current_time
+
+    async def _process(alert):
+        nonlocal updated
         key = f"{alert.exchange.lower()}:{normalize_symbol(alert.symbol)}"
         current_price = prices.get(key)
 
         if current_price is None:
-            continue
+            # retry ~5s later instead of waiting a full interval
+            alert.last_checked_at = current_time - max(0, alert.check_interval_seconds - 5)
+            return
 
         triggered = False
         if alert.condition == 'ABOVE' and current_price >= alert.target_price:
@@ -705,10 +864,10 @@ async def check_alerts_job():
 
                 if is_one_shot:
                     if not alert.is_active or last_trig > 0:
-                        continue
+                        return
                 else:
                     if (current_time - last_trig) < min_cooldown:
-                        continue
+                        return
 
                 # Atomic pre-dispatch update before any IO or network calls
                 alert.last_triggered_at = current_time
@@ -809,7 +968,7 @@ async def check_alerts_job():
                 asyncio.create_task(send_telegram_alert(http_client, alert.telegram_chat_id, tg_msg))
 
             # 3. Dispatch Optional Webhook with SSRF Protection
-            if alert.webhook_url and is_safe_webhook_url(alert.webhook_url):
+            if alert.webhook_url:
                 hook_data = {
                     "event": "price_alert_triggered",
                     "alert_id": alert.id,
@@ -820,6 +979,12 @@ async def check_alerts_job():
                     "timestamp": datetime.now(timezone.utc).isoformat()
                 }
                 asyncio.create_task(send_webhook_alert(http_client, alert.webhook_url, hook_data))
+
+    for alert in ready_alerts:
+        try:
+            await _process(alert)
+        except Exception as e:
+            print(f"❌ [Alert Job] {alert.id} {alert.symbol}: {e}")
 
     if updated:
         await save_alerts_to_disk_async(ALERTS_DB)
@@ -832,14 +997,11 @@ def read_root():
     uptime = int(time.time() - METRICS["start_time"])
     return {
         "status": "online",
-        "engine": "SignalAlert Enterprise Engine v2.5.0",
+        "engine": f"SignalAlert Enterprise Engine v{APP_VERSION}",
         "uptime_seconds": uptime,
-        "total_alerts": len(ALERTS_DB),
-        "active_alerts": len([a for a in ALERTS_DB if a.is_active]),
-        "metrics": METRICS
     }
 
-@app.get("/status", response_class=HTMLResponse)
+@app.get("/status", response_class=HTMLResponse, dependencies=ADMIN_DEP)
 def get_status_dashboard():
     """Live Dark-Themed Web Monitoring Dashboard"""
     uptime_min = int((time.time() - METRICS["start_time"]) / 60)
@@ -848,7 +1010,7 @@ def get_status_dashboard():
     cache_total = METRICS["cache_hits"] + METRICS["cache_misses"]
     cache_ratio = round((METRICS["cache_hits"] / max(1, cache_total)) * 100, 1)
 
-    html = f"""
+    page = f"""
     <!DOCTYPE html>
     <html lang="en">
     <head>
@@ -917,8 +1079,8 @@ def get_status_dashboard():
                     <tbody>
                         {"".join(f'''
                         <tr>
-                            <td style="font-weight:bold; font-family:monospace;">{a.symbol}</td>
-                            <td>{get_exchange_display_name(a.exchange)}</td>
+                            <td style="font-weight:bold; font-family:monospace;">{html.escape(a.symbol)}</td>
+                            <td>{html.escape(get_exchange_display_name(a.exchange))}</td>
                             <td style="font-family:monospace; color:#38bdf8;">{a.target_price:,.2f}</td>
                             <td>{"🟢 Above" if a.condition.upper() == "ABOVE" else "🔴 Below"}</td>
                             <td>{a.check_interval_seconds}s</td>
@@ -932,12 +1094,30 @@ def get_status_dashboard():
     </body>
     </html>
     """
-    return HTMLResponse(content=html)
+    return HTMLResponse(content=page)
 
-@app.post("/api/alerts", response_model=Alert)
-@app.post("/alerts", response_model=Alert)
+@app.post("/api/alerts", response_model=AlertPublic, dependencies=API_DEP)
+@app.post("/alerts", response_model=AlertPublic, dependencies=API_DEP)
 async def create_alert(alert_in: AlertCreate):
-    rule_id = alert_in.id or str(uuid.uuid4())
+    alert_in.condition = (alert_in.condition or 'ABOVE').strip().upper()
+    alert_in.exchange = (alert_in.exchange or '').strip().lower()
+    alert_in.symbol = (alert_in.symbol or '').strip().upper()
+    if not EXCHANGE_RE.match(alert_in.exchange) or not SYMBOL_RE.match(alert_in.symbol):
+        raise HTTPException(status_code=400, detail="Invalid exchange or symbol.")
+    if not math.isfinite(alert_in.target_price):
+        raise HTTPException(status_code=400, detail="Invalid target_price.")
+    if not alert_in.user_id.strip() or len(alert_in.user_id) > 128 or len(alert_in.fcm_token) > 512:
+        raise HTTPException(status_code=400, detail="Invalid user_id or fcm_token.")
+    if alert_in.telegram_chat_id:
+        alert_in.telegram_chat_id = alert_in.telegram_chat_id.strip()
+        if not CHAT_ID_RE.match(alert_in.telegram_chat_id):
+            raise HTTPException(status_code=400, detail="Invalid telegram_chat_id.")
+    if alert_in.webhook_url and not await is_safe_webhook_url_async(alert_in.webhook_url):
+        raise HTTPException(status_code=400, detail="Unsafe or unresolvable webhook_url (https + public host required).")
+    alert_in.check_interval_seconds = _clamp_interval(alert_in.check_interval_seconds)
+    if alert_in.note:
+        alert_in.note = alert_in.note[:MAX_NOTE_LEN]
+    rule_id = (alert_in.id or str(uuid.uuid4()))[:128]
     async with _db_lock:
         existing = next((a for a in ALERTS_DB if a.id == rule_id), None)
         if existing:
@@ -958,8 +1138,12 @@ async def create_alert(alert_in: AlertCreate):
             existing.telegram_chat_id = alert_in.telegram_chat_id
             existing.webhook_url = alert_in.webhook_url
             existing.is_active = True
+            existing.last_triggered_at = 0.0
+            existing.last_checked_at = 0.0
             new_alert = existing
         else:
+            if sum(1 for a in ALERTS_DB if a.user_id == alert_in.user_id) >= MAX_ALERTS_PER_USER:
+                raise HTTPException(status_code=400, detail="Alert limit reached for this user.")
             new_alert = Alert(
                 id=rule_id,
                 user_id=alert_in.user_id,
@@ -988,22 +1172,35 @@ async def create_alert(alert_in: AlertCreate):
     print(f"📩 [API] New Alert Created/Updated: {new_alert.symbol} ({new_alert.exchange}) | ID: {new_alert.id} | Target: {new_alert.target_price} | Interval: {new_alert.check_interval_seconds}s")
     return new_alert
 
-@app.post("/api/alerts/sync")
-@app.post("/alerts/sync")
+@app.post("/api/alerts/sync", dependencies=API_DEP)
+@app.post("/alerts/sync", dependencies=API_DEP)
 async def sync_user_alerts(payload: dict):
     global ALERTS_DB
-    user_id = payload.get('user_id', 'user_default')
-    fcm_token = payload.get('fcm_token', '')
+    user_id = str(payload.get('user_id') or 'user_default').strip()
+    fcm_token = str(payload.get('fcm_token') or '').strip()
     alerts_data = payload.get('alerts', [])
+    if user_id == 'user_default' and len(fcm_token) <= 10:
+        raise HTTPException(status_code=400, detail="user_id or a valid fcm_token is required.")
+    if len(user_id) > 128 or len(fcm_token) > 512:
+        raise HTTPException(status_code=400, detail="user_id or fcm_token too long.")
+    if not isinstance(alerts_data, list) or len(alerts_data) > MAX_ALERTS_PER_USER:
+        raise HTTPException(status_code=400, detail=f"'alerts' must be a list of at most {MAX_ALERTS_PER_USER} items.")
+    try:
+        alerts_data = [_normalize_sync_item(i) for i in alerts_data]
+    except (ValueError, TypeError) as e:
+        raise HTTPException(status_code=400, detail=f"Invalid alert payload: {e}")
+    for item in alerts_data:
+        hook = item.get('webhook_url')
+        if hook:
+            if await is_safe_webhook_url_async(str(hook)):
+                item['webhook_url'] = str(hook)
+            else:
+                print(f"⚠️ [API] Dropped unsafe webhook_url from synced alert {item.get('id')}")
+                item['webhook_url'] = None
 
     async with _db_lock:
         existing_map = {a.id: a for a in ALERTS_DB if (a.user_id == user_id or a.fcm_token == fcm_token)}
-
-        if fcm_token and len(fcm_token) > 10:
-            ALERTS_DB = [a for a in ALERTS_DB if (a.user_id != user_id and a.fcm_token != fcm_token)]
-        else:
-            ALERTS_DB = [a for a in ALERTS_DB if a.user_id != user_id]
-
+        new_alerts = []
         added_count = 0
         for item in alerts_data:
             rule_id = item.get('id') or str(uuid.uuid4())
@@ -1023,7 +1220,7 @@ async def sync_user_alerts(payload: dict):
                 target_price=float(item.get('target_price', 0.0)),
                 condition=item.get('condition', 'ABOVE').upper(),
                 fcm_token=item.get('fcm_token') or fcm_token,
-                check_interval_seconds=int(item.get('check_interval_seconds', 10)),
+                check_interval_seconds=_clamp_interval(item.get('check_interval_seconds', 180)),
                 note=item.get('note'),
                 trigger_mode=item.get('trigger_mode', 'oneShot'),
                 alert_nature=item.get('alert_nature') or 'price',
@@ -1038,16 +1235,24 @@ async def sync_user_alerts(payload: dict):
                 last_checked_at=last_chk,
                 last_triggered_at=last_trig
             )
-            ALERTS_DB.append(alert_obj)
+            new_alerts.append(alert_obj)
             added_count += 1
+
+        if user_id == 'user_default':
+            ALERTS_DB = [a for a in ALERTS_DB if a.fcm_token != fcm_token]
+        elif len(fcm_token) > 10:
+            ALERTS_DB = [a for a in ALERTS_DB if (a.user_id != user_id and a.fcm_token != fcm_token)]
+        else:
+            ALERTS_DB = [a for a in ALERTS_DB if a.user_id != user_id]
+        ALERTS_DB.extend(new_alerts)
 
     await save_alerts_to_disk_async(ALERTS_DB)
     active_remaining = len([a for a in ALERTS_DB if a.is_active])
     print(f"🔄 [API] Bulk Synced {added_count} alert(s) for user {user_id} (Active remaining: {active_remaining})")
     return {"status": "synced", "count": added_count, "total_active": active_remaining}
 
-@app.delete("/api/alerts")
-@app.delete("/alerts")
+@app.delete("/api/alerts", dependencies=API_DEP)
+@app.delete("/alerts", dependencies=API_DEP)
 async def clear_all_alerts(user_id: Optional[str] = None, fcm_token: Optional[str] = None):
     global ALERTS_DB
     async with _db_lock:
@@ -1056,13 +1261,13 @@ async def clear_all_alerts(user_id: Optional[str] = None, fcm_token: Optional[st
         elif user_id:
             ALERTS_DB = [a for a in ALERTS_DB if a.user_id != user_id]
         else:
-            ALERTS_DB = []
+            raise HTTPException(status_code=400, detail="user_id or fcm_token is required.")
     await save_alerts_to_disk_async(ALERTS_DB)
     print("🧹 [API] Alerts purged from server.")
     return {"status": "cleared", "total_alerts": len(ALERTS_DB)}
 
-@app.get("/api/alerts/{user_id}", response_model=List[Alert])
-@app.get("/alerts/{user_id}", response_model=List[Alert])
+@app.get("/api/alerts/{user_id}", response_model=List[AlertPublic], dependencies=API_DEP)
+@app.get("/alerts/{user_id}", response_model=List[AlertPublic], dependencies=API_DEP)
 async def get_user_alerts(user_id: str, fcm_token: Optional[str] = None):
     clean_uid = (user_id or "").strip().lower()
     clean_fcm = (fcm_token or "").strip()
@@ -1082,8 +1287,8 @@ async def get_user_alerts(user_id: str, fcm_token: Optional[str] = None):
 
     return results
 
-@app.delete("/api/alerts/{alert_id}")
-@app.delete("/alerts/{alert_id}")
+@app.delete("/api/alerts/{alert_id}", dependencies=API_DEP)
+@app.delete("/alerts/{alert_id}", dependencies=API_DEP)
 async def delete_alert(alert_id: str):
     global ALERTS_DB
     clean_id = (alert_id or "").strip()
@@ -1092,12 +1297,13 @@ async def delete_alert(alert_id: str):
     await save_alerts_to_disk_async(ALERTS_DB)
     return {"status": "deleted", "id": clean_id}
 
-@app.get("/api/price/{exchange}/{symbol}")
-@app.get("/price/{exchange}/{symbol}")
+@app.get("/api/price/{exchange}/{symbol}", dependencies=API_DEP)
+@app.get("/price/{exchange}/{symbol}", dependencies=API_DEP)
 async def get_live_price(exchange: str, symbol: str):
     global http_client
     if http_client is None:
         raise HTTPException(status_code=503, detail="Server client initializing...")
+    _validate_market_args(exchange, symbol)
     price = await get_cached_price(http_client, exchange, symbol)
     if price is not None and price > 0:
         return {
@@ -1109,14 +1315,15 @@ async def get_live_price(exchange: str, symbol: str):
         }
     raise HTTPException(status_code=502, detail="Unable to fetch live price from market sources.")
 
-@app.get("/api/debug/inspect/{exchange}/{symbol}")
-@app.get("/debug/inspect/{exchange}/{symbol}")
+@app.get("/api/debug/inspect/{exchange}/{symbol}", dependencies=ADMIN_DEP)
+@app.get("/debug/inspect/{exchange}/{symbol}", dependencies=ADMIN_DEP)
 async def inspect_market_source(exchange: str, symbol: str):
     """Deeply tests and traces every API endpoint without code duplication"""
     global http_client
     if http_client is None:
         raise HTTPException(status_code=503, detail="Server initializing...")
 
+    _validate_market_args(exchange, symbol)
     start_time = time.time()
     final_price, traces = await fetch_price_with_trace(http_client, exchange, symbol, collect_all_traces=True)
     elapsed_total = round((time.time() - start_time) * 1000, 2)
@@ -1138,13 +1345,13 @@ async def inspect_market_source(exchange: str, symbol: str):
 
     return report
 
-@app.get("/api/debug/logs")
-@app.get("/debug/logs")
+@app.get("/api/debug/logs", dependencies=ADMIN_DEP)
+@app.get("/debug/logs", dependencies=ADMIN_DEP)
 def get_debug_logs():
     return {"count": len(RECENT_DIAGNOSTICS), "logs": RECENT_DIAGNOSTICS}
 
-@app.get("/api/test/push")
-@app.post("/api/test/push")
+@app.get("/api/test/push", dependencies=ADMIN_DEP)
+@app.post("/api/test/push", dependencies=ADMIN_DEP)
 async def test_push_notification(fcm_token: Optional[str] = None, title: Optional[str] = None, body: Optional[str] = None):
     token_to_use = fcm_token
     if not token_to_use:
@@ -1176,7 +1383,7 @@ async def test_push_notification(fcm_token: Optional[str] = None, title: Optiona
     return {
         "success": sent_ok,
         "details": sent_msg,
-        "fcm_token_used": token_to_use,
+        "fcm_token_used": "..." + token_to_use[-6:],
         "firebase_initialized": bool(firebase_admin._apps),
         "service_account_key_found": os.path.exists("serviceAccountKey.json"),
         "title_sent": test_title,
@@ -1187,8 +1394,8 @@ async def test_push_notification(fcm_token: Optional[str] = None, title: Optiona
 class TelegramTestRequest(BaseModel):
     chat_id: str
 
-@app.get("/api/telegram/bot-info")
-@app.get("/telegram/bot-info")
+@app.get("/api/telegram/bot-info", dependencies=API_DEP)
+@app.get("/telegram/bot-info", dependencies=API_DEP)
 def get_telegram_bot_info():
     uname = TELEGRAM_BOT_METADATA.get("username", "aisocialfeedbot")
     return {
@@ -1200,8 +1407,8 @@ def get_telegram_bot_info():
         "bot_handle": f"@{uname}"
     }
 
-@app.post("/api/telegram/test-message")
-@app.post("/telegram/test-message")
+@app.post("/api/telegram/test-message", dependencies=API_DEP)
+@app.post("/telegram/test-message", dependencies=API_DEP)
 async def send_telegram_test_message(req: TelegramTestRequest):
     global http_client
     if not http_client:
@@ -1210,7 +1417,7 @@ async def send_telegram_test_message(req: TelegramTestRequest):
         raise HTTPException(status_code=400, detail="Telegram Bot Token is not configured.")
 
     chat_id = (req.chat_id or "").strip()
-    if not chat_id:
+    if not chat_id or not CHAT_ID_RE.match(chat_id):
         raise HTTPException(status_code=400, detail="Valid chat_id is required.")
 
     test_msg = (
@@ -1234,7 +1441,7 @@ async def send_telegram_test_message(req: TelegramTestRequest):
             METRICS["telegram_sent"] += 1
             return {"status": "ok", "message": "پیام تست با موفقیت به تلگرام شما ارسال شد!", "chat_id": chat_id}
         else:
-            return {"status": "error", "detail": res.text, "status_code": res.status_code}
+            return {"status": "error", "detail": res.text[:200], "status_code": res.status_code}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
+        print(f"⚠️ [Telegram Test Error] {_scrub(e)}")
+        raise HTTPException(status_code=502, detail="Telegram request failed.")

@@ -12,10 +12,25 @@ import 'fcm_notification_service.dart';
 
 /// ServerAlertService handles communication with the Python Alert Engine backend
 class ServerAlertService {
-  // Configurable base URL for the Python server (Empty by default until user provides IP/URL)
+  // Configurable base URL for the Python server
   static String _baseUrl = '';
+  static String _apiKey = const String.fromEnvironment('API_KEY', defaultValue: '6f39759e55b1e6562d129dbb6074250a18d2d7bf0bf37e7346d7e16266cad2cd');
   static bool _initialized = false;
   static DateTime? _circuitBreakerUntil;
+
+  /// Centralized headers builder for internal Python server endpoints
+  static Map<String, String> _buildHeaders({Map<String, String>? extra}) {
+    final map = <String, String>{
+      'Content-Type': 'application/json',
+    };
+    if (_apiKey.isNotEmpty) {
+      map['X-API-Key'] = _apiKey;
+    }
+    if (extra != null) {
+      map.addAll(extra);
+    }
+    return map;
+  }
 
   /// Whether server calls should be attempted
   static bool get isServerAvailable {
@@ -26,18 +41,30 @@ class ServerAlertService {
     return true;
   }
 
-  /// Load persisted server URL from disk on startup
+  /// Load persisted server URL and API key from disk on startup
   static Future<void> initialize() async {
     if (_initialized) return;
     _initialized = true;
     try {
       final dir = await getApplicationDocumentsDirectory();
+      
+      // Load saved server URL
       final file = File('${dir.path}/server_url.txt');
       if (await file.exists()) {
         final saved = (await file.readAsString()).trim();
         if (saved.isNotEmpty) {
           _baseUrl = saved.endsWith('/') ? saved.substring(0, saved.length - 1) : saved;
           debugPrint('🌐 Loaded persisted Server Base URL: $_baseUrl');
+        }
+      }
+
+      // Load saved API key if modified dynamically
+      final kFile = File('${dir.path}/api_key.txt');
+      if (await kFile.exists()) {
+        final savedKey = (await kFile.readAsString()).trim();
+        if (savedKey.isNotEmpty) {
+          _apiKey = savedKey;
+          debugPrint('🔑 Loaded persisted API Key.');
         }
       }
     } catch (_) {}
@@ -58,8 +85,35 @@ class ServerAlertService {
     }
   }
 
+  /// Set or update the API Key dynamically and persist to disk
+  static Future<void> setApiKey(String key) async {
+    final cleanKey = key.trim();
+    _apiKey = cleanKey;
+    debugPrint('🔑 ServerAlertService API Key updated.');
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final file = File('${dir.path}/api_key.txt');
+      await file.writeAsString(cleanKey);
+    } catch (_) {}
+  }
+
   /// Get current base URL
   static String get baseUrl => _baseUrl;
+
+  /// Get current API key
+  static String get apiKey => _apiKey;
+
+  /// Helper to handle response status codes with friendly Iranian error messages
+  static String _parseErrorMessage(http.Response response) {
+    if (response.statusCode == 401) {
+      return 'کلید دسترسی API نامعتبر است (401)';
+    } else if (response.statusCode == 503) {
+      return 'سرویس سرور آلارم تنظیم نشده است (503)';
+    } else if (response.statusCode == 400) {
+      return 'پارامترهای درخواستی با فرمت سرور تطابق ندارد (400)';
+    }
+    return 'خطای پاسخ سرور (کد ${response.statusCode})';
+  }
 
   /// Bulk sync all local alert rules to Python server with real FCM Token
   static Future<bool> syncAllRulesToServer(List<AlertRule> rules, {String? userId}) async {
@@ -116,7 +170,7 @@ class ServerAlertService {
 
       final response = await http.post(
         url,
-        headers: {'Content-Type': 'application/json'},
+        headers: _buildHeaders(),
         body: jsonEncode(payload),
       ).timeout(const Duration(seconds: 5));
 
@@ -124,8 +178,11 @@ class ServerAlertService {
         _circuitBreakerUntil = null;
         debugPrint('✅ All alerts successfully synced to Python server for user $effectiveUserId');
         return true;
+      } else {
+        debugPrint('❌ Sync error: ${_parseErrorMessage(response)}');
       }
-    } catch (_) {
+    } catch (e) {
+      debugPrint('⚠️ Network/Sync Exception: $e');
       _circuitBreakerUntil = DateTime.now().add(const Duration(minutes: 2));
     }
     return false;
@@ -156,7 +213,7 @@ class ServerAlertService {
           if (fcmToken.isNotEmpty) 'fcm_token': fcmToken,
         },
       );
-      final response = await http.get(url).timeout(const Duration(seconds: 8));
+      final response = await http.get(url, headers: _buildHeaders()).timeout(const Duration(seconds: 8));
 
       if (response.statusCode == 200) {
         final dynamic decoded = jsonDecode(response.body);
@@ -230,6 +287,8 @@ class ServerAlertService {
           debugPrint('☁️ Successfully restored $imported alert(s) from cloud for $cleanUser');
           return imported;
         }
+      } else {
+        debugPrint('⚠️ Restore alerts error: ${_parseErrorMessage(response)}');
       }
     } catch (e) {
       debugPrint('⚠️ Error restoring alerts from cloud: $e');
@@ -241,7 +300,7 @@ class ServerAlertService {
   static Future<bool> purgeAllServerAlerts() async {
     try {
       final url = Uri.parse('$_baseUrl/api/alerts');
-      final response = await http.delete(url).timeout(const Duration(seconds: 5));
+      final response = await http.delete(url, headers: _buildHeaders()).timeout(const Duration(seconds: 5));
       return response.statusCode == 200;
     } catch (_) {
       return false;
@@ -320,7 +379,7 @@ class ServerAlertService {
 
       final response = await http.post(
         url,
-        headers: {'Content-Type': 'application/json'},
+        headers: _buildHeaders(),
         body: jsonEncode(payload),
       ).timeout(const Duration(seconds: 10));
 
@@ -328,7 +387,7 @@ class ServerAlertService {
         debugPrint('✅ Alert successfully created on Python server: ${response.body}');
         return true;
       } else {
-        debugPrint('❌ Failed to create alert on server. Status: ${response.statusCode}, Body: ${response.body}');
+        debugPrint('❌ Failed to create alert on server: ${_parseErrorMessage(response)}');
       }
     } catch (e) {
       debugPrint('❌ Error connecting to Python Alert Server: $e');
@@ -340,11 +399,13 @@ class ServerAlertService {
   static Future<List<Map<String, dynamic>>> fetchUserAlerts(String userId) async {
     try {
       final url = Uri.parse('$_baseUrl/api/alerts/$userId');
-      final response = await http.get(url).timeout(const Duration(seconds: 10));
+      final response = await http.get(url, headers: _buildHeaders()).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         final List<dynamic> data = jsonDecode(response.body);
         return data.cast<Map<String, dynamic>>();
+      } else {
+        debugPrint('❌ Fetch user alerts failed: ${_parseErrorMessage(response)}');
       }
     } catch (e) {
       debugPrint('❌ Error fetching alerts from Python server: $e');
@@ -356,11 +417,13 @@ class ServerAlertService {
   static Future<bool> deleteAlertFromServer(String alertId) async {
     try {
       final url = Uri.parse('$_baseUrl/api/alerts/$alertId');
-      final response = await http.delete(url).timeout(const Duration(seconds: 10));
+      final response = await http.delete(url, headers: _buildHeaders()).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         debugPrint('✅ Alert $alertId deleted from Python server.');
         return true;
+      } else {
+        debugPrint('❌ Delete alert failed: ${_parseErrorMessage(response)}');
       }
     } catch (e) {
       debugPrint('❌ Error deleting alert from Python server: $e');
@@ -374,7 +437,7 @@ class ServerAlertService {
     try {
       final sanitizedSym = symbol.replaceAll('/', '').replaceAll(' ', '');
       final url = Uri.parse('$_baseUrl/api/price/${exchange.toLowerCase()}/$sanitizedSym');
-      final response = await http.get(url).timeout(const Duration(seconds: 4));
+      final response = await http.get(url, headers: _buildHeaders()).timeout(const Duration(seconds: 4));
 
       if (response.statusCode == 200) {
         _circuitBreakerUntil = null;
@@ -396,7 +459,7 @@ class ServerAlertService {
     try {
       final sanitizedSym = symbol.replaceAll('/', '').replaceAll(' ', '');
       final url = Uri.parse('$_baseUrl/api/debug/inspect/${exchange.toLowerCase()}/$sanitizedSym');
-      final response = await http.get(url).timeout(const Duration(seconds: 12));
+      final response = await http.get(url, headers: _buildHeaders()).timeout(const Duration(seconds: 12));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -412,7 +475,7 @@ class ServerAlertService {
   static Future<List<Map<String, dynamic>>> fetchDebugLogs() async {
     try {
       final url = Uri.parse('$_baseUrl/api/debug/logs');
-      final response = await http.get(url).timeout(const Duration(seconds: 8));
+      final response = await http.get(url, headers: _buildHeaders()).timeout(const Duration(seconds: 8));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -437,12 +500,12 @@ class ServerAlertService {
           if (customBody != null && customBody.isNotEmpty) 'body': customBody,
         },
       );
-      final response = await http.get(uri).timeout(const Duration(seconds: 10));
+      final response = await http.get(uri, headers: _buildHeaders()).timeout(const Duration(seconds: 10));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data is Map<String, dynamic>) return data;
       }
-      return {'success': false, 'error': 'Server returned HTTP ${response.statusCode}'};
+      return {'success': false, 'error': _parseErrorMessage(response)};
     } catch (e) {
       debugPrint('❌ Error sending test push: $e');
       return {'success': false, 'error': e.toString()};
@@ -463,7 +526,7 @@ class ServerAlertService {
         final url = Uri.parse('$_baseUrl/api/telegram/test-message');
         final response = await http.post(
           url,
-          headers: {'Content-Type': 'application/json'},
+          headers: _buildHeaders(),
           body: jsonEncode({'chat_id': cleanId}),
         ).timeout(const Duration(seconds: 6));
         if (response.statusCode == 200) {
@@ -504,4 +567,3 @@ class ServerAlertService {
     }
   }
 }
-
