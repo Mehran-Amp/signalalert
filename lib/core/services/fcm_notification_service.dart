@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -9,6 +10,21 @@ import '../../features/notifications/services/notification_service.dart';
 import '../../features/settings/services/sound_manager.dart';
 import 'tts_service.dart';
 
+/// Helper to read persisted master settings from settings.json
+Future<Map<String, dynamic>> _loadMasterSettings() async {
+  try {
+    final dir = await getApplicationDocumentsDirectory();
+    final file = File('${dir.path}/settings.json');
+    if (await file.exists()) {
+      final content = await file.readAsString();
+      if (content.trim().isNotEmpty) {
+        return jsonDecode(content) as Map<String, dynamic>;
+      }
+    }
+  } catch (_) {}
+  return {};
+}
+
 /// Top-level background message handler for FCM
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -17,18 +33,38 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   } catch (_) {}
 
   debugPrint('⚡ [FCM Background] Received push message: ${message.messageId}');
-  final title = message.notification?.title ?? message.data['title'] ?? '🚨 Price Alert';
-  final body = message.notification?.body ?? message.data['body'] ?? 'Target price reached!';
   final symbol = message.data['symbol'] ?? '';
   final priceStr = message.data['price'] ?? '';
+  final alertId = message.data['alert_id'] ?? '';
+  final title = message.data['title'] ?? message.notification?.title ?? '';
+  final body = message.data['body'] ?? message.notification?.body ?? '';
   final note = message.data['note'] ?? '';
-  final soundEnabled = message.data['sound_enabled'] != 'false';
-  final vibrationEnabled = message.data['vibration_enabled'] != 'false';
-  final ttsEnabled = message.data['tts_enabled'] != 'false';
-  final customSound = message.data['sound'] ?? 'alarm_siren';
+
+  // Reject ghost / empty notifications that have no real alert data or title
+  if (title.isEmpty && symbol.isEmpty && alertId.isEmpty) {
+    debugPrint('ℹ️ [FCM Background] Suppressed ghost push notification without alert payload.');
+    return;
+  }
+
+  // Load Master Settings to honor Global Sound / Vibration / TTS toggles
+  final masterSettings = await _loadMasterSettings();
+  final masterSound = masterSettings['soundEnabled'] as bool? ?? true;
+  final masterVibration = masterSettings['vibrationEnabled'] as bool? ?? true;
+  final masterTts = masterSettings['ttsEnabled'] as bool? ?? true;
+  final masterVolume = (masterSettings['alarmVolume'] as num?)?.toDouble() ?? 1.0;
+  final masterSoundName = masterSettings['soundName'] as String? ?? 'alarm_siren';
+
+  final alertSoundEnabled = message.data['sound_enabled'] != 'false';
+  final alertVibrationEnabled = message.data['vibration_enabled'] != 'false';
+  final alertTtsEnabled = message.data['tts_enabled'] != 'false';
+  final customSound = message.data['sound'] ?? masterSoundName;
+
+  final effectiveSound = masterSound && alertSoundEnabled;
+  final effectiveVibration = masterVibration && alertVibrationEnabled;
+  final effectiveTts = masterTts && alertTtsEnabled;
 
   final parsedPrice = double.tryParse(priceStr) ?? 0.0;
-  final speechText = ttsEnabled
+  final speechText = effectiveTts
       ? TtsService.buildAlertSpeech(
           symbol: symbol.isNotEmpty ? symbol : 'Price Alert',
           price: parsedPrice,
@@ -41,12 +77,13 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     final notificationService = NotificationService();
     notificationService.enqueueCriticalAlert(
       id: message.messageId.hashCode,
-      title: title,
+      title: title.isNotEmpty ? title : '🚨 Price Alert',
       body: body,
       soundName: customSound,
-      soundEnabled: soundEnabled,
-      vibrationEnabled: vibrationEnabled,
-      ttsEnabled: ttsEnabled,
+      volume: masterVolume,
+      soundEnabled: effectiveSound,
+      vibrationEnabled: effectiveVibration,
+      ttsEnabled: effectiveTts,
       speechText: speechText,
     );
   } catch (e) {
@@ -99,16 +136,20 @@ class FCMNotificationService {
         );
 
         // Foreground push message listener
-        FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-          debugPrint('📩 [FCM Foreground] Push received: ${message.notification?.title}');
+        FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
+          debugPrint('📩 [FCM Foreground] Push received: ${message.notification?.title ?? message.data['title']}');
           final alertId = message.data['alert_id'] ?? '';
           final symbol = message.data['symbol'] ?? '';
           final priceStr = message.data['price'] ?? '';
           final note = message.data['note'] ?? '';
-          final soundEnabled = message.data['sound_enabled'] != 'false';
-          final vibrationEnabled = message.data['vibration_enabled'] != 'false';
-          final ttsEnabled = message.data['tts_enabled'] != 'false';
-          final customSound = message.data['sound'] ?? 'alarm_siren';
+          final title = message.data['title'] ?? message.notification?.title ?? '';
+          final body = message.data['body'] ?? message.notification?.body ?? '';
+
+          // Reject ghost / empty notifications that have no real alert data or title
+          if (title.isEmpty && symbol.isEmpty && alertId.isEmpty) {
+            debugPrint('ℹ️ [FCM Foreground] Suppressed ghost push notification without alert payload.');
+            return;
+          }
 
           final dedupKey = alertId.isNotEmpty ? alertId : '$symbol-$priceStr';
           final nowMs = DateTime.now().millisecondsSinceEpoch;
@@ -119,11 +160,25 @@ class FCMNotificationService {
           }
           _recentTriggerCache[dedupKey] = nowMs;
 
-          final title = message.notification?.title ?? message.data['title'] ?? '🚨 Price Alert';
-          final body = message.notification?.body ?? message.data['body'] ?? '';
+          // Load Master Settings to honor Global Sound / Vibration / TTS toggles
+          final masterSettings = await _loadMasterSettings();
+          final masterSound = masterSettings['soundEnabled'] as bool? ?? true;
+          final masterVibration = masterSettings['vibrationEnabled'] as bool? ?? true;
+          final masterTts = masterSettings['ttsEnabled'] as bool? ?? true;
+          final masterVolume = (masterSettings['alarmVolume'] as num?)?.toDouble() ?? 1.0;
+          final masterSoundName = masterSettings['soundName'] as String? ?? 'alarm_siren';
+
+          final alertSoundEnabled = message.data['sound_enabled'] != 'false';
+          final alertVibrationEnabled = message.data['vibration_enabled'] != 'false';
+          final alertTtsEnabled = message.data['tts_enabled'] != 'false';
+          final customSound = message.data['sound'] ?? masterSoundName;
+
+          final effectiveSound = masterSound && alertSoundEnabled;
+          final effectiveVibration = masterVibration && alertVibrationEnabled;
+          final effectiveTts = masterTts && alertTtsEnabled;
 
           final parsedPrice = double.tryParse(priceStr) ?? 0.0;
-          final speechText = ttsEnabled
+          final speechText = effectiveTts
               ? TtsService.buildAlertSpeech(
                   symbol: symbol.isNotEmpty ? symbol : 'Price Alert',
                   price: parsedPrice,
@@ -134,12 +189,13 @@ class FCMNotificationService {
           // Enqueue critical alert so sound, vibration, banner, and voice run sequentially
           NotificationService().enqueueCriticalAlert(
             id: message.messageId.hashCode,
-            title: title,
+            title: title.isNotEmpty ? title : '🚨 Price Alert',
             body: body,
             soundName: customSound,
-            soundEnabled: soundEnabled,
-            vibrationEnabled: vibrationEnabled,
-            ttsEnabled: ttsEnabled,
+            volume: masterVolume,
+            soundEnabled: effectiveSound,
+            vibrationEnabled: effectiveVibration,
+            ttsEnabled: effectiveTts,
             speechText: speechText,
           );
         });

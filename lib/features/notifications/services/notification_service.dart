@@ -205,7 +205,9 @@ class NotificationService {
     }
 
     // 3. System Level Notification Banner
-    final vibrationPattern = Int64List.fromList([0, 500, 200, 500, 200, 500]);
+    final vibrationPattern = vibrationEnabled
+        ? Int64List.fromList([0, 500, 200, 500, 200, 500])
+        : null;
     final androidDetails = AndroidNotificationDetails(
       channelId,
       channelName,

@@ -344,39 +344,35 @@ def send_fcm_notification(fcm_token: str, title: str, body: str, data_payload: d
     if not fcm_token:
         return False, "FCM token is empty."
     if fcm_token.startswith('dev_') or fcm_token.startswith('device_token_') or len(fcm_token) < 40:
-        return False, f"Token '{fcm_token}' is a local device ID, not a Google FCM registration token. Use in-app local test for lock screen verification."
+        return False, f"Token '{fcm_token}' is a local device ID, not a Google FCM registration token."
     try:
+        full_data = {
+            "title": str(title),
+            "body": str(body),
+            **(data_payload or {})
+        }
+        # Ensure all data values are string format for FCM protocol
+        full_data_str = {k: str(v) if v is not None else "" for k, v in full_data.items()}
+
         message = messaging.Message(
-            notification=messaging.Notification(title=title, body=body),
-            data=data_payload or {},
+            data=full_data_str,
             token=fcm_token,
             android=messaging.AndroidConfig(
                 priority='high',
                 ttl=timedelta(days=1),
-                direct_boot_ok=True,
-                notification=messaging.AndroidNotification(
-                    sound='default',
-                    channel_id='alarmer_critical_price_alerts',
-                    priority='max',
-                    visibility='public',
-                    default_sound=True,
-                    default_vibrate_timings=True,
-                    default_light_settings=True
-                )
+                direct_boot_ok=True
             ),
             apns=messaging.APNSConfig(
                 payload=messaging.APNSPayload(
                     aps=messaging.Aps(
-                        sound='default',
-                        badge=1,
                         content_available=True,
-                        custom_data={'interruption-level': 'time-sensitive'}
+                        badge=1
                     )
                 )
             )
         )
         response = messaging.send(message)
-        print(f"🚀 FCM High-Priority Push Sent: {response}")
+        print(f"🚀 FCM High-Priority Data Push Sent: {response}")
         return True, f"FCM Message ID: {response}"
     except Exception as e:
         print(f"❌ FCM Push Error: {e}")
