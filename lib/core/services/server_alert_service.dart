@@ -59,13 +59,14 @@ class ServerAlertService {
   static String get baseUrl => _baseUrl;
 
   /// Bulk sync all local alert rules to Python server with real FCM Token
-  static Future<bool> syncAllRulesToServer(List<AlertRule> rules, {String userId = 'user_default'}) async {
+  static Future<bool> syncAllRulesToServer(List<AlertRule> rules, {String? userId}) async {
     if (!isServerAvailable) return false;
     try {
       final fcmToken = await FCMNotificationService.getFCMToken();
       final activeRules = rules.where((r) => r.isActive).toList();
 
-      // Retrieve telegram_chat_id if saved in settings.json
+      // Retrieve userEmail & telegram_chat_id from settings.json
+      String effectiveUserId = userId ?? 'user_default';
       String? telegramChatId;
       try {
         final dir = await getApplicationDocumentsDirectory();
@@ -73,6 +74,10 @@ class ServerAlertService {
         if (await sFile.exists()) {
           final sData = jsonDecode(await sFile.readAsString());
           telegramChatId = sData['telegramChatId'] as String?;
+          final savedEmail = sData['userEmail'] as String?;
+          if (savedEmail != null && savedEmail.trim().isNotEmpty) {
+            effectiveUserId = savedEmail.trim().toLowerCase();
+          }
         }
       } catch (_) {}
       
@@ -101,7 +106,7 @@ class ServerAlertService {
 
       final url = Uri.parse('$_baseUrl/api/alerts/sync');
       final payload = {
-        'user_id': userId,
+        'user_id': effectiveUserId,
         'fcm_token': fcmToken,
         'alerts': alertsPayload,
       };
@@ -114,13 +119,81 @@ class ServerAlertService {
 
       if (response.statusCode == 200) {
         _circuitBreakerUntil = null;
-        debugPrint('✅ All alerts successfully synced to Python server for 24/7 background FCM monitoring!');
+        debugPrint('✅ All alerts successfully synced to Python server for user $effectiveUserId');
         return true;
       }
     } catch (_) {
       _circuitBreakerUntil = DateTime.now().add(const Duration(minutes: 2));
     }
     return false;
+  }
+
+  /// Restores user alerts from cloud server when signing in or reinstalling app
+  static Future<int> restoreUserAlertsFromCloud({
+    required BuildContext context,
+    required String userEmail,
+  }) async {
+    if (!isServerAvailable || userEmail.trim().isEmpty) return 0;
+    try {
+      final cleanUser = userEmail.trim().toLowerCase();
+      final url = Uri.parse('$_baseUrl/api/alerts/$cleanUser');
+      final response = await http.get(url).timeout(const Duration(seconds: 8));
+
+      if (response.statusCode == 200) {
+        final dynamic decoded = jsonDecode(response.body);
+        if (decoded is List && decoded.isNotEmpty) {
+          final repo = context.read<JsonAlertRuleRepository>();
+          int imported = 0;
+          for (final item in decoded) {
+            if (item is Map<String, dynamic>) {
+              try {
+                final symbol = item['symbol'] as String? ?? 'BTCUSDT';
+                final exchange = item['exchange'] as String? ?? 'binance';
+                final target = (item['target_price'] as num?)?.toDouble() ?? 0.0;
+                final condition = item['condition'] as String? ?? 'ABOVE';
+                final note = item['note'] as String?;
+                final interval = item['check_interval_seconds'] as int? ?? 10;
+                final ruleId = item['id'] as String? ?? DateTime.now().microsecondsSinceEpoch.toString();
+                final sound = item['sound'] as String? ?? 'alarm_siren';
+                final soundEnabled = item['sound_enabled'] as bool? ?? true;
+                final vibEnabled = item['vibration_enabled'] as bool? ?? true;
+                final ttsEnabled = item['tts_enabled'] as bool? ?? false;
+                final isActive = item['is_active'] as bool? ?? true;
+
+                final direction = condition.toUpperCase() == 'BELOW' ? AlertDirection.below : AlertDirection.above;
+
+                final rule = AlertRule(
+                  uuid: ruleId,
+                  marketSymbol: symbol,
+                  exchangeId: exchange,
+                  checkIntervalSeconds: interval,
+                  conditionType: AlertConditionType.priceThreshold,
+                  direction: direction,
+                  targetPrice: target,
+                  customNote: note,
+                  customSound: sound,
+                  soundEnabled: soundEnabled,
+                  vibrationEnabled: vibEnabled,
+                  ttsEnabled: ttsEnabled,
+                  isActive: isActive,
+                  createdAt: DateTime.now(),
+                );
+
+                await repo.saveRule(rule, syncToServer: false);
+                imported++;
+              } catch (e) {
+                debugPrint('⚠️ Error parsing cloud alert: $e');
+              }
+            }
+          }
+          debugPrint('☁️ Successfully restored $imported alert(s) from cloud for $cleanUser');
+          return imported;
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ Error restoring alerts from cloud: $e');
+    }
+    return 0;
   }
 
   /// Completely purge all alerts stored on the Python server

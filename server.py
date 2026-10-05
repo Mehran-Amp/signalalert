@@ -448,11 +448,11 @@ async def init_telegram_bot(client: httpx.AsyncClient):
         print(f"⚠️ [Telegram Bot Init Note] {e}")
 
 async def telegram_bot_polling_loop():
-    """Background listener for user /start interactions to supply Chat ID immediately"""
+    """Background listener for user interactions: /start, /myalerts, /clear, /stop, /help"""
     if not TELEGRAM_BOT_TOKEN:
         return
     offset = 0
-    print("📡 [Telegram Bot] Polling listener active for instant user Chat ID onboarding.")
+    print("📡 [Telegram Bot] Polling listener active for instant Chat ID onboarding & alert management.")
     while True:
         try:
             if http_client is None:
@@ -472,7 +472,79 @@ async def telegram_bot_polling_loop():
                     text = (msg.get("text") or "").strip()
                     user_name = chat.get("first_name") or chat.get("username") or "کاربر گرامی"
 
-                    if chat_id:
+                    if not chat_id:
+                        continue
+
+                    reply_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+                    chat_id_str = str(chat_id)
+                    text_lower = text.lower()
+
+                    # 1. /clear or /stop - Stop all alerts for this chat_id
+                    if text_lower.startswith("/clear") or text_lower.startswith("/stop"):
+                        global ALERTS_DB
+                        async with _db_lock:
+                            initial_len = len(ALERTS_DB)
+                            ALERTS_DB = [a for a in ALERTS_DB if (a.telegram_chat_id or "").strip() != chat_id_str]
+                            removed_count = initial_len - len(ALERTS_DB)
+
+                        if removed_count > 0:
+                            await save_alerts_to_disk_async(ALERTS_DB)
+                            resp_text = (
+                                f"🧹 <b>تمام هشدارهای متصل به این چت تلگرام ({removed_count} هشدار) با موفقیت متوقف و پاکسازی شدند.</b>\n\n"
+                                "⚡ دیگر هیچ پیامی از سرور برای این چت ارسال نخواهد شد مگر اینکه در اپلیکیشن مجدداً هشدار ثبت کنید."
+                            )
+                        else:
+                            resp_text = "ℹ️ هیچ هشدار فعالی روی سرور به این Chat ID متصل نیست."
+
+                        await http_client.post(reply_url, json={
+                            "chat_id": chat_id,
+                            "text": resp_text,
+                            "parse_mode": "HTML",
+                            "disable_web_page_preview": True
+                        }, timeout=5.0)
+
+                    # 2. /myalerts or /list - List all active alerts for this user
+                    elif text_lower.startswith("/myalerts") or text_lower.startswith("/list"):
+                        user_alerts = [a for a in ALERTS_DB if (a.telegram_chat_id or "").strip() == chat_id_str]
+                        if not user_alerts:
+                            resp_text = (
+                                "📭 <b>هیچ هشداری به این حساب تلگرام متصل نیست.</b>\n\n"
+                                f"🆔 Chat ID شما: <code>{chat_id}</code>\n"
+                                "برای ثبت هشدار وارد اپلیکیشن SignalAlert شده و این شناسه را در تنظیمات ثبت فرمایید."
+                            )
+                        else:
+                            lines = [f"📋 <b>لیست هشدارهای متصل به تلگرام شما ({len(user_alerts)} مورد):</b>\n"]
+                            for i, a in enumerate(user_alerts, 1):
+                                st = "🟢 فعال" if a.is_active else "⚪ تکمیل شده"
+                                lines.append(f"{i}. <b>{a.symbol}</b> ({get_exchange_display_name(a.exchange)}) - تارگت: <code>{a.target_price:,.2f}</code> | {st}")
+                            lines.append("\n💡 <i>برای لغو تمامی هشدارها دستور /clear را بفرستید.</i>")
+                            resp_text = "\n".join(lines)
+
+                        await http_client.post(reply_url, json={
+                            "chat_id": chat_id,
+                            "text": resp_text,
+                            "parse_mode": "HTML",
+                            "disable_web_page_preview": True
+                        }, timeout=5.0)
+
+                    # 3. /help - Help guide
+                    elif text_lower.startswith("/help"):
+                        help_text = (
+                            "🤖 <b>راهنمای دستورات ربات هوشمند SignalAlert:</b>\n\n"
+                            "🔹 <code>/start</code> - دریافت شناسه اختصاصی (Chat ID) و راهنمای اتصال\n"
+                            "🔹 <code>/myalerts</code> - مشاهده لیست هشدارهای فعال متصل به تلگرام شما\n"
+                            "🔹 <code>/clear</code> - توقف و پاکسازی فوری تمام هشدارهای متصل به این چت\n\n"
+                            f"🆔 <b>Chat ID شما:</b> <code>{chat_id}</code>"
+                        )
+                        await http_client.post(reply_url, json={
+                            "chat_id": chat_id,
+                            "text": help_text,
+                            "parse_mode": "HTML",
+                            "disable_web_page_preview": True
+                        }, timeout=5.0)
+
+                    # 4. /start or any greeting
+                    else:
                         welcome_msg = (
                             f"👋 <b>سلام {user_name} عزیز! به ربات رسمی SignalAlert خوش آمدید.</b>\n\n"
                             f"🆔 <b>شناسه چت (Chat ID) شما:</b>\n"
@@ -482,9 +554,9 @@ async def telegram_bot_polling_loop():
                             f"۱. وارد تب <b>تنظیمات ⚙️</b> در اپلیکیشن SignalAlert شوید.\n"
                             f"۲. گزینه <b>«اتصال به تلگرام 📱»</b> را انتخاب کنید.\n"
                             f"۳. شناسه <code>{chat_id}</code> را وارد و دکمه ذخیره را بزنید.\n\n"
-                            f"⚡ پس از اتصال، تمامی آلارم‌های قیمت و تغییرات تارگت شما به صورت ۲۴/۷ و فوری به این چت ارسال خواهند شد."
+                            f"⚡ پس از اتصال، تمامی آلارم‌های قیمت و تغییرات تارگت شما به صورت ۲۴/۷ و فوری به این چت ارسال خواهند شد.\n\n"
+                            "🔹 <i>دستورات موجود:</i> <code>/myalerts</code> (مشاهده هشدارها) | <code>/clear</code> (توقف هشدارها)"
                         )
-                        reply_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
                         await http_client.post(reply_url, json={
                             "chat_id": chat_id,
                             "text": welcome_msg,
@@ -879,16 +951,18 @@ async def clear_all_alerts(user_id: Optional[str] = None, fcm_token: Optional[st
 @app.get("/api/alerts/{user_id}", response_model=List[Alert])
 @app.get("/alerts/{user_id}", response_model=List[Alert])
 def get_user_alerts(user_id: str):
-    return [a for a in ALERTS_DB if a.user_id == user_id]
+    clean_uid = (user_id or "").strip().lower()
+    return [a for a in ALERTS_DB if (a.user_id or "").strip().lower() == clean_uid]
 
 @app.delete("/api/alerts/{alert_id}")
 @app.delete("/alerts/{alert_id}")
 async def delete_alert(alert_id: str):
     global ALERTS_DB
+    clean_id = (alert_id or "").strip()
     async with _db_lock:
-        ALERTS_DB = [a for a in ALERTS_DB if a.id != alert_id]
+        ALERTS_DB = [a for a in ALERTS_DB if a.id != clean_id]
     await save_alerts_to_disk_async(ALERTS_DB)
-    return {"status": "deleted", "id": alert_id}
+    return {"status": "deleted", "id": clean_id}
 
 @app.get("/api/price/{exchange}/{symbol}")
 @app.get("/price/{exchange}/{symbol}")

@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../../features/alert_engine/repositories/json_alert_rule_repository.dart';
 import '../../features/settings/services/settings_service.dart';
+import 'server_alert_service.dart';
 
 /// Service managing optional Google Account Authentication and Cloud Sync preparation.
 class GoogleAuthService {
@@ -11,6 +14,8 @@ class GoogleAuthService {
   ) async {
     final theme = Theme.of(context);
     final isFa = lang == 'fa' || lang == 'ar' || lang == 'ckb';
+    const userEmail = 'Mehran.Aminpoor@gmail.com';
+    const userDisplayName = 'Mehran';
 
     final result = await showDialog<bool>(
       context: context,
@@ -53,8 +58,8 @@ class GoogleAuthService {
           children: [
             Text(
               isFa
-                  ? 'این قابلیت اختیاری است. با ورود به حساب گوگل، اطلاعات هشدارهای شما به صورت امن ذخیره شده و حساب شما به عنوان «عضو طلایی (Premium Ready)» نشان‌دار خواهد شد.'
-                  : 'This is completely optional. Signing in with Google safely syncs your alert rules and grants early Premium Ready status.',
+                  ? 'با اتصال به حساب گوگل، تمامی هشدارهای شما به طور خودکار در فضای ابری ذخیره شده و در صورت حذف اپلیکیشن یا تعویض گوشی فوراً بازیابی می‌شوند.'
+                  : 'By connecting your Google account, your alerts are safely stored in the cloud and automatically restored upon re-installing or changing phones.',
               style: TextStyle(fontSize: 12, height: 1.4, color: theme.colorScheme.onSurface.withValues(alpha: 0.7)),
             ),
             const SizedBox(height: 16),
@@ -67,10 +72,10 @@ class GoogleAuthService {
               ),
               child: Row(
                 children: [
-                  CircleAvatar(
+                  const CircleAvatar(
                     radius: 16,
                     backgroundColor: Colors.blueAccent,
-                    child: const Text('G', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    child: Text('M', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -78,11 +83,11 @@ class GoogleAuthService {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Google Account',
+                          userDisplayName,
                           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: theme.colorScheme.onSurface),
                         ),
                         Text(
-                          'Mehran.Aminpoor@gmail.com',
+                          userEmail,
                           style: TextStyle(fontSize: 11, color: theme.colorScheme.primary),
                         ),
                       ],
@@ -105,7 +110,7 @@ class GoogleAuthService {
           ElevatedButton.icon(
             onPressed: () => Navigator.of(ctx).pop(true),
             icon: const Icon(Icons.login_rounded, size: 16),
-            label: Text(isFa ? 'اتصال حساب گوگل' : 'Connect Account'),
+            label: Text(isFa ? 'اتصال حساب و همگام‌سازی' : 'Connect & Sync'),
             style: ElevatedButton.styleFrom(
               backgroundColor: theme.colorScheme.primary,
               foregroundColor: Colors.white,
@@ -118,10 +123,35 @@ class GoogleAuthService {
 
     if (result == true) {
       await settingsService.signInWithGoogle(
-        email: 'Mehran.Aminpoor@gmail.com',
-        displayName: 'Mehran',
+        email: userEmail,
+        displayName: userDisplayName,
         photoUrl: 'https://lh3.googleusercontent.com/a/default-user',
       );
+
+      // 1. Restore any existing cloud alerts from previous installs
+      final restoredCount = await ServerAlertService.restoreUserAlertsFromCloud(
+        context: context,
+        userEmail: userEmail,
+      );
+
+      // 2. Sync any current local alerts to the user cloud account
+      try {
+        final repo = context.read<JsonAlertRuleRepository>();
+        await ServerAlertService.syncAllRulesToServer(repo.allRules, userId: userEmail);
+      } catch (_) {}
+
+      if (context.mounted && restoredCount > 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(isFa
+                ? '☁️ $restoredCount هشدار ابری شما با موفقیت بازیابی و فعال شدند.'
+                : '☁️ Successfully restored $restoredCount cloud alert(s).'),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: theme.colorScheme.primary,
+          ),
+        );
+      }
+
       return true;
     }
     return false;

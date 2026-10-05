@@ -130,6 +130,8 @@ class JsonAlertRuleRepository {
     if (removed) {
       _notify();
       await _persist();
+      // Remove from Python server immediately to stop monitoring
+      ServerAlertService.deleteAlertFromServer(uuid).ignore();
     }
     return removed;
   }
