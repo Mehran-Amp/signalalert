@@ -149,8 +149,13 @@ class ServerAlertService {
   }) async {
     if (!isServerAvailable || userEmail.trim().isEmpty) return 0;
     try {
+      final fcmToken = await FCMNotificationService.getFCMToken();
       final cleanUser = userEmail.trim().toLowerCase();
-      final url = Uri.parse('$_baseUrl/api/alerts/$cleanUser');
+      final url = Uri.parse('$_baseUrl/api/alerts/$cleanUser').replace(
+        queryParameters: {
+          if (fcmToken.isNotEmpty) 'fcm_token': fcmToken,
+        },
+      );
       final response = await http.get(url).timeout(const Duration(seconds: 8));
 
       if (response.statusCode == 200) {
@@ -166,7 +171,7 @@ class ServerAlertService {
                 final target = (item['target_price'] as num?)?.toDouble() ?? 0.0;
                 final condition = item['condition'] as String? ?? 'ABOVE';
                 final note = item['note'] as String?;
-                final interval = item['check_interval_seconds'] as int? ?? 10;
+                final interval = item['check_interval_seconds'] as int? ?? 180;
                 final ruleId = item['id'] as String? ?? DateTime.now().microsecondsSinceEpoch.toString();
                 final sound = item['sound'] as String? ?? 'alarm_siren';
                 final soundEnabled = item['sound_enabled'] as bool? ?? true;
@@ -218,6 +223,9 @@ class ServerAlertService {
                 debugPrint('⚠️ Error parsing cloud alert: $e');
               }
             }
+          }
+          if (imported > 0) {
+            await repo.load();
           }
           debugPrint('☁️ Successfully restored $imported alert(s) from cloud for $cleanUser');
           return imported;

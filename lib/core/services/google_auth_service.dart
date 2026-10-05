@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../features/alert_engine/bloc/alert_rules_bloc.dart';
+import '../../features/alert_engine/bloc/alert_rules_event.dart';
 import '../../features/alert_engine/repositories/json_alert_rule_repository.dart';
 import '../../features/settings/services/settings_service.dart';
 import 'server_alert_service.dart';
@@ -140,16 +142,22 @@ class GoogleAuthService {
         await ServerAlertService.syncAllRulesToServer(repo.allRules, userId: userEmail);
       } catch (_) {}
 
-      if (context.mounted && restoredCount > 0) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(isFa
-                ? '☁️ $restoredCount هشدار ابری شما با موفقیت بازیابی و فعال شدند.'
-                : '☁️ Successfully restored $restoredCount cloud alert(s).'),
-            behavior: SnackBarBehavior.floating,
-            backgroundColor: theme.colorScheme.primary,
-          ),
-        );
+      if (context.mounted) {
+        try {
+          context.read<AlertRulesBloc>().add(const LoadAlertRules());
+        } catch (_) {}
+
+        if (restoredCount > 0) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(isFa
+                  ? '☁️ $restoredCount هشدار ابری شما با موفقیت بازیابی و فعال شدند.'
+                  : '☁️ Successfully restored $restoredCount cloud alert(s).'),
+              behavior: SnackBarBehavior.floating,
+              backgroundColor: theme.colorScheme.primary,
+            ),
+          );
+        }
       }
 
       return true;

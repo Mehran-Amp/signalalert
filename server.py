@@ -672,22 +672,23 @@ async def check_alerts_job():
                 body_lines.append(clean_note)
             body = "\n".join(body_lines)
 
-            # 1. Dispatch High-Priority FCM Push
-            send_fcm_notification(
-                fcm_token=alert.fcm_token,
-                title=title,
-                body=body,
-                data_payload={
-                    "alert_id": alert.id,
-                    "symbol": display_symbol,
-                    "price": str(current_price),
-                    "note": alert.note or "",
-                    "sound_enabled": "true" if alert.sound_enabled else "false",
-                    "vibration_enabled": "true" if alert.vibration_enabled else "false",
-                    "tts_enabled": "true" if alert.tts_enabled else "false",
-                    "sound": alert.sound or "alarm_siren"
-                }
-            )
+            # 1. Dispatch High-Priority FCM Push (Only for long-interval background alerts >= 15 min / 900s to avoid duplicate/delayed FCM pushes for short local alerts)
+            if float(getattr(alert, 'check_interval_seconds', 180)) >= 900:
+                send_fcm_notification(
+                    fcm_token=alert.fcm_token,
+                    title=title,
+                    body=body,
+                    data_payload={
+                        "alert_id": alert.id,
+                        "symbol": display_symbol,
+                        "price": str(current_price),
+                        "note": alert.note or "",
+                        "sound_enabled": "true" if alert.sound_enabled else "false",
+                        "vibration_enabled": "true" if alert.vibration_enabled else "false",
+                        "tts_enabled": "true" if alert.tts_enabled else "false",
+                        "sound": alert.sound or "alarm_siren"
+                    }
+                )
 
             # 2. Dispatch Optional Telegram Message
             if alert.telegram_chat_id:
@@ -979,9 +980,24 @@ async def clear_all_alerts(user_id: Optional[str] = None, fcm_token: Optional[st
 
 @app.get("/api/alerts/{user_id}", response_model=List[Alert])
 @app.get("/alerts/{user_id}", response_model=List[Alert])
-def get_user_alerts(user_id: str):
+async def get_user_alerts(user_id: str, fcm_token: Optional[str] = None):
     clean_uid = (user_id or "").strip().lower()
-    return [a for a in ALERTS_DB if (a.user_id or "").strip().lower() == clean_uid]
+    clean_fcm = (fcm_token or "").strip()
+
+    async with _db_lock:
+        results = []
+        for a in ALERTS_DB:
+            a_uid = (a.user_id or "").strip().lower()
+            a_fcm = (a.fcm_token or "").strip()
+
+            # Match if user_id matches, or if FCM token matches (same device)
+            if (clean_uid and a_uid == clean_uid) or (clean_fcm and a_fcm and a_fcm == clean_fcm):
+                # If alert was created under 'user_default', migrate it to logged-in user_id
+                if clean_uid and clean_uid != 'user_default' and a_uid == 'user_default':
+                    a.user_id = clean_uid
+                results.append(a)
+
+    return results
 
 @app.delete("/api/alerts/{alert_id}")
 @app.delete("/alerts/{alert_id}")
