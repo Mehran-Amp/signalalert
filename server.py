@@ -17,7 +17,10 @@ import time
 import uuid
 import json
 import asyncio
-from datetime import datetime, timedelta
+import ipaddress
+import html
+from urllib.parse import urlparse
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Dict, Any, Tuple
 from contextlib import asynccontextmanager
 
@@ -36,8 +39,7 @@ from firebase_admin import credentials, messaging
 SERVICE_ACCOUNT_FILE = "serviceAccountKey.json"
 firebase_initialized = False
 
-DEFAULT_TELEGRAM_BOT_TOKEN = "8597547058:AAFNRkiAnCU3NLdTgRs_Oz4p8GKkV-fR7jg"
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", DEFAULT_TELEGRAM_BOT_TOKEN)
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_BOT_METADATA: Dict[str, Any] = {
     "username": "aisocialfeedbot",
     "first_name": "AiSFeed",
@@ -174,7 +176,7 @@ async def lifespan(app: FastAPI):
         check_alerts_job,
         'interval',
         seconds=2,
-        max_instances=5,
+        max_instances=1,
         coalesce=True,
         misfire_grace_time=15
     )
@@ -204,6 +206,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+BULK_MARKET_RESPONSE_CACHE: Dict[str, Tuple[Any, float]] = {}
+
 # -------------------------------------------------------------------
 # 5. Unified High-Performance Multi-Exchange Price Resolver
 # -------------------------------------------------------------------
@@ -217,7 +221,7 @@ async def fetch_price_with_trace(
     collect_all_traces: bool = False
 ) -> Tuple[Optional[float], List[Dict[str, Any]]]:
     """
-    Unified multi-source price engine.
+    Unified multi-source price engine with Bulk Ticker Cache & Fast Parallel Fallback.
     - Fast Mode (collect_all_traces=False): Returns on first valid price immediately.
     - Diagnostic Mode (collect_all_traces=True): Tests all sources, collecting latency & trace stats.
     """
@@ -226,18 +230,35 @@ async def fetch_price_with_trace(
     traces: List[Dict[str, Any]] = []
     final_price: Optional[float] = None
 
-    # Helper function for tracing
+    # Helper function for tracing with Bulk Response Caching
     async def _try_fetch(source_name: str, url: str, extractor_func, headers=None) -> Optional[float]:
         nonlocal final_price
         t0 = time.time()
-        req_headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) SignalAlert/2.5'}
+        now = time.time()
+
+        # Check Bulk Response Cache (3 second TTL for full-market endpoints)
+        cached_bulk = BULK_MARKET_RESPONSE_CACHE.get(url)
+        if cached_bulk and (now - cached_bulk[1]) < 3.0:
+            try:
+                price = extractor_func(cached_bulk[0])
+                if price and float(price) > 0:
+                    val = float(price)
+                    traces.append({'source': source_name, 'url': url, 'status_code': 200, 'latency_ms': 0.1, 'parsed_price': val, 'success': True, 'cached_bulk': True})
+                    if final_price is None:
+                        final_price = val
+                    return val
+            except Exception:
+                pass
+
+        req_headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) SignalAlert/2.7'}
         if headers:
             req_headers.update(headers)
         try:
-            res = await client.get(url, headers=req_headers, timeout=4.0)
+            res = await client.get(url, headers=req_headers, timeout=3.5)
             latency = round((time.time() - t0) * 1000, 2)
             if res.status_code == 200:
                 data = res.json()
+                BULK_MARKET_RESPONSE_CACHE[url] = (data, now)
                 price = extractor_func(data)
                 if price and float(price) > 0:
                     val = float(price)
@@ -261,13 +282,19 @@ async def fetch_price_with_trace(
 
     if is_iranian:
         nobitex_sym = 'USDTIRT' if sym_clean in ['USDTTMN', 'USDTIRT', 'USDT'] else (sym_clean[:-3] + 'IRT' if sym_clean.endswith('TMN') else sym_clean)
+        matching_keys = [sym_clean, nobitex_sym]
+        if sym_clean in ['USDT', 'USDTTMN', 'USDTIRT']:
+            matching_keys.extend(['USDTTMN', 'USDTIRT', 'USDT_IRT', 'USDT_TMN'])
 
         # 1a. Tabdeal
         def _extract_tabdeal(data):
             for k, v in data.items():
-                if normalize_symbol(k) in [sym_clean, nobitex_sym, 'USDTTMN', 'USDTIRT']:
+                if normalize_symbol(k) in matching_keys:
                     if isinstance(v, dict):
-                        return v.get('price') or v.get('last_price')
+                        p = v.get('price') or v.get('last_price')
+                        if p and float(p) > 0:
+                            val = float(p)
+                            return val / 10.0 if (val > 500000 and 'USDT' in sym_clean) else val
             return None
 
         p = await _try_fetch('Tabdeal Spot API', 'https://api.tabdeal.org/r/plots/market/information', _extract_tabdeal)
@@ -277,7 +304,8 @@ async def fetch_price_with_trace(
         for domain, label in [('api.nobitex.net', 'Nobitex Global Net'), ('api.nobitex.ir', 'Nobitex Local IR')]:
             def _extract_nobitex_ob(data):
                 if 'bids' in data and len(data['bids']) > 0:
-                    return data['bids'][0][0]
+                    val = float(data['bids'][0][0])
+                    return val / 10.0 if (val > 500000 and 'USDT' in sym_clean) else val
                 return None
             p = await _try_fetch(f'{label} Orderbook', f'https://{domain}/v2/orderbook/{nobitex_sym}', _extract_nobitex_ob)
             if p and not collect_all_traces: return p, traces
@@ -285,8 +313,9 @@ async def fetch_price_with_trace(
         # 1c. Bitpin
         def _extract_bitpin(data):
             for m in data.get('results', []):
-                if normalize_symbol(m.get('code', '')) in [sym_clean, nobitex_sym, 'USDTIRT', 'USDTTMN']:
-                    return m.get('price')
+                if normalize_symbol(m.get('code', '')) in matching_keys:
+                    val = float(m.get('price', 0))
+                    return val / 10.0 if (val > 500000 and 'USDT' in sym_clean) else val
             return None
 
         p = await _try_fetch('Bitpin Markets API', 'https://api.bitpin.org/v1/mkt/markets/', _extract_bitpin)
@@ -366,7 +395,7 @@ async def fetch_price_with_trace(
     return final_price, traces
 
 async def get_cached_price(client: httpx.AsyncClient, exchange: str, symbol: str) -> Optional[float]:
-    """Fetches price with in-memory TTL caching to eliminate repetitive network round-trips"""
+    """Fetches price with in-memory TTL caching and Outlier Protection filter"""
     now = time.time()
     cache_key = f"{exchange.lower()}:{normalize_symbol(symbol)}"
 
@@ -378,6 +407,14 @@ async def get_cached_price(client: httpx.AsyncClient, exchange: str, symbol: str
     METRICS["cache_misses"] += 1
     price, _ = await fetch_price_with_trace(client, exchange, symbol, collect_all_traces=False)
     if price is not None and price > 0:
+        # Outlier Protection: Ignore sudden 50%+ suspicious price jumps/drops compared to last known price
+        if cached and cached[0] > 0:
+            last_p = cached[0]
+            dev = abs(price - last_p) / last_p
+            if dev > 0.50 and last_p > 1.0:
+                print(f"⚠️ [Outlier Filter] Suppressed suspicious price jump for {cache_key}: {last_p} -> {price} ({dev*100:.1f}% deviation)")
+                return cached[0]
+
         PRICE_CACHE[cache_key] = (price, now)
         return price
     return None
@@ -397,7 +434,31 @@ def get_exchange_display_name(exchange_id: str) -> str:
     }
     return mapping.get((exchange_id or '').lower(), (exchange_id or 'Market').capitalize())
 
-def send_fcm_notification(fcm_token: str, title: str, body: str, data_payload: dict = None, ttl_seconds: int = 300) -> Tuple[bool, str]:
+def is_safe_webhook_url(url_str: str) -> bool:
+    if not url_str or not url_str.startswith('https://'):
+        return False
+    try:
+        parsed = urlparse(url_str)
+        hostname = (parsed.hostname or '').lower().strip()
+        if not hostname or hostname in ['localhost', '0.0.0.0']:
+            return False
+
+        # Parse directly if IP address
+        try:
+            ip = ipaddress.ip_address(hostname)
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved:
+                return False
+            if str(ip) == '169.254.169.254': # Cloud Metadata IP
+                return False
+        except ValueError:
+            if hostname.endswith('.local') or hostname.endswith('.internal'):
+                return False
+
+        return True
+    except Exception:
+        return False
+
+def _send_fcm_sync(fcm_token: str, title: str, body: str, data_payload: dict = None, ttl_seconds: int = 300) -> Tuple[bool, str]:
     if not firebase_admin._apps:
         return False, "Firebase Admin SDK not initialized."
     if not fcm_token or fcm_token.startswith('dev_') or fcm_token.startswith('device_token_') or len(fcm_token) < 40:
@@ -423,6 +484,9 @@ def send_fcm_notification(fcm_token: str, title: str, body: str, data_payload: d
         METRICS["fcm_failed"] += 1
         print(f"❌ [FCM Push Error] {e}")
         return False, str(e)
+
+async def send_fcm_notification_async(fcm_token: str, title: str, body: str, data_payload: dict = None, ttl_seconds: int = 300) -> Tuple[bool, str]:
+    return await asyncio.to_thread(_send_fcm_sync, fcm_token, title, body, data_payload, ttl_seconds)
 
 async def send_telegram_alert(client: httpx.AsyncClient, chat_id: str, message: str, bot_token: Optional[str] = None):
     token = bot_token or TELEGRAM_BOT_TOKEN
@@ -604,6 +668,10 @@ async def check_alerts_job():
     if not ready_alerts:
         return
 
+    # Update last_checked_at pre-fetch to prevent any concurrent overlap
+    for a in ready_alerts:
+        a.last_checked_at = current_time
+
     # Group unique pairs to batch fetch concurrently
     unique_pairs = list({(a.exchange, a.symbol) for a in ready_alerts})
     tasks = [get_cached_price(http_client, ex, sym) for ex, sym in unique_pairs]
@@ -656,12 +724,11 @@ async def check_alerts_job():
             arrow = '▲' if is_above else '▼'
             sign = '+' if is_above else '-'
 
+            display_symbol = alert.symbol
             pct_str = f"{sign}{abs(((current_price - alert.target_price) / alert.target_price) * 100.0):.2f}%" if alert.target_price > 0 else ""
             price_formatted = f"${current_price:,.4f}".rstrip('0').rstrip('.') if current_price < 1 else f"${current_price:,.2f}"
             if alert.symbol.endswith('TMN') or alert.symbol.endswith('IRT'):
                 price_formatted = f"{int(current_price):,} TMN"
-
-                display_symbol = alert.symbol
             if '/' not in display_symbol:
                 for quote in ['USDT', 'USDC', 'BUSD', 'FDUSD', 'EUR', 'USD', 'TMN', 'IRT', 'BTC', 'ETH']:
                     if display_symbol.endswith(quote):
@@ -679,24 +746,26 @@ async def check_alerts_job():
                 body_lines.append(clean_note)
             body = "\n".join(body_lines)
 
-            # 1. Dispatch High-Priority FCM Push for Cloud Backup
-            send_fcm_notification(
-                fcm_token=alert.fcm_token,
-                title=title,
-                body=body,
-                data_payload={
-                    "alert_id": alert.id,
-                    "symbol": display_symbol,
-                    "price": str(current_price),
-                    "note": alert.note or "",
-                    "sound_enabled": "true" if alert.sound_enabled else "false",
-                    "vibration_enabled": "true" if alert.vibration_enabled else "false",
-                    "tts_enabled": "true" if alert.tts_enabled else "false",
-                    "sound": alert.sound or "alarm_siren"
-                }
+            # 1. Dispatch High-Priority FCM Push for Cloud Backup (Non-blocking Thread Execution)
+            asyncio.create_task(
+                send_fcm_notification_async(
+                    fcm_token=alert.fcm_token,
+                    title=title,
+                    body=body,
+                    data_payload={
+                        "alert_id": alert.id,
+                        "symbol": display_symbol,
+                        "price": str(current_price),
+                        "note": alert.note or "",
+                        "sound_enabled": "true" if alert.sound_enabled else "false",
+                        "vibration_enabled": "true" if alert.vibration_enabled else "false",
+                        "tts_enabled": "true" if alert.tts_enabled else "false",
+                        "sound": alert.sound or "alarm_siren"
+                    }
+                )
             )
 
-            # 2. Dispatch Optional Telegram Message
+            # 2. Dispatch Optional Telegram Message with HTML Escaping
             if alert.telegram_chat_id:
                 is_tmn = alert.symbol.endswith('TMN') or alert.symbol.endswith('IRT')
                 target_formatted = f"{int(alert.target_price):,} TMN" if is_tmn else (f"${alert.target_price:,.4f}".rstrip('0').rstrip('.') if alert.target_price < 1 else f"${alert.target_price:,.2f}")
@@ -716,26 +785,31 @@ async def check_alerts_job():
                 pct_val = abs(((current_price - alert.target_price) / max(1e-8, alert.target_price)) * 100.0) if alert.target_price > 0 else 0.0
                 pct_display = f"{arrow}{pct_val:.2f}%" if pct_val > 0.001 else f"{arrow}"
 
+                safe_symbol = html.escape(display_symbol)
+                safe_exchange = html.escape(exchange_name)
+
                 tg_lines = [
                     "🚨 <b>هشدار فعال شد:</b>",
-                    f"📊{emoji} <b>{display_symbol} {price_formatted} {pct_display}</b>",
+                    f"📊{emoji} <b>{safe_symbol} {price_formatted} {pct_display}</b>",
                     f"🎯 <b>قیمت تارگت:</b> {target_display}",
                 ]
                 if alert.note and alert.note.strip():
                     clean_note = alert.note.strip()
                     if clean_note.startswith('📝'):
                         clean_note = clean_note[1:].strip()
-                    tg_lines.append(f"📝 <b>یادداشت:</b> <i>{clean_note}</i>")
+                    safe_note = html.escape(clean_note)
+                    tg_lines.append(f"📝 <b>یادداشت:</b> <i>{safe_note}</i>")
 
-                tg_lines.append(f"🏛️ {exchange_name}")
-                tg_lines.append(f"🕒 <b>زمان:</b> <code>{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}</code>")
+                tg_lines.append(f"🏛️ {safe_exchange}")
+                now_utc = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
+                tg_lines.append(f"🕒 <b>زمان:</b> <code>{now_utc}</code>")
                 tg_lines.append("⚡ <i>ارسال شده توسط ربات هوشمند SignalAlert Enterprise</i>")
 
                 tg_msg = "\n".join(tg_lines)
                 asyncio.create_task(send_telegram_alert(http_client, alert.telegram_chat_id, tg_msg))
 
-            # 3. Dispatch Optional Webhook
-            if alert.webhook_url:
+            # 3. Dispatch Optional Webhook with SSRF Protection
+            if alert.webhook_url and is_safe_webhook_url(alert.webhook_url):
                 hook_data = {
                     "event": "price_alert_triggered",
                     "alert_id": alert.id,
@@ -743,7 +817,7 @@ async def check_alerts_job():
                     "price": current_price,
                     "target_price": alert.target_price,
                     "condition": alert.condition,
-                    "timestamp": datetime.utcnow().isoformat()
+                    "timestamp": datetime.now(timezone.utc).isoformat()
                 }
                 asyncio.create_task(send_webhook_alert(http_client, alert.webhook_url, hook_data))
 
@@ -876,6 +950,7 @@ async def create_alert(alert_in: AlertCreate):
             existing.check_interval_seconds = alert_in.check_interval_seconds
             existing.note = alert_in.note
             existing.trigger_mode = alert_in.trigger_mode or "oneShot"
+            existing.alert_nature = alert_in.alert_nature or "price"
             existing.sound_enabled = alert_in.sound_enabled
             existing.vibration_enabled = alert_in.vibration_enabled
             existing.tts_enabled = alert_in.tts_enabled
@@ -896,6 +971,7 @@ async def create_alert(alert_in: AlertCreate):
                 check_interval_seconds=alert_in.check_interval_seconds,
                 note=alert_in.note,
                 trigger_mode=alert_in.trigger_mode or "oneShot",
+                alert_nature=alert_in.alert_nature or "price",
                 sound_enabled=alert_in.sound_enabled,
                 vibration_enabled=alert_in.vibration_enabled,
                 tts_enabled=alert_in.tts_enabled,
@@ -903,7 +979,7 @@ async def create_alert(alert_in: AlertCreate):
                 telegram_chat_id=alert_in.telegram_chat_id,
                 webhook_url=alert_in.webhook_url,
                 is_active=True,
-                created_at=datetime.utcnow().isoformat(),
+                created_at=datetime.now(timezone.utc).isoformat(),
                 last_checked_at=0.0,
                 last_triggered_at=0.0
             )
@@ -950,6 +1026,7 @@ async def sync_user_alerts(payload: dict):
                 check_interval_seconds=int(item.get('check_interval_seconds', 10)),
                 note=item.get('note'),
                 trigger_mode=item.get('trigger_mode', 'oneShot'),
+                alert_nature=item.get('alert_nature') or 'price',
                 sound_enabled=bool(item.get('sound_enabled', True)),
                 vibration_enabled=bool(item.get('vibration_enabled', True)),
                 tts_enabled=bool(item.get('tts_enabled', True)),
@@ -957,7 +1034,7 @@ async def sync_user_alerts(payload: dict):
                 telegram_chat_id=item.get('telegram_chat_id'),
                 webhook_url=item.get('webhook_url'),
                 is_active=is_act,
-                created_at=item.get('created_at') or datetime.utcnow().isoformat(),
+                created_at=item.get('created_at') or datetime.now(timezone.utc).isoformat(),
                 last_checked_at=last_chk,
                 last_triggered_at=last_trig
             )
@@ -1089,7 +1166,7 @@ async def test_push_notification(fcm_token: Optional[str] = None, title: Optiona
             "timestamp": datetime.utcnow().isoformat()
         }
 
-    sent_ok, sent_msg = send_fcm_notification(
+    sent_ok, sent_msg = await send_fcm_notification_async(
         fcm_token=token_to_use,
         title=test_title,
         body=test_body,
