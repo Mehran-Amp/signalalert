@@ -240,15 +240,18 @@ class ServerAlertService {
     }
   }
 
-  /// Helper method to convert (unitValue, CheckUnit) into total seconds (minimum 180 seconds = 3 mins)
+  /// Helper method to convert (unitValue, CheckUnit) into total seconds
   static int calculateIntervalInSeconds(int unitValue, CheckUnit unit) {
+    final val = unitValue <= 0 ? 10 : unitValue;
     switch (unit) {
+      case CheckUnit.seconds:
+        return val;
       case CheckUnit.minutes:
-        final secs = unitValue * 60;
-        return secs < 180 ? 180 : secs;
+        return val * 60;
       case CheckUnit.hours:
-        final secs = unitValue * 3600;
-        return secs < 180 ? 180 : secs;
+        return val * 3600;
+      default:
+        return val * 60;
     }
   }
 
