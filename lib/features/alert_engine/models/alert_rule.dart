@@ -73,6 +73,9 @@ class AlertRule extends Equatable {
   /// Most recently fetched/checked price from exchange
   final double? lastCheckedPrice;
 
+  /// Previous checked price before the latest update (e.g. was 22, now 23)
+  final double? previousPrice;
+
   /// Helper getter for current display price
   double? get currentDisplayPrice => lastCheckedPrice ?? basePrice;
 
@@ -201,6 +204,7 @@ class AlertRule extends Equatable {
     this.volumePercent,
     this.basePrice,
     this.lastCheckedPrice,
+    this.previousPrice,
     this.baseVolume,
     this.customNote,
     this.customSound,
@@ -235,6 +239,7 @@ class AlertRule extends Equatable {
     double? deltaAbsolute,
     double? volumePercent,
     double? currentPrice,
+    double? previousPrice,
     double? currentVolume,
     String? customNote,
     String? customSound,
@@ -273,6 +278,7 @@ class AlertRule extends Equatable {
       volumePercent: volumePercent,
       basePrice: currentPrice,
       lastCheckedPrice: currentPrice,
+      previousPrice: previousPrice ?? currentPrice,
       baseVolume: currentVolume,
       customNote: customNote,
       customSound: customSound,
@@ -328,6 +334,7 @@ class AlertRule extends Equatable {
     int? triggerCount,
     double? basePrice,
     double? lastCheckedPrice,
+    double? previousPrice,
     double? baseVolume,
     DateTime? lastCheckedAt,
     DateTime? lastTriggeredAt,
@@ -360,6 +367,7 @@ class AlertRule extends Equatable {
       preferServerProxy: preferServerProxy ?? this.preferServerProxy,
       basePrice: basePrice ?? this.basePrice,
       lastCheckedPrice: lastCheckedPrice ?? this.lastCheckedPrice,
+      previousPrice: previousPrice ?? this.previousPrice,
       baseVolume: baseVolume ?? this.baseVolume,
       isActive: isActive ?? this.isActive,
       isTriggered: isTriggered ?? this.isTriggered,
@@ -392,6 +400,7 @@ class AlertRule extends Equatable {
         'volumePercent': volumePercent,
         'basePrice': basePrice,
         'lastCheckedPrice': lastCheckedPrice,
+        'previousPrice': previousPrice,
         'baseVolume': baseVolume,
         'customNote': customNote,
         'customSound': customSound,
@@ -438,6 +447,7 @@ class AlertRule extends Equatable {
         volumePercent: (json['volumePercent'] as num?)?.toDouble(),
         basePrice: (json['basePrice'] as num?)?.toDouble(),
         lastCheckedPrice: (json['lastCheckedPrice'] as num?)?.toDouble(),
+        previousPrice: (json['previousPrice'] as num?)?.toDouble() ?? (json['previous_price'] as num?)?.toDouble(),
         baseVolume: (json['baseVolume'] as num?)?.toDouble(),
         customNote: json['customNote'] as String?,
         customSound: json['customSound'] as String?,
@@ -485,6 +495,7 @@ class AlertRule extends Equatable {
         volumePercent,
         basePrice,
         lastCheckedPrice,
+        previousPrice,
         baseVolume,
         customNote,
         customSound,

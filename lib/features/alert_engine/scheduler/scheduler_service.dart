@@ -143,10 +143,15 @@ class SchedulerService {
         currentVolume: ticker.volume24h,
       );
 
-      // 3. Prepare updated rule state with authentic live price
+      // 3. Prepare updated rule state with authentic live price and historical previous price
+      final prevPrice = (rule.lastCheckedPrice != null && (rule.lastCheckedPrice! - ticker.lastPrice).abs() > 1e-8)
+          ? rule.lastCheckedPrice
+          : (rule.previousPrice ?? rule.basePrice);
+
       var updatedRule = rule.copyWith(
         lastCheckedAt: now,
         lastCheckedPrice: ticker.lastPrice,
+        previousPrice: prevPrice,
       );
 
       if (result.isTriggered) {

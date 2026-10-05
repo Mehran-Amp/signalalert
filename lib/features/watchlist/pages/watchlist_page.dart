@@ -589,6 +589,37 @@ class _WatchlistPageState extends State<WatchlistPage> {
                                 : textMuted,
                           ),
                         ),
+                        if (rule.previousPrice != null || (basePrice != null && displayPrice != null && (basePrice - displayPrice).abs() > 1e-8)) ...[
+                          Builder(
+                            builder: (context) {
+                              final prev = rule.previousPrice ?? basePrice;
+                              if (prev == null) return const SizedBox.shrink();
+                              return Padding(
+                                padding: const EdgeInsets.only(top: 1.5, bottom: 2.5),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.center,
+                                  children: [
+                                    const Text(
+                                      '⏱️',
+                                      style: TextStyle(fontSize: 9.5),
+                                    ),
+                                    const SizedBox(width: 3),
+                                    Text(
+                                      FormatUtils.formatPrice(prev, currencySymbol: rule.counterCurrency),
+                                      style: TextStyle(
+                                        fontSize: 10.5,
+                                        fontWeight: FontWeight.w600,
+                                        fontFamily: 'monospace',
+                                        color: textMuted,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                        ],
                         if (isTriggeredOneShot) ...[
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),

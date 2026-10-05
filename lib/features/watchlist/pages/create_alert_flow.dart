@@ -491,6 +491,9 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
         preferServerProxy: _preferServerProxy,
         basePrice: _currentPrice ?? widget.initialRule!.basePrice,
         lastCheckedPrice: _currentPrice ?? widget.initialRule!.lastCheckedPrice,
+        previousPrice: (_currentPrice != null && widget.initialRule!.lastCheckedPrice != null && (_currentPrice! - widget.initialRule!.lastCheckedPrice!).abs() > 1e-8)
+            ? widget.initialRule!.lastCheckedPrice
+            : (widget.initialRule!.previousPrice ?? widget.initialRule!.basePrice),
       );
       await widget.repository.saveRule(updatedRule);
       // Sync to Python Alert Engine
