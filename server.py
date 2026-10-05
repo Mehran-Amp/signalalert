@@ -606,28 +606,37 @@ async def check_alerts_job():
 
                 # 2. Dispatch Optional Telegram Message
                 if alert.telegram_chat_id:
-                    cond_fa = "عبور به بالا (Above 🟢)" if is_above else "افت به پایین (Below 🔴)"
-                    target_formatted = f"${alert.target_price:,.4f}".rstrip('0').rstrip('.') if alert.target_price < 1 else f"${alert.target_price:,.2f}"
-                    if alert.symbol.endswith('TMN') or alert.symbol.endswith('IRT'):
-                        target_formatted = f"{int(alert.target_price):,} TMN"
+                    is_tmn = alert.symbol.endswith('TMN') or alert.symbol.endswith('IRT')
+                    target_formatted = f"{int(alert.target_price):,} TMN" if is_tmn else (f"${alert.target_price:,.4f}".rstrip('0').rstrip('.') if alert.target_price < 1 else f"${alert.target_price:,.2f}")
+
+                    # Check if condition is percentage or standard price threshold
+                    cond_upper = (alert.condition or '').upper()
+                    if 'PERCENT' in cond_upper or '%' in cond_upper or cond_upper == 'BOTHSIDES':
+                        if 'ABOVE' in cond_upper or 'UP' in cond_upper:
+                            target_display = f"{abs(alert.target_price):g}% عبور به بالا"
+                        elif 'BELOW' in cond_upper or 'DOWN' in cond_upper:
+                            target_display = f"{abs(alert.target_price):g}% عبور به پایین"
+                        else:
+                            target_display = f"{abs(alert.target_price):g}% عبور از هر دو طرف"
+                    else:
+                        target_display = target_formatted
+
+                    pct_val = abs(((current_price - alert.target_price) / max(1e-8, alert.target_price)) * 100.0) if alert.target_price > 0 else 0.0
+                    pct_display = f"{arrow}{pct_val:.2f}%" if pct_val > 0.001 else f"{arrow}"
 
                     tg_lines = [
-                        f"🚨 <b>هشدار فعال شد: {display_symbol}</b>",
-                        "",
-                        f"📊 <b>وضعیت:</b> {emoji} <code>{pct_str}</code>",
-                        f"💰 <b>قیمت لحظه‌ای:</b> <b><code>{price_formatted}</code></b> {arrow}",
-                        f"🎯 <b>قیمت تارگت:</b> <code>{target_formatted}</code>",
-                        f"⚖️ <b>شرط:</b> {cond_fa}",
-                        f"🏛️ <b>صرافی / بازار:</b> {exchange_name}",
+                        "🚨 <b>هشدار فعال شد:</b>",
+                        f"📊{emoji} <b>{display_symbol} {price_formatted} {pct_display}</b>",
+                        f"🎯 <b>قیمت تارگت:</b> {target_display}",
                     ]
                     if alert.note and alert.note.strip():
                         clean_note = alert.note.strip()
                         if clean_note.startswith('📝'):
                             clean_note = clean_note[1:].strip()
-                        tg_lines.append(f"📝 <b>یادداشت تریدر:</b> <i>{clean_note}</i>")
+                        tg_lines.append(f"📝 <b>یادداشت:</b> <i>{clean_note}</i>")
 
+                    tg_lines.append(f"🏛️ {exchange_name}")
                     tg_lines.append(f"🕒 <b>زمان:</b> <code>{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}</code>")
-                    tg_lines.append("")
                     tg_lines.append("⚡ <i>ارسال شده توسط ربات هوشمند SignalAlert Enterprise</i>")
 
                     tg_msg = "\n".join(tg_lines)
@@ -1003,11 +1012,12 @@ async def send_telegram_test_message(req: TelegramTestRequest):
         raise HTTPException(status_code=400, detail="Valid chat_id is required.")
 
     test_msg = (
-        "🎉 <b>تست موفقیت‌آمیز اتصال تلگرام SignalAlert!</b>\n\n"
-        "✅ ارتباط ربات تلگرام با اپلیکیشن با موفقیت برقرار شد.\n"
-        "⚡ از این پس هشدارهای قیمت به صورت لحظه‌ای و ۲۴/۷ به این چت ارسال خواهند شد.\n\n"
-        f"🕒 زمان: <code>{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}</code>\n\n"
-        "<i>SignalAlert Enterprise Real-time Engine</i>"
+        "🚨 <b>هشدار فعال شد:</b>\n"
+        "📊🟢 <b>^TNX/USD $5.31 ▲3.12%</b>\n"
+        "🎯 <b>قیمت تارگت:</b> $5.90\n"
+        "🏛️ Global Stocks\n"
+        f"🕒 <b>زمان:</b> <code>{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}</code>\n"
+        "⚡ <i>ارسال شده توسط ربات هوشمند SignalAlert Enterprise</i>"
     )
 
     try:

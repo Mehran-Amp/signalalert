@@ -356,11 +356,15 @@ class ServerAlertService {
 
     // 2. Direct Telegram Bot API fallback
     try {
+      final nowUtc = DateTime.now().toUtc();
+      final timeStr = '${nowUtc.year}-${nowUtc.month.toString().padLeft(2, '0')}-${nowUtc.day.toString().padLeft(2, '0')} ${nowUtc.hour.toString().padLeft(2, '0')}:${nowUtc.minute.toString().padLeft(2, '0')}:${nowUtc.second.toString().padLeft(2, '0')} UTC';
       final url = Uri.parse('https://api.telegram.org/bot$defaultBotToken/sendMessage');
-      final testMsg = '🎉 <b>تست اتصال تلگرام در اپلیکیشن SignalAlert</b>\n\n'
-          '✅ ارتباط ربات تلگرام با اپلیکیشن با موفقیت برقرار شد.\n'
-          '⚡ هشدارهای معاملاتی و نوسانات قیمت از این پس به صورت آنی به این چت ارسال خواهند شد.\n\n'
-          '<i>SignalAlert Enterprise Engine</i>';
+      final testMsg = '🚨 <b>هشدار فعال شد:</b>\n'
+          '📊🟢 <b>^TNX/USD \$5.31 ▲3.12%</b>\n'
+          '🎯 <b>قیمت تارگت:</b> \$5.90\n'
+          '🏛️ Global Stocks\n'
+          '🕒 <b>زمان:</b> <code>$timeStr</code>\n'
+          '⚡ <i>ارسال شده توسط ربات هوشمند SignalAlert Enterprise</i>';
       final response = await http.post(
         url,
         headers: {'Content-Type': 'application/json'},
