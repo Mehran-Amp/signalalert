@@ -1,9 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
+import 'package:provider/provider.dart';
 import '../../features/alert_engine/models/alert_rule.dart';
+import '../../features/alert_engine/repositories/json_alert_rule_repository.dart';
+import '../../features/exchanges/base/currency_pair.dart';
 import '../../features/watchlist/pages/create_alert_flow.dart' show CheckUnit;
 import 'fcm_notification_service.dart';
 
@@ -162,13 +165,32 @@ class ServerAlertService {
 
                 final direction = condition.toUpperCase() == 'BELOW' ? AlertDirection.below : AlertDirection.above;
 
+                String base = 'BTC';
+                String counter = 'USDT';
+                if (symbol.contains('/')) {
+                  final parts = symbol.split('/');
+                  base = parts[0];
+                  counter = parts.length > 1 ? parts[1] : 'USDT';
+                } else {
+                  for (final q in ['USDT', 'USDC', 'BUSD', 'FDUSD', 'EUR', 'USD', 'TMN', 'IRT', 'BTC', 'ETH']) {
+                    if (symbol.endsWith(q) && symbol.length > q.length) {
+                      base = symbol.substring(0, symbol.length - q.length);
+                      counter = q;
+                      break;
+                    }
+                  }
+                }
+
                 final rule = AlertRule(
                   uuid: ruleId,
+                  baseCurrency: base,
+                  counterCurrency: counter,
                   marketSymbol: symbol,
                   exchangeId: exchange,
                   checkIntervalSeconds: interval,
                   conditionType: AlertConditionType.priceThreshold,
                   direction: direction,
+                  triggerMode: TriggerMode.oneShot,
                   targetPrice: target,
                   customNote: note,
                   customSound: sound,
