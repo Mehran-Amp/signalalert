@@ -1197,12 +1197,12 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              displayName,
+                              asset['name'] as String,
                               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: theme.colorScheme.onSurface),
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              '${asset['symbol']} · ${asset['name']}',
+                              '${asset['symbol']} · ${asset['cat'] ?? ''}',
                               style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurface.withValues(alpha: 0.55)),
                               overflow: TextOverflow.ellipsis,
                             ),

@@ -981,10 +981,9 @@ class _WatchlistPageState extends State<WatchlistPage> {
   }
 
   String _getExchangeDisplayName(String exchangeId, String lang) {
-    final isFa = AppStrings.isRtl(lang);
     switch (exchangeId) {
       case 'global_stocks':
-        return isFa ? 'بازار جهانی و وال‌استریت' : 'Global Equities & Commodities';
+        return 'Global Stocks';
       case 'binance':
         return 'Binance';
       case 'nobitex':

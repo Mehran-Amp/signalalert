@@ -17,7 +17,7 @@ class GlobalStocksExchange implements Exchange {
   String get id => 'global_stocks';
 
   @override
-  String get name => 'بازارهای جهانی، بورس و شاخص‌های کلان (Macro / Top 100 / Forex / Commodities)';
+  String get name => 'Global Markets (Stocks / Macro / Forex / Commodities)';
 
   @override
   ExchangeCategory get category => ExchangeCategory.all;

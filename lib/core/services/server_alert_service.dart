@@ -131,6 +131,17 @@ class ServerAlertService {
     return false;
   }
 
+  /// Helper to sync all rules in context repository to server
+  static Future<bool> syncWithServer(BuildContext context) async {
+    try {
+      final repo = context.read<JsonAlertRuleRepository>();
+      return await syncAllRulesToServer(repo.allRules);
+    } catch (e) {
+      debugPrint('Sync with server error: $e');
+      return false;
+    }
+  }
+
   /// Restores user alerts from cloud server when signing in or reinstalling app
   static Future<int> restoreUserAlertsFromCloud({
     required BuildContext context,
