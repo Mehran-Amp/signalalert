@@ -502,6 +502,11 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
         condition: _direction == AlertDirection.below ? 'BELOW' : 'ABOVE',
         checkIntervalSeconds: intervalSeconds,
         note: customNote,
+        triggerMode: 'oneShot',
+        soundEnabled: _soundEnabled,
+        vibrationEnabled: _vibrationEnabled,
+        ttsEnabled: _ttsEnabled,
+        sound: _selectedSound,
       );
     } else {
       final newRule = AlertRule.create(
@@ -536,6 +541,11 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
         condition: _direction == AlertDirection.below ? 'BELOW' : 'ABOVE',
         checkIntervalSeconds: intervalSeconds,
         note: customNote,
+        triggerMode: 'oneShot',
+        soundEnabled: _soundEnabled,
+        vibrationEnabled: _vibrationEnabled,
+        ttsEnabled: _ttsEnabled,
+        sound: _selectedSound,
       );
     }
 

@@ -1,9 +1,28 @@
+import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:path_provider/path_provider.dart';
 import '../../../core/services/tts_service.dart';
 import '../../settings/services/sound_manager.dart';
+
+/// Helper to read persisted master settings from settings.json
+Future<Map<String, dynamic>> _loadMasterSettingsFromDisk() async {
+  try {
+    final dir = await getApplicationDocumentsDirectory();
+    final file = File('${dir.path}/settings.json');
+    if (await file.exists()) {
+      final content = await file.readAsString();
+      if (content.trim().isNotEmpty) {
+        return jsonDecode(content) as Map<String, dynamic>;
+      }
+    }
+  } catch (_) {}
+  return {};
+}
 
 /// Service responsible for dispatching mission-critical system notifications.
 /// Uses Time-Sensitive notifications on iOS and Maximum High-Priority Alarm channels on Android
@@ -134,6 +153,17 @@ class NotificationService {
     String? speechText,
   }) {
     _alertQueue.add(() async {
+      // Enforce Master Settings from settings.json as primary gatekeeper
+      final master = await _loadMasterSettingsFromDisk();
+      final masterSound = master['soundEnabled'] as bool? ?? true;
+      final masterVibration = master['vibrationEnabled'] as bool? ?? true;
+      final masterTts = master['ttsEnabled'] as bool? ?? true;
+      final masterVol = (master['alarmVolume'] as num?)?.toDouble() ?? volume;
+
+      final effectiveSound = masterSound && soundEnabled;
+      final effectiveVibration = masterVibration && vibrationEnabled;
+      final effectiveTts = masterTts && ttsEnabled;
+
       // 1. Show notification banner with optional sound & vibration
       await showCriticalAlert(
         id: id,
@@ -141,13 +171,13 @@ class NotificationService {
         body: body,
         payload: payload,
         soundName: soundName,
-        volume: volume,
-        soundEnabled: soundEnabled,
-        vibrationEnabled: vibrationEnabled,
+        volume: masterVol,
+        soundEnabled: effectiveSound,
+        vibrationEnabled: effectiveVibration,
       );
 
-      // 2. If TTS is enabled, vocalize and wait for speech utterance to finish completely
-      if (ttsEnabled && speechText != null && speechText.trim().isNotEmpty) {
+      // 2. If TTS is enabled by both master & alert, vocalize and wait for speech utterance to finish completely
+      if (effectiveTts && speechText != null && speechText.trim().isNotEmpty) {
         await TtsService.instance.speak(text: speechText);
         final wordCount = speechText.split(RegExp(r'\s+')).length;
         final estimatedDurationMs = (wordCount * 280 + 2000).clamp(2800, 15000);
@@ -188,15 +218,23 @@ class NotificationService {
     bool soundEnabled = true,
     bool vibrationEnabled = true,
   }) async {
+    // Master Settings check
+    final master = await _loadMasterSettingsFromDisk();
+    final masterSound = master['soundEnabled'] as bool? ?? true;
+    final masterVibration = master['vibrationEnabled'] as bool? ?? true;
+
+    final effectiveSound = masterSound && soundEnabled;
+    final effectiveVibration = masterVibration && vibrationEnabled;
+
     // 1. Play Full Synthetic Alarm Audio Tone
-    if (soundEnabled) {
+    if (effectiveSound) {
       try {
         await SoundManager().playPreset(soundName, volume: volume);
       } catch (_) {}
     }
 
     // 2. Heavy Haptic Feedback
-    if (vibrationEnabled) {
+    if (effectiveVibration) {
       try {
         await HapticFeedback.heavyImpact();
         await Future.delayed(const Duration(milliseconds: 150));
@@ -205,7 +243,7 @@ class NotificationService {
     }
 
     // 3. System Level Notification Banner
-    final vibrationPattern = vibrationEnabled
+    final vibrationPattern = effectiveVibration
         ? Int64List.fromList([0, 500, 200, 500, 200, 500])
         : null;
     final androidDetails = AndroidNotificationDetails(
@@ -215,9 +253,9 @@ class NotificationService {
       importance: Importance.max,
       priority: Priority.max,
       ticker: '⚡ Price Alert Triggered',
-      enableVibration: vibrationEnabled,
+      enableVibration: effectiveVibration,
       vibrationPattern: vibrationPattern,
-      playSound: soundEnabled,
+      playSound: effectiveSound,
       fullScreenIntent: true,
       category: AndroidNotificationCategory.alarm,
       audioAttributesUsage: AudioAttributesUsage.alarm,

@@ -144,6 +144,11 @@ class ServerAlertService {
     required String condition, // 'ABOVE' or 'BELOW'
     required int checkIntervalSeconds,
     String? note,
+    String triggerMode = 'oneShot',
+    bool soundEnabled = true,
+    bool vibrationEnabled = true,
+    bool ttsEnabled = false,
+    String sound = 'alarm_siren',
   }) async {
     try {
       // Get the device's FCM token
@@ -161,6 +166,11 @@ class ServerAlertService {
         'condition': condition.toUpperCase(),
         'fcm_token': fcmToken ?? 'device_token_pending',
         'check_interval_seconds': checkIntervalSeconds,
+        'trigger_mode': triggerMode,
+        'sound_enabled': soundEnabled,
+        'vibration_enabled': vibrationEnabled,
+        'tts_enabled': ttsEnabled,
+        'sound': sound,
         if (note != null && note.isNotEmpty) 'note': note,
       };
 
