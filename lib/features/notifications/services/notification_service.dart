@@ -178,6 +178,7 @@ class NotificationService {
 
   final List<Future<void> Function()> _alertQueue = [];
   bool _isProcessingAlertQueue = false;
+  static final Map<String, DateTime> _recentDispatchedAlerts = {};
 
   /// Enqueues critical alert notifications so simultaneous triggers appear sequentially
   /// and wait for voice reading to finish completely before the next notification displays.
@@ -193,6 +194,22 @@ class NotificationService {
     bool ttsEnabled = false,
     String? speechText,
   }) {
+    final now = DateTime.now();
+    final dedupeKey = payload ?? '$id:$title';
+
+    // Deduplication check: Suppress duplicate triggers for the exact same rule within 20 seconds
+    final lastSent = _recentDispatchedAlerts[dedupeKey];
+    if (lastSent != null && now.difference(lastSent).inSeconds < 20) {
+      debugPrint('🔇 [NotificationService] Suppressing duplicate alert for $dedupeKey (dispatched ${now.difference(lastSent).inSeconds}s ago)');
+      return;
+    }
+    _recentDispatchedAlerts[dedupeKey] = now;
+
+    // Clean up stale entries older than 5 minutes
+    if (_recentDispatchedAlerts.length > 50) {
+      _recentDispatchedAlerts.removeWhere((_, time) => now.difference(time).inMinutes > 5);
+    }
+
     _alertQueue.add(() async {
       // Enforce Master Settings from settings.json as primary gatekeeper
       final master = await _loadMasterSettingsFromDisk();

@@ -231,6 +231,8 @@ abstract class ConditionEvaluator {
     final formattedPrice = _formatVal(currentPrice, currencySymbol: rule.pair.counterCurrency);
 
     final isBothSides = rule.direction == AlertDirection.bothSides;
+    final minCooldownSecs = rule.checkIntervalSeconds > 15 ? rule.checkIntervalSeconds : 30;
+    final cooldown = DateTime.now().add(Duration(seconds: minCooldownSecs));
 
     return EvaluationResult(
       isTriggered: true,
@@ -239,6 +241,7 @@ abstract class ConditionEvaluator {
       newBasePrice: currentPrice, // Update baseline for next cycle to latest price!
       newIsActive: isBothSides,   // Only Both Way stays active (🔄 Active); Above & Below close!
       newIsTriggered: !isBothSides, // Above & Below close with ✅ Done; Both Way does not get Done
+      cooldownUntil: cooldown,
     );
   }
 
@@ -271,6 +274,8 @@ abstract class ConditionEvaluator {
     final sign = isUpward ? '+' : '-';
     final pctStr = '$sign${actualPercent.abs().toStringAsFixed(2)}%';
     final formattedPrice = _formatVal(currentPrice, currencySymbol: rule.pair.counterCurrency);
+    final minCooldownSecs = rule.checkIntervalSeconds > 15 ? rule.checkIntervalSeconds : 30;
+    final cooldown = DateTime.now().add(Duration(seconds: minCooldownSecs));
 
     return EvaluationResult(
       isTriggered: true,
@@ -279,6 +284,7 @@ abstract class ConditionEvaluator {
       newBasePrice: currentPrice,
       newIsActive: true,
       newIsTriggered: false,
+      cooldownUntil: cooldown,
     );
   }
 
@@ -304,6 +310,8 @@ abstract class ConditionEvaluator {
       final pctStr = '$sign${actualPercent.abs().toStringAsFixed(2)}%';
       final currentPrice = rule.lastCheckedPrice ?? 0.0;
       final formattedPrice = _formatVal(currentPrice, currencySymbol: rule.pair.counterCurrency);
+      final minCooldownSecs = rule.checkIntervalSeconds > 15 ? rule.checkIntervalSeconds : 30;
+      final cooldown = DateTime.now().add(Duration(seconds: minCooldownSecs));
 
       return EvaluationResult(
         isTriggered: true,
@@ -312,6 +320,7 @@ abstract class ConditionEvaluator {
         newBaseVolume: currentVolume,
         newIsActive: true,
         newIsTriggered: false,
+        cooldownUntil: cooldown,
       );
     }
 

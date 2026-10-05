@@ -55,6 +55,7 @@ class SchedulerService {
 
     for (final rule in activeRules) {
       if (_evaluatingRuleUuids.contains(rule.uuid)) continue;
+      if (rule.isInCooldown) continue;
 
       final lastTime = rule.lastCheckedAt ?? rule.createdAt;
       final elapsedSecs = now.difference(lastTime).inSeconds;
