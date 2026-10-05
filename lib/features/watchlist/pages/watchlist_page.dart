@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/localization/app_strings.dart';
+import '../../../core/services/google_auth_service.dart';
 import '../../../core/theme/tokens.dart';
 import '../../../core/utils/crypto_icons.dart';
 import '../../../core/utils/format_utils.dart';
@@ -135,7 +136,20 @@ class _WatchlistPageState extends State<WatchlistPage> {
     }
   }
 
-  void _openCreateFlow() {
+  Future<void> _openCreateFlow() async {
+    final settingsService = context.read<SettingsService>();
+    final settings = settingsService.settings;
+    final lang = settings.language;
+
+    // Ensure user has connected Google Account for cloud sync and telegram integration
+    if (!settings.isSignedInWithGoogle) {
+      final signedIn = await GoogleAuthService.promptGoogleSignIn(context, settingsService, lang);
+      if (!signedIn) {
+        return; // User cancelled login dialog
+      }
+    }
+
+    if (!mounted) return;
     final registry = context.read<ExchangeRegistry>();
     final repository = context.read<JsonAlertRuleRepository>();
 
