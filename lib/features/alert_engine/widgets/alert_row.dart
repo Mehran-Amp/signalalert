@@ -274,6 +274,16 @@ class AlertRow extends StatelessWidget {
           return 'تجاوز السعر ${isAbove ? 'أعلى من' : 'أدنى من'} \$$target';
         } else if (lang == 'tr') {
           return 'Fiyat \$$target ${isAbove ? 'üzerine çıkışı' : 'altına düşüşü'}';
+        } else if (lang == 'de') {
+          return 'Preis ${isAbove ? 'über' : 'unter'} \$$target';
+        } else if (lang == 'es') {
+          return 'Precio ${isAbove ? 'por encima de' : 'por debajo de'} \$$target';
+        } else if (lang == 'fr') {
+          return 'Prix ${isAbove ? 'au-dessus de' : 'en dessous de'} \$$target';
+        } else if (lang == 'ru') {
+          return 'Цена ${isAbove ? 'выше' : 'ниже'} \$$target';
+        } else if (lang == 'zh') {
+          return '价格${isAbove ? '高于' : '低于'} \$$target';
         }
         final dir = isAbove ? 'ABOVE' : 'BELOW';
         return 'Price crosses $dir \$$target';
@@ -293,15 +303,45 @@ class AlertRow extends StatelessWidget {
           return 'جووڵەی نرخ $dir$pct% لە $windowLabel';
         } else if (lang == 'ar') {
           return 'تغير السعر $dir$pct% خلال $windowLabel';
+        } else if (lang == 'de') {
+          return 'Preisschwankung $dir$pct% in $windowLabel';
+        } else if (lang == 'tr') {
+          return '$windowLabel içinde $dir%$pct fiyat hareketi';
+        } else if (lang == 'es') {
+          return 'Variación de precio $dir$pct% en $windowLabel';
+        } else if (lang == 'fr') {
+          return 'Variation de prix $dir$pct% en $windowLabel';
+        } else if (lang == 'ru') {
+          return 'Изменение цены $dir$pct% за $windowLabel';
+        } else if (lang == 'zh') {
+          return '$windowLabel 内价格变动 $dir$pct%';
         }
         return 'Price moves $dir$pct% in $windowLabel';
 
       case AlertConditionType.absolutePriceChange:
         final delta = (rule.deltaAbsolute ?? 0.0).toStringAsFixed(2);
+        if (lang == 'fa') return 'نوسان دلاری >= \$$delta';
+        if (lang == 'ckb') return 'نوسانی دۆلاری >= \$$delta';
+        if (lang == 'ar') return 'التغير بالدولار >= \$$delta';
+        if (lang == 'de') return 'Preis-Delta >= \$$delta';
+        if (lang == 'tr') return 'Fiyat değişimi >= \$$delta';
+        if (lang == 'es') return 'Variación >= \$$delta';
+        if (lang == 'fr') return 'Écart de prix >= \$$delta';
+        if (lang == 'ru') return 'Изменение цены >= \$$delta';
+        if (lang == 'zh') return '价格波动 >= \$$delta';
         return 'Price delta >= \$$delta';
 
       case AlertConditionType.volumeChange:
         final vol = (rule.volumePercent ?? 0.0).toStringAsFixed(0);
+        if (lang == 'fa') return 'جهش حجم معاملات >= $vol%';
+        if (lang == 'ckb') return 'زیادبوونی قەبارە >= $vol%';
+        if (lang == 'ar') return 'ارتفاع الحجم >= $vol%';
+        if (lang == 'de') return 'Volumenanstieg >= $vol%';
+        if (lang == 'tr') return 'Hacim artışı >= %$vol';
+        if (lang == 'es') return 'Pico de volumen >= $vol%';
+        if (lang == 'fr') return 'Poussée de volume >= $vol%';
+        if (lang == 'ru') return 'Всплеск объема >= $vol%';
+        if (lang == 'zh') return '成交量突增 >= $vol%';
         return 'Volume surge >= $vol%';
     }
   }

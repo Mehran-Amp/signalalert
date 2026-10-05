@@ -1,0 +1,60 @@
+# -*- coding: utf-8 -*-
+import sys
+
+# Define all keys and translations for 10 languages:
+# fa (Farsi), en (English), ckb (Kurdish Sorani), ar (Arabic),
+# de (German), fr (French), es (Spanish), tr (Turkish), zh (Chinese), ko (Korean)
+
+keys = [
+    'my_alerts', 'history', 'settings', 'smart_alerts_desc', 'new_alert', 'last_checked_price',
+    'check_now', 'baseline', 'rearm', 'theme_and_colors', 'theme_dark_gold', 'theme_dark_sapphire',
+    'theme_dark_green', 'theme_light_green', 'theme_dark_orange', 'theme_light_orange',
+    'theme_dark_purple_blue', 'theme_light_purple_blue', 'tts_voice_title', 'tts_voice_desc',
+    'tts_test_button', 'home_widget_title', 'home_widget_desc', 'select_language',
+    'sound_and_vibrate', 'sound_alert', 'vibrate_alert', 'test_sound_button', 'backup_and_restore',
+    'export_backup', 'restore_backup', 'clear_history', 'battery_settings', 'battery_active',
+    'battery_request', 'test_alert_title', 'test_alert_body', 'backup_copied', 'restore_success',
+    'exchange', 'pair', 'create_alert_title', 'frequency', 'seconds', 'minutes', 'hours',
+    'empty_alerts_title', 'empty_alerts_desc', 'create_first_alert', 'choose_market_step',
+    'choose_market_title', 'choose_market_desc', 'crypto_market_title', 'crypto_market_badge',
+    'crypto_market_desc', 'crypto_market_cta', 'macro_market_title', 'macro_market_badge',
+    'macro_market_desc', 'macro_market_cta', 'search_exchange_hint', 'search_crypto_hint',
+    'search_macro_hint', 'refresh_list', 'select_cta', 'selected_asset', 'auto_check_schedule',
+    'unit_count', 'time_unit', 'condition_type', 'percent_change', 'price_target', 'price_direction',
+    'both_ways', 'above_only', 'below_only', 'target_price_label', 'percent_label', 'save_alert_cta',
+    'just_now', 'seconds_ago', 'minutes_ago', 'hours_ago', 'days_ago', 'every', 'cancel', 'confirm',
+    'restore_dialog_hint', 'restore_dialog_btn', 'clear_history_confirm', 'clear_history_btn',
+    'clear_history_success', 'battery_exempt_active', 'battery_exempt_inactive', 'battery_exempt_title',
+    'battery_exempt_success', 'export_backup_desc', 'restore_backup_desc', 'clear_history_desc',
+    'filter_all', 'filter_triggered', 'filter_suppressed', 'no_history_title', 'no_history_desc',
+    'check_price_done', 'alert_deleted_msg', 'undo_action', 'target_price_required', 'all_symbols',
+    'us_bonds', 'forex_pairs', 'gold_metals', 'wallstreet_stocks', 'global_indices', 'price_cross_above',
+    'price_cross_below', 'price_cross_direction', 'above_target', 'below_target', 'price_fluctuation',
+    'price_surge', 'price_drop', 'target_price_summary', 'price_delta_summary', 'volume_surge_summary',
+    'interval_prefix', 'interval_suffix', 'offline_error', 'offline_badge', 'edit_alert_title',
+    'save_changes_cta', 'sound_and_vibrate_section', 'sound_and_vibrate_sub', 'custom_note_title',
+    'custom_note_hint', 'alarm_sound_title', 'change_sound_btn', 'play_sound_label', 'vibrate_phone_label',
+    'select_alarm_sound', 'confirm_sound_btn', 'live_market_price', 'fetching_live_price',
+    'live_price_unavailable', 'manual_monitoring', 'symbol_not_found', 'triggers_count', 'last_trigger',
+    'trigger_price_label', 'duplicate_action', 'edit_action', 'delete_action', 'cooldown_active',
+    'alarm_volume_label', 'selected_sound_label', 'sound_alarm_siren_title', 'sound_radar_pulse_title',
+    'sound_cyber_chime_title', 'sound_crystal_ping_title', 'sound_bullish_rise_title',
+    'sound_coin_drop_title', 'sound_alert_horn_title', 'sound_classic_beep_title', 'cat_all_exchanges',
+    'cat_tier1', 'cat_middle_east', 'cat_asia', 'cat_europe', 'cat_americas', 'cat_aggregator',
+    'retry_btn', 'date_today', 'date_yesterday', 'rule_copied', 'format_error_json', 'rearm_now_btn',
+    'rearm_dialog_title', 'rearm_dialog_body', 'alert_rule_duplicated', 'export_rule_action',
+    'popular_cryptos', 'chip_all', 'chip_space', 'chip_ai', 'chip_mining', 'chip_crypto_macro',
+    'chip_china', 'chip_top100', 'chip_macro_dxy', 'chip_indices', 'chip_metals', 'chip_forex',
+    'account_title', 'google_signed_in', 'google_guest', 'vip_active', 'vip_sign_in_hint',
+    'sign_in_google', 'sign_out_google', 'telegram_title', 'telegram_connected', 'telegram_pending',
+    'telegram_login_required', 'telegram_desc', 'telegram_login_notice_title',
+    'telegram_login_notice_body', 'telegram_login_btn', 'telegram_change', 'telegram_disconnect',
+    'telegram_test_alert', 'telegram_connect_btn', 'telegram_dialog_title', 'telegram_step1',
+    'telegram_copy_handle', 'telegram_step2', 'telegram_step3', 'telegram_save_connect',
+    'telegram_success', 'telegram_disconnected_msg', 'telegram_sending_test', 'telegram_test_success',
+    'no_active_alerts_refresh', 'refreshing_smart_prices', 'refresh_complete_msg', 'refresh_all_tooltip',
+    'to_target', 'inactive', 'in_hours', 'in_hours_minutes', 'in_minutes', 'in_minutes_seconds',
+    'in_seconds'
+]
+
+print("Total unique keys:", len(keys))

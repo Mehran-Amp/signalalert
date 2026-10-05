@@ -157,29 +157,49 @@ class AlertRule extends Equatable {
   String getLocalizedTitle(String lang) {
     switch (conditionType) {
       case AlertConditionType.priceThreshold:
-        return lang == 'fa'
-            ? 'هشدار عبور از قیمت هدف'
-            : (lang == 'ar'
-                ? 'إنذار تجاوز السعر المستهدف'
-                : 'Target Price Alert');
+        if (lang == 'fa') return 'هشدار عبور از قیمت هدف';
+        if (lang == 'ckb') return 'ئاگاداری تێپەڕینی نرخی ئامانج';
+        if (lang == 'ar') return 'إنذار تجاوز السعر المستهدف';
+        if (lang == 'de') return 'Zielpreis-Alarm';
+        if (lang == 'tr') return 'Hedef Fiyat Alarmı';
+        if (lang == 'es') return 'Alerta de Precio Objetivo';
+        if (lang == 'fr') return 'Alerte Prix Cible';
+        if (lang == 'ru') return 'Оповещение о целевой цене';
+        if (lang == 'zh') return '目标价格预警';
+        return 'Target Price Alert';
       case AlertConditionType.percentChange:
-        return lang == 'fa'
-            ? 'هشدار تغییر درصدی قیمت'
-            : (lang == 'ar'
-                ? 'إنذار نسبة التغير في السعر'
-                : 'Percentage Change Alert');
+        if (lang == 'fa') return 'هشدار تغییر درصدی قیمت';
+        if (lang == 'ckb') return 'ئاگاداری گۆڕانکاری ڕێژەیی نرخ';
+        if (lang == 'ar') return 'إنذار نسبة التغير في السعر';
+        if (lang == 'de') return 'Prozentuale Preisänderung';
+        if (lang == 'tr') return 'Yüzdesel Fiyat Değişimi';
+        if (lang == 'es') return 'Alerta de Cambio Porcentual';
+        if (lang == 'fr') return 'Alerte Variation Pourcentage';
+        if (lang == 'ru') return 'Процентное изменение цены';
+        if (lang == 'zh') return '价格变动百分比预警';
+        return 'Percentage Change Alert';
       case AlertConditionType.absolutePriceChange:
-        return lang == 'fa'
-            ? 'هشدار مقدار نوسان دلاری'
-            : (lang == 'ar'
-                ? 'إنذار مقدار التغير السعري'
-                : 'Price Delta Alert');
+        if (lang == 'fa') return 'هشدار مقدار نوسان دلاری';
+        if (lang == 'ckb') return 'ئاگاداری بڕی نوسانی دۆلاری';
+        if (lang == 'ar') return 'إنذار مقدار التغير السعري';
+        if (lang == 'de') return 'Preis-Delta-Alarm';
+        if (lang == 'tr') return 'Fiyat Farkı Alarmı';
+        if (lang == 'es') return 'Alerta de Variación de Precio';
+        if (lang == 'fr') return 'Alerte Écart de Prix';
+        if (lang == 'ru') return 'Изменение цены в USD';
+        if (lang == 'zh') return '美元波动额预警';
+        return 'Price Delta Alert';
       case AlertConditionType.volumeChange:
-        return lang == 'fa'
-            ? 'هشدار پامپ و حجم معاملات'
-            : (lang == 'ar'
-                ? 'إنذار حجم التداول'
-                : 'Volume Surge Alert');
+        if (lang == 'fa') return 'هشدار پامپ و حجم معاملات';
+        if (lang == 'ckb') return 'ئاگاداری پەمپ و قەبارەی مامەڵەکان';
+        if (lang == 'ar') return 'إنذار حجم التداول';
+        if (lang == 'de') return 'Volumenanstieg-Alarm';
+        if (lang == 'tr') return 'Hacim Artışı Alarmı';
+        if (lang == 'es') return 'Alerta de Pico de Volumen';
+        if (lang == 'fr') return 'Alerte Volume Élevé';
+        if (lang == 'ru') return 'Всплеск объема торгов';
+        if (lang == 'zh') return '成交量突增预警';
+        return 'Volume Surge Alert';
     }
   }
 
