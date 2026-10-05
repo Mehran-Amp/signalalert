@@ -868,26 +868,32 @@ class _WatchlistPageState extends State<WatchlistPage> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Row(
-                          children: [
-                            Icon(
-                              rule.conditionType == AlertConditionType.priceThreshold
-                                  ? Icons.gps_fixed_rounded
-                                  : Icons.trending_up_rounded,
-                              size: 13,
-                              color: progState.color ?? theme.colorScheme.primary,
-                            ),
-                            const SizedBox(width: 5),
-                            Text(
-                              _buildConditionSummary(rule, lang),
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: rule.isActive ? theme.colorScheme.onSurface.withValues(alpha: 0.9) : textMuted,
+                        Expanded(
+                          child: Row(
+                            children: [
+                              Icon(
+                                rule.conditionType == AlertConditionType.priceThreshold
+                                    ? Icons.gps_fixed_rounded
+                                    : Icons.trending_up_rounded,
+                                size: 13,
+                                color: progState.color ?? theme.colorScheme.primary,
                               ),
-                            ),
-                          ],
+                              const SizedBox(width: 5),
+                              Expanded(
+                                child: Text(
+                                  _buildConditionSummary(rule, lang),
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: rule.isActive ? theme.colorScheme.onSurface.withValues(alpha: 0.9) : textMuted,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
+                        const SizedBox(width: 8),
                         Text(
                           '${progState.percentageInt}% ${lang == 'fa' ? 'تا هدف' : 'to target'}',
                           style: TextStyle(

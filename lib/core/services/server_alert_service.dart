@@ -66,7 +66,7 @@ class ServerAlertService {
     if (!isServerAvailable) return false;
     try {
       final fcmToken = await FCMNotificationService.getFCMToken();
-      final activeRules = rules.where((r) => r.isActive).toList();
+      final activeRules = rules.where((r) => r.isActive && r.exchangeId.toLowerCase() != 'timer' && r.exchangeId.toLowerCase() != 'local').toList();
 
       // Retrieve userEmail & telegram_chat_id from settings.json
       String effectiveUserId = userId ?? 'user_default';

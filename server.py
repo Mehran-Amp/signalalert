@@ -103,9 +103,10 @@ class AlertCreate(BaseModel):
     target_price: float
     condition: str           # 'ABOVE' or 'BELOW'
     fcm_token: str
-    check_interval_seconds: int = 10
+    check_interval_seconds: int = 180
     note: Optional[str] = None
     trigger_mode: Optional[str] = "oneShot" # 'oneShot' | 'recurring'
+    alert_nature: Optional[str] = "price"    # 'price' | 'timer'
     sound_enabled: bool = True
     vibration_enabled: bool = True
     tts_enabled: bool = True
@@ -396,7 +397,7 @@ def get_exchange_display_name(exchange_id: str) -> str:
     }
     return mapping.get((exchange_id or '').lower(), (exchange_id or 'Market').capitalize())
 
-def send_fcm_notification(fcm_token: str, title: str, body: str, data_payload: dict = None) -> Tuple[bool, str]:
+def send_fcm_notification(fcm_token: str, title: str, body: str, data_payload: dict = None, ttl_seconds: int = 300) -> Tuple[bool, str]:
     if not firebase_admin._apps:
         return False, "Firebase Admin SDK not initialized."
     if not fcm_token or fcm_token.startswith('dev_') or fcm_token.startswith('device_token_') or len(fcm_token) < 40:
@@ -406,15 +407,17 @@ def send_fcm_notification(fcm_token: str, title: str, body: str, data_payload: d
         full_data = {"title": str(title), "body": str(body), **(data_payload or {})}
         full_data_str = {k: str(v) if v is not None else "" for k, v in full_data.items()}
 
+        effective_ttl = timedelta(seconds=max(60, min(3600, ttl_seconds)))
+
         message = messaging.Message(
             data=full_data_str,
             token=fcm_token,
-            android=messaging.AndroidConfig(priority='high', ttl=timedelta(days=1), direct_boot_ok=True),
+            android=messaging.AndroidConfig(priority='high', ttl=effective_ttl, direct_boot_ok=True),
             apns=messaging.APNSConfig(payload=messaging.APNSPayload(aps=messaging.Aps(content_available=True, badge=1)))
         )
         response = messaging.send(message)
         METRICS["fcm_success"] += 1
-        print(f"🚀 [FCM Push] Sent: {response}")
+        print(f"🚀 [FCM Push] Sent (TTL: {effective_ttl}): {response}")
         return True, f"FCM Message ID: {response}"
     except Exception as e:
         METRICS["fcm_failed"] += 1
@@ -589,7 +592,10 @@ async def check_alerts_job():
     current_time = time.time()
     METRICS["total_checks"] += 1
 
-    active_alerts = [a for a in ALERTS_DB if a.is_active]
+    active_alerts = [
+        a for a in ALERTS_DB
+        if a.is_active and getattr(a, 'alert_nature', 'price') == 'price' and a.target_price > 0 and a.exchange.lower() not in ['timer', 'local', 'clock', 'none']
+    ]
     ready_alerts = [
         a for a in active_alerts
         if (current_time - a.last_checked_at) >= a.check_interval_seconds
@@ -624,22 +630,23 @@ async def check_alerts_job():
             triggered = True
 
         if triggered:
-            last_trig = getattr(alert, 'last_triggered_at', 0.0)
-            is_one_shot = getattr(alert, 'trigger_mode', 'oneShot') == 'oneShot'
-            min_cooldown = max(30.0, float(alert.check_interval_seconds))
+            async with _db_lock:
+                last_trig = getattr(alert, 'last_triggered_at', 0.0)
+                is_one_shot = getattr(alert, 'trigger_mode', 'oneShot') == 'oneShot'
+                min_cooldown = max(30.0, float(alert.check_interval_seconds))
 
-            if is_one_shot:
-                if not alert.is_active or last_trig > 0:
-                    continue
-            else:
-                if (current_time - last_trig) < min_cooldown:
-                    continue
+                if is_one_shot:
+                    if not alert.is_active or last_trig > 0:
+                        continue
+                else:
+                    if (current_time - last_trig) < min_cooldown:
+                        continue
 
-            # Update trigger timestamp and deactivate one-shot alert immediately
-            alert.last_triggered_at = current_time
-            if is_one_shot:
-                alert.is_active = False
-            updated = True
+                # Atomic pre-dispatch update before any IO or network calls
+                alert.last_triggered_at = current_time
+                if is_one_shot:
+                    alert.is_active = False
+                updated = True
 
             METRICS["total_triggers"] += 1
             print(f"🔔 [TRIGGER] {alert.symbol} @ {current_price} (Target: {alert.target_price})")
@@ -672,23 +679,22 @@ async def check_alerts_job():
                 body_lines.append(clean_note)
             body = "\n".join(body_lines)
 
-            # 1. Dispatch High-Priority FCM Push (Only for long-interval background alerts >= 15 min / 900s to avoid duplicate/delayed FCM pushes for short local alerts)
-            if float(getattr(alert, 'check_interval_seconds', 180)) >= 900:
-                send_fcm_notification(
-                    fcm_token=alert.fcm_token,
-                    title=title,
-                    body=body,
-                    data_payload={
-                        "alert_id": alert.id,
-                        "symbol": display_symbol,
-                        "price": str(current_price),
-                        "note": alert.note or "",
-                        "sound_enabled": "true" if alert.sound_enabled else "false",
-                        "vibration_enabled": "true" if alert.vibration_enabled else "false",
-                        "tts_enabled": "true" if alert.tts_enabled else "false",
-                        "sound": alert.sound or "alarm_siren"
-                    }
-                )
+            # 1. Dispatch High-Priority FCM Push for Cloud Backup
+            send_fcm_notification(
+                fcm_token=alert.fcm_token,
+                title=title,
+                body=body,
+                data_payload={
+                    "alert_id": alert.id,
+                    "symbol": display_symbol,
+                    "price": str(current_price),
+                    "note": alert.note or "",
+                    "sound_enabled": "true" if alert.sound_enabled else "false",
+                    "vibration_enabled": "true" if alert.vibration_enabled else "false",
+                    "tts_enabled": "true" if alert.tts_enabled else "false",
+                    "sound": alert.sound or "alarm_siren"
+                }
+            )
 
             # 2. Dispatch Optional Telegram Message
             if alert.telegram_chat_id:
@@ -898,7 +904,7 @@ async def create_alert(alert_in: AlertCreate):
                 webhook_url=alert_in.webhook_url,
                 is_active=True,
                 created_at=datetime.utcnow().isoformat(),
-                last_checked_at=time.time(),
+                last_checked_at=0.0,
                 last_triggered_at=0.0
             )
             ALERTS_DB.append(new_alert)
@@ -928,7 +934,7 @@ async def sync_user_alerts(payload: dict):
             existing = existing_map.get(rule_id)
 
             last_trig = existing.last_triggered_at if existing else 0.0
-            last_chk = existing.last_checked_at if (existing and existing.last_checked_at > 0) else time.time()
+            last_chk = existing.last_checked_at if existing else 0.0
             is_act = bool(item.get('is_active', True))
             if existing and not existing.is_active and getattr(existing, 'trigger_mode', 'oneShot') == 'oneShot':
                 is_act = False

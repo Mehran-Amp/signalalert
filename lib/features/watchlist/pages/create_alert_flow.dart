@@ -1338,9 +1338,12 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
                       children: [
                         Row(
                           children: [
-                            Text(
-                              assetName,
-                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
+                            Flexible(
+                              child: Text(
+                                assetName,
+                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
                             const SizedBox(width: 8),
                             if (_selectedExchange != null)
@@ -1656,7 +1659,10 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Text(lang == 'fa' ? '🔼 سقف ۲۴h:' : '🔼 24h High:', style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: AppTokens.positive)),
-                              Text(_formatSmartNumber(h24), style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, fontFamily: 'monospace', color: AppTokens.positive)),
+                              const SizedBox(width: 4),
+                              Flexible(
+                                child: Text(_formatSmartNumber(h24), style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, fontFamily: 'monospace', color: AppTokens.positive), overflow: TextOverflow.ellipsis),
+                              ),
                             ],
                           ),
                         ),
@@ -1685,7 +1691,10 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Text(lang == 'fa' ? '🔽 کف ۲۴h:' : '🔽 24h Low:', style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: AppTokens.negative)),
-                              Text(_formatSmartNumber(l24), style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, fontFamily: 'monospace', color: AppTokens.negative)),
+                              const SizedBox(width: 4),
+                              Flexible(
+                                child: Text(_formatSmartNumber(l24), style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, fontFamily: 'monospace', color: AppTokens.negative), overflow: TextOverflow.ellipsis),
+                              ),
                             ],
                           ),
                         ),
