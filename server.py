@@ -96,6 +96,7 @@ METRICS = {
 # 3. Data Models (Pydantic V2/V1 Backward Compatible)
 # -------------------------------------------------------------------
 class AlertCreate(BaseModel):
+    id: Optional[str] = None
     user_id: str
     exchange: str            # e.g. 'nobitex', 'wallex', 'tabdeal', 'binance', 'stocks'
     symbol: str              # e.g. 'BTCUSDT', 'USDTIRT', 'GOLD', 'DX-Y.NYB'
@@ -625,112 +626,119 @@ async def check_alerts_job():
         if triggered:
             last_trig = getattr(alert, 'last_triggered_at', 0.0)
             is_one_shot = getattr(alert, 'trigger_mode', 'oneShot') == 'oneShot'
-            min_cooldown = max(60.0, float(alert.check_interval_seconds))
+            min_cooldown = max(30.0, float(alert.check_interval_seconds))
 
-            if is_one_shot or (current_time - last_trig) >= min_cooldown:
-                METRICS["total_triggers"] += 1
-                print(f"🔔 [TRIGGER] {alert.symbol} @ {current_price} (Target: {alert.target_price})")
+            if is_one_shot:
+                if not alert.is_active or last_trig > 0:
+                    continue
+            else:
+                if (current_time - last_trig) < min_cooldown:
+                    continue
 
-                is_above = alert.condition.upper() == 'ABOVE'
-                emoji = '🟢' if is_above else '🔴'
-                arrow = '▲' if is_above else '▼'
-                sign = '+' if is_above else '-'
+            # Update trigger timestamp and deactivate one-shot alert immediately
+            alert.last_triggered_at = current_time
+            if is_one_shot:
+                alert.is_active = False
+            updated = True
 
-                pct_str = f"{sign}{abs(((current_price - alert.target_price) / alert.target_price) * 100.0):.2f}%" if alert.target_price > 0 else ""
-                price_formatted = f"${current_price:,.4f}".rstrip('0').rstrip('.') if current_price < 1 else f"${current_price:,.2f}"
-                if alert.symbol.endswith('TMN') or alert.symbol.endswith('IRT'):
-                    price_formatted = f"{int(current_price):,} TMN"
+            METRICS["total_triggers"] += 1
+            print(f"🔔 [TRIGGER] {alert.symbol} @ {current_price} (Target: {alert.target_price})")
+
+            is_above = alert.condition.upper() == 'ABOVE'
+            emoji = '🟢' if is_above else '🔴'
+            arrow = '▲' if is_above else '▼'
+            sign = '+' if is_above else '-'
+
+            pct_str = f"{sign}{abs(((current_price - alert.target_price) / alert.target_price) * 100.0):.2f}%" if alert.target_price > 0 else ""
+            price_formatted = f"${current_price:,.4f}".rstrip('0').rstrip('.') if current_price < 1 else f"${current_price:,.2f}"
+            if alert.symbol.endswith('TMN') or alert.symbol.endswith('IRT'):
+                price_formatted = f"{int(current_price):,} TMN"
 
                 display_symbol = alert.symbol
-                if '/' not in display_symbol:
-                    for quote in ['USDT', 'USDC', 'BUSD', 'FDUSD', 'EUR', 'USD', 'TMN', 'IRT', 'BTC', 'ETH']:
-                        if display_symbol.endswith(quote):
-                            base = display_symbol[:-len(quote)]
-                            display_symbol = f"{base}/{quote}"
-                            break
+            if '/' not in display_symbol:
+                for quote in ['USDT', 'USDC', 'BUSD', 'FDUSD', 'EUR', 'USD', 'TMN', 'IRT', 'BTC', 'ETH']:
+                    if display_symbol.endswith(quote):
+                        base = display_symbol[:-len(quote)]
+                        display_symbol = f"{base}/{quote}"
+                        break
 
-                title = f"{emoji} {display_symbol} {pct_str} {price_formatted} {arrow}".replace('  ', ' ')
-                exchange_name = get_exchange_display_name(alert.exchange)
-                body_lines = [f"🏛️ {exchange_name}"]
+            title = f"{emoji} {display_symbol} {pct_str} {price_formatted} {arrow}".replace('  ', ' ')
+            exchange_name = get_exchange_display_name(alert.exchange)
+            body_lines = [f"🏛️ {exchange_name}"]
+            if alert.note and alert.note.strip():
+                clean_note = alert.note.strip()
+                if not clean_note.startswith('📝'):
+                    clean_note = f"📝 {clean_note}"
+                body_lines.append(clean_note)
+            body = "\n".join(body_lines)
+
+            # 1. Dispatch High-Priority FCM Push
+            send_fcm_notification(
+                fcm_token=alert.fcm_token,
+                title=title,
+                body=body,
+                data_payload={
+                    "alert_id": alert.id,
+                    "symbol": display_symbol,
+                    "price": str(current_price),
+                    "note": alert.note or "",
+                    "sound_enabled": "true" if alert.sound_enabled else "false",
+                    "vibration_enabled": "true" if alert.vibration_enabled else "false",
+                    "tts_enabled": "true" if alert.tts_enabled else "false",
+                    "sound": alert.sound or "alarm_siren"
+                }
+            )
+
+            # 2. Dispatch Optional Telegram Message
+            if alert.telegram_chat_id:
+                is_tmn = alert.symbol.endswith('TMN') or alert.symbol.endswith('IRT')
+                target_formatted = f"{int(alert.target_price):,} TMN" if is_tmn else (f"${alert.target_price:,.4f}".rstrip('0').rstrip('.') if alert.target_price < 1 else f"${alert.target_price:,.2f}")
+
+                # Check if condition is percentage or standard price threshold
+                cond_upper = (alert.condition or '').upper()
+                if 'PERCENT' in cond_upper or '%' in cond_upper or cond_upper == 'BOTHSIDES':
+                    if 'ABOVE' in cond_upper or 'UP' in cond_upper:
+                        target_display = f"{abs(alert.target_price):g}% عبور به بالا"
+                    elif 'BELOW' in cond_upper or 'DOWN' in cond_upper:
+                        target_display = f"{abs(alert.target_price):g}% عبور به پایین"
+                    else:
+                        target_display = f"{abs(alert.target_price):g}% عبور از هر دو طرف"
+                else:
+                    target_display = target_formatted
+
+                pct_val = abs(((current_price - alert.target_price) / max(1e-8, alert.target_price)) * 100.0) if alert.target_price > 0 else 0.0
+                pct_display = f"{arrow}{pct_val:.2f}%" if pct_val > 0.001 else f"{arrow}"
+
+                tg_lines = [
+                    "🚨 <b>هشدار فعال شد:</b>",
+                    f"📊{emoji} <b>{display_symbol} {price_formatted} {pct_display}</b>",
+                    f"🎯 <b>قیمت تارگت:</b> {target_display}",
+                ]
                 if alert.note and alert.note.strip():
                     clean_note = alert.note.strip()
-                    if not clean_note.startswith('📝'):
-                        clean_note = f"📝 {clean_note}"
-                    body_lines.append(clean_note)
-                body = "\n".join(body_lines)
+                    if clean_note.startswith('📝'):
+                        clean_note = clean_note[1:].strip()
+                    tg_lines.append(f"📝 <b>یادداشت:</b> <i>{clean_note}</i>")
 
-                # 1. Dispatch High-Priority FCM Push
-                send_fcm_notification(
-                    fcm_token=alert.fcm_token,
-                    title=title,
-                    body=body,
-                    data_payload={
-                        "alert_id": alert.id,
-                        "symbol": display_symbol,
-                        "price": str(current_price),
-                        "note": alert.note or "",
-                        "sound_enabled": "true" if alert.sound_enabled else "false",
-                        "vibration_enabled": "true" if alert.vibration_enabled else "false",
-                        "tts_enabled": "true" if alert.tts_enabled else "false",
-                        "sound": alert.sound or "alarm_siren"
-                    }
-                )
+                tg_lines.append(f"🏛️ {exchange_name}")
+                tg_lines.append(f"🕒 <b>زمان:</b> <code>{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}</code>")
+                tg_lines.append("⚡ <i>ارسال شده توسط ربات هوشمند SignalAlert Enterprise</i>")
 
-                # 2. Dispatch Optional Telegram Message
-                if alert.telegram_chat_id:
-                    is_tmn = alert.symbol.endswith('TMN') or alert.symbol.endswith('IRT')
-                    target_formatted = f"{int(alert.target_price):,} TMN" if is_tmn else (f"${alert.target_price:,.4f}".rstrip('0').rstrip('.') if alert.target_price < 1 else f"${alert.target_price:,.2f}")
+                tg_msg = "\n".join(tg_lines)
+                asyncio.create_task(send_telegram_alert(http_client, alert.telegram_chat_id, tg_msg))
 
-                    # Check if condition is percentage or standard price threshold
-                    cond_upper = (alert.condition or '').upper()
-                    if 'PERCENT' in cond_upper or '%' in cond_upper or cond_upper == 'BOTHSIDES':
-                        if 'ABOVE' in cond_upper or 'UP' in cond_upper:
-                            target_display = f"{abs(alert.target_price):g}% عبور به بالا"
-                        elif 'BELOW' in cond_upper or 'DOWN' in cond_upper:
-                            target_display = f"{abs(alert.target_price):g}% عبور به پایین"
-                        else:
-                            target_display = f"{abs(alert.target_price):g}% عبور از هر دو طرف"
-                    else:
-                        target_display = target_formatted
-
-                    pct_val = abs(((current_price - alert.target_price) / max(1e-8, alert.target_price)) * 100.0) if alert.target_price > 0 else 0.0
-                    pct_display = f"{arrow}{pct_val:.2f}%" if pct_val > 0.001 else f"{arrow}"
-
-                    tg_lines = [
-                        "🚨 <b>هشدار فعال شد:</b>",
-                        f"📊{emoji} <b>{display_symbol} {price_formatted} {pct_display}</b>",
-                        f"🎯 <b>قیمت تارگت:</b> {target_display}",
-                    ]
-                    if alert.note and alert.note.strip():
-                        clean_note = alert.note.strip()
-                        if clean_note.startswith('📝'):
-                            clean_note = clean_note[1:].strip()
-                        tg_lines.append(f"📝 <b>یادداشت:</b> <i>{clean_note}</i>")
-
-                    tg_lines.append(f"🏛️ {exchange_name}")
-                    tg_lines.append(f"🕒 <b>زمان:</b> <code>{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}</code>")
-                    tg_lines.append("⚡ <i>ارسال شده توسط ربات هوشمند SignalAlert Enterprise</i>")
-
-                    tg_msg = "\n".join(tg_lines)
-                    asyncio.create_task(send_telegram_alert(http_client, alert.telegram_chat_id, tg_msg))
-
-                # 3. Dispatch Optional Webhook
-                if alert.webhook_url:
-                    hook_data = {
-                        "event": "price_alert_triggered",
-                        "alert_id": alert.id,
-                        "symbol": display_symbol,
-                        "price": current_price,
-                        "target_price": alert.target_price,
-                        "condition": alert.condition,
-                        "timestamp": datetime.utcnow().isoformat()
-                    }
-                    asyncio.create_task(send_webhook_alert(http_client, alert.webhook_url, hook_data))
-
-                alert.last_triggered_at = current_time
-                if is_one_shot:
-                    alert.is_active = False
-                updated = True
+            # 3. Dispatch Optional Webhook
+            if alert.webhook_url:
+                hook_data = {
+                    "event": "price_alert_triggered",
+                    "alert_id": alert.id,
+                    "symbol": display_symbol,
+                    "price": current_price,
+                    "target_price": alert.target_price,
+                    "condition": alert.condition,
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+                asyncio.create_task(send_webhook_alert(http_client, alert.webhook_url, hook_data))
 
     if updated:
         await save_alerts_to_disk_async(ALERTS_DB)
@@ -848,32 +856,53 @@ def get_status_dashboard():
 @app.post("/api/alerts", response_model=Alert)
 @app.post("/alerts", response_model=Alert)
 async def create_alert(alert_in: AlertCreate):
-    new_alert = Alert(
-        id=str(uuid.uuid4()),
-        user_id=alert_in.user_id,
-        exchange=alert_in.exchange,
-        symbol=alert_in.symbol,
-        target_price=alert_in.target_price,
-        condition=alert_in.condition,
-        fcm_token=alert_in.fcm_token,
-        check_interval_seconds=alert_in.check_interval_seconds,
-        note=alert_in.note,
-        trigger_mode=alert_in.trigger_mode or "oneShot",
-        sound_enabled=alert_in.sound_enabled,
-        vibration_enabled=alert_in.vibration_enabled,
-        tts_enabled=alert_in.tts_enabled,
-        sound=alert_in.sound or "alarm_siren",
-        telegram_chat_id=alert_in.telegram_chat_id,
-        webhook_url=alert_in.webhook_url,
-        is_active=True,
-        created_at=datetime.utcnow().isoformat(),
-        last_checked_at=0.0,
-        last_triggered_at=0.0
-    )
+    rule_id = alert_in.id or str(uuid.uuid4())
     async with _db_lock:
-        ALERTS_DB.append(new_alert)
+        existing = next((a for a in ALERTS_DB if a.id == rule_id), None)
+        if existing:
+            existing.user_id = alert_in.user_id
+            existing.exchange = alert_in.exchange
+            existing.symbol = alert_in.symbol
+            existing.target_price = alert_in.target_price
+            existing.condition = alert_in.condition
+            existing.fcm_token = alert_in.fcm_token
+            existing.check_interval_seconds = alert_in.check_interval_seconds
+            existing.note = alert_in.note
+            existing.trigger_mode = alert_in.trigger_mode or "oneShot"
+            existing.sound_enabled = alert_in.sound_enabled
+            existing.vibration_enabled = alert_in.vibration_enabled
+            existing.tts_enabled = alert_in.tts_enabled
+            existing.sound = alert_in.sound or "alarm_siren"
+            existing.telegram_chat_id = alert_in.telegram_chat_id
+            existing.webhook_url = alert_in.webhook_url
+            existing.is_active = True
+            new_alert = existing
+        else:
+            new_alert = Alert(
+                id=rule_id,
+                user_id=alert_in.user_id,
+                exchange=alert_in.exchange,
+                symbol=alert_in.symbol,
+                target_price=alert_in.target_price,
+                condition=alert_in.condition,
+                fcm_token=alert_in.fcm_token,
+                check_interval_seconds=alert_in.check_interval_seconds,
+                note=alert_in.note,
+                trigger_mode=alert_in.trigger_mode or "oneShot",
+                sound_enabled=alert_in.sound_enabled,
+                vibration_enabled=alert_in.vibration_enabled,
+                tts_enabled=alert_in.tts_enabled,
+                sound=alert_in.sound or "alarm_siren",
+                telegram_chat_id=alert_in.telegram_chat_id,
+                webhook_url=alert_in.webhook_url,
+                is_active=True,
+                created_at=datetime.utcnow().isoformat(),
+                last_checked_at=0.0,
+                last_triggered_at=0.0
+            )
+            ALERTS_DB.append(new_alert)
     await save_alerts_to_disk_async(ALERTS_DB)
-    print(f"📩 [API] New Alert Created: {new_alert.symbol} ({new_alert.exchange}) | Target: {new_alert.target_price} | Interval: {new_alert.check_interval_seconds}s")
+    print(f"📩 [API] New Alert Created/Updated: {new_alert.symbol} ({new_alert.exchange}) | ID: {new_alert.id} | Target: {new_alert.target_price} | Interval: {new_alert.check_interval_seconds}s")
     return new_alert
 
 @app.post("/api/alerts/sync")
