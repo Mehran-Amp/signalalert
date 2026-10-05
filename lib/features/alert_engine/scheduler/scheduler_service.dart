@@ -199,6 +199,9 @@ class SchedulerService {
             title: result.title,
             message: finalBody,
             triggeredPrice: ticker.lastPrice,
+            previousPrice: prevPrice,
+            customNote: rule.note,
+            conditionType: rule.conditionType.name,
             timestamp: now,
           );
           await _notificationRepository.saveLog(log);

@@ -9,6 +9,9 @@ class NotificationLog extends Equatable {
   final String title;
   final String message;
   final double triggeredPrice;
+  final double? previousPrice;
+  final String? customNote;
+  final String? conditionType;
   final DateTime timestamp;
 
   const NotificationLog({
@@ -19,6 +22,9 @@ class NotificationLog extends Equatable {
     required this.title,
     required this.message,
     required this.triggeredPrice,
+    this.previousPrice,
+    this.customNote,
+    this.conditionType,
     required this.timestamp,
   });
 
@@ -30,6 +36,9 @@ class NotificationLog extends Equatable {
         'title': title,
         'message': message,
         'triggeredPrice': triggeredPrice,
+        'previousPrice': previousPrice,
+        'customNote': customNote,
+        'conditionType': conditionType,
         'timestamp': timestamp.toIso8601String(),
       };
 
@@ -42,6 +51,10 @@ class NotificationLog extends Equatable {
         title: json['title'] as String? ?? '',
         message: json['message'] as String? ?? '',
         triggeredPrice: (json['triggeredPrice'] as num?)?.toDouble() ?? 0.0,
+        previousPrice: (json['previousPrice'] as num?)?.toDouble() ??
+            (json['previous_price'] as num?)?.toDouble(),
+        customNote: json['customNote'] as String? ?? json['custom_note'] as String?,
+        conditionType: json['conditionType'] as String? ?? json['condition_type'] as String?,
         timestamp: json['timestamp'] != null
             ? DateTime.parse(json['timestamp'] as String)
             : DateTime.now(),
@@ -56,6 +69,9 @@ class NotificationLog extends Equatable {
         title,
         message,
         triggeredPrice,
+        previousPrice,
+        customNote,
+        conditionType,
         timestamp,
       ];
 }

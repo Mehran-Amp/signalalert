@@ -574,6 +574,26 @@ class _WatchlistPageState extends State<WatchlistPage> {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
+                        if (rule.previousPrice != null || (basePrice != null && displayPrice != null && (basePrice - displayPrice).abs() > 1e-8)) ...[
+                          Builder(
+                            builder: (context) {
+                              final prev = rule.previousPrice ?? basePrice;
+                              if (prev == null) return const SizedBox.shrink();
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 1.5),
+                                child: Text(
+                                  FormatUtils.formatPrice(prev, currencySymbol: rule.counterCurrency),
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w600,
+                                    fontFamily: 'monospace',
+                                    color: textMuted,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
                         Text(
                           displayPrice != null ? FormatUtils.formatPrice(displayPrice, currencySymbol: rule.counterCurrency) : '---',
                           style: TextStyle(
@@ -589,37 +609,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
                                 : textMuted,
                           ),
                         ),
-                        if (rule.previousPrice != null || (basePrice != null && displayPrice != null && (basePrice - displayPrice).abs() > 1e-8)) ...[
-                          Builder(
-                            builder: (context) {
-                              final prev = rule.previousPrice ?? basePrice;
-                              if (prev == null) return const SizedBox.shrink();
-                              return Padding(
-                                padding: const EdgeInsets.only(top: 1.5, bottom: 2.5),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  crossAxisAlignment: CrossAxisAlignment.center,
-                                  children: [
-                                    const Text(
-                                      '⏱️',
-                                      style: TextStyle(fontSize: 9.5),
-                                    ),
-                                    const SizedBox(width: 3),
-                                    Text(
-                                      FormatUtils.formatPrice(prev, currencySymbol: rule.counterCurrency),
-                                      style: TextStyle(
-                                        fontSize: 10.5,
-                                        fontWeight: FontWeight.w600,
-                                        fontFamily: 'monospace',
-                                        color: textMuted,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            },
-                          ),
-                        ],
+                        const SizedBox(height: 2),
                         if (isTriggeredOneShot) ...[
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),

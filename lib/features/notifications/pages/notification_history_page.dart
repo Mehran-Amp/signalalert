@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../../core/localization/app_strings.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../core/utils/crypto_icons.dart';
+import '../../../core/utils/format_utils.dart';
 import '../../settings/services/settings_service.dart';
 import '../models/notification_log.dart';
 import '../repositories/notification_repository.dart';
@@ -43,6 +46,7 @@ class _NotificationHistoryPageState extends State<NotificationHistoryPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     final settingsService = context.watch<SettingsService>();
     final lang = settingsService.settings.language;
 
@@ -152,7 +156,7 @@ class _NotificationHistoryPageState extends State<NotificationHistoryPage> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 HistoryGroupHeader(date: group.date, lang: lang),
-                                ...group.logs.map((log) => _buildLogCard(log, theme, lang)),
+                                ...group.logs.map((log) => _buildLogCard(log, theme, isDark, lang)),
                               ],
                             );
                           },
@@ -184,7 +188,7 @@ class _NotificationHistoryPageState extends State<NotificationHistoryPage> {
     );
   }
 
-  Widget _buildLogCard(NotificationLog log, ThemeData theme, String lang) {
+  Widget _buildLogCard(NotificationLog log, ThemeData theme, bool isDark, String lang) {
     final isWarning = log.message.contains('cooldown') || log.message.contains('Suppressed');
     final isUpward = log.title.contains('🟢') ||
         log.title.contains('صعود') ||
@@ -204,77 +208,228 @@ class _NotificationHistoryPageState extends State<NotificationHistoryPage> {
             ? AppTokens.positive
             : (isDownward ? AppTokens.negative : theme.colorScheme.primary));
 
+    final baseSymbol = _extractBaseCurrency(log.marketSymbol);
+    final timeAgo = _formatTimeAgo(log.timestamp, lang);
+    final hasPrevPrice = log.previousPrice != null &&
+        log.previousPrice! > 0 &&
+        (log.previousPrice! - log.triggeredPrice).abs() > 1e-6;
+
+    double? priceMovePct;
+    if (hasPrevPrice && log.previousPrice! > 0) {
+      priceMovePct = ((log.triggeredPrice - log.previousPrice!) / log.previousPrice!) * 100.0;
+    }
+
     return Container(
       margin: const EdgeInsets.symmetric(
         horizontal: AppTokens.space16,
-        vertical: AppTokens.space4,
+        vertical: AppTokens.space6,
       ),
-      padding: const EdgeInsets.all(AppTokens.space12),
+      padding: const EdgeInsets.all(AppTokens.space14),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: statusColor.withValues(alpha: 0.35),
+          color: statusColor.withValues(alpha: isDark ? 0.35 : 0.25),
           width: 1.2,
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.20 : 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // 1. Header: Logo + Symbol + Exchange Badge + Time / TimeAgo
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
+              Container(
+                padding: const EdgeInsets.all(2),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: statusColor.withValues(alpha: 0.35),
+                    width: 1.2,
+                  ),
+                ),
+                child: CryptoIcons.buildLogo(baseSymbol, size: 28),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          log.marketSymbol,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 14,
+                            color: theme.colorScheme.onSurface,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(5),
+                          ),
+                          child: Text(
+                            log.exchangeId.toUpperCase(),
+                            style: TextStyle(
+                              color: theme.colorScheme.primary,
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 0.4,
+                            ),
+                          ),
+                        ),
+                        if (log.conditionType != null && log.conditionType!.isNotEmpty) ...[
+                          const SizedBox(width: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                            decoration: BoxDecoration(
+                              color: statusColor.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(5),
+                            ),
+                            child: Text(
+                              _formatConditionType(log.conditionType!, lang),
+                              style: TextStyle(
+                                color: statusColor,
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Container(
-                    width: 8,
-                    height: 8,
-                    decoration: BoxDecoration(
-                      color: statusColor,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
                   Text(
-                    log.marketSymbol,
+                    _formatTimestamp(log.timestamp),
                     style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                      color: theme.colorScheme.onSurface,
+                      fontSize: 11,
+                      fontFamily: 'monospace',
+                      fontWeight: FontWeight.w600,
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
                     ),
                   ),
-                  const SizedBox(width: AppTokens.space8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: AppTokens.space6, vertical: 1.5),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: theme.dividerColor),
-                    ),
-                    child: Text(
-                      log.exchangeId.toUpperCase(),
-                      style: TextStyle(
-                        color: theme.colorScheme.primary,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
+                  Text(
+                    timeAgo,
+                    style: TextStyle(
+                      fontSize: 9.5,
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.45),
                     ),
                   ),
                 ],
               ),
-              Text(
-                _formatTimestamp(log.timestamp),
-                style: TextStyle(
-                  fontSize: 11,
-                  fontFamily: 'monospace',
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
-                ),
-              ),
             ],
           ),
-          const SizedBox(height: AppTokens.space6),
 
+          const SizedBox(height: 10),
+
+          // 2. Price Movement Box: From -> To (or Trigger Price)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                if (hasPrevPrice) ...[
+                  Row(
+                    children: [
+                      Text(
+                        FormatUtils.formatPrice(log.previousPrice!),
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontFamily: 'monospace',
+                          fontWeight: FontWeight.w600,
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                        ),
+                      ),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 6),
+                        child: Icon(Icons.arrow_forward_rounded, size: 13, color: Colors.grey),
+                      ),
+                      Text(
+                        FormatUtils.formatPrice(log.triggeredPrice),
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontFamily: 'monospace',
+                          fontWeight: FontWeight.w900,
+                          color: statusColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                ] else ...[
+                  Row(
+                    children: [
+                      Text(
+                        '${AppStrings.get('trigger_price_label', lang)}: ',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                        ),
+                      ),
+                      Text(
+                        FormatUtils.formatPrice(log.triggeredPrice),
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontFamily: 'monospace',
+                          fontWeight: FontWeight.w900,
+                          color: statusColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                if (priceMovePct != null) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: statusColor.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                    child: Text(
+                      '${priceMovePct >= 0 ? "▲ +" : "▼ "}${priceMovePct.abs().toStringAsFixed(2)}%',
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.bold,
+                        fontFamily: 'monospace',
+                        color: statusColor,
+                      ),
+                    ),
+                  ),
+                ] else ...[
+                  Icon(
+                    isUpward
+                        ? Icons.trending_up_rounded
+                        : (isDownward ? Icons.trending_down_rounded : Icons.notifications_active_rounded),
+                    size: 16,
+                    color: statusColor,
+                  ),
+                ],
+              ],
+            ),
+          ),
+
+          // 3. Title & Message
           if (log.title.isNotEmpty) ...[
+            const SizedBox(height: 8),
             Text(
               log.title,
               style: TextStyle(
@@ -283,47 +438,170 @@ class _NotificationHistoryPageState extends State<NotificationHistoryPage> {
                 color: statusColor,
               ),
             ),
-            const SizedBox(height: 4),
           ],
 
           if (log.message.trim().isNotEmpty) ...[
+            const SizedBox(height: 4),
             Text(
               log.message,
               style: TextStyle(
                 fontSize: 12,
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
                 height: 1.35,
               ),
             ),
-            const SizedBox(height: AppTokens.space6),
           ],
 
-          Row(
-            children: [
-              Text(
-                '${AppStrings.get('trigger_price_label', lang)} ',
-                style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurface.withValues(alpha: 0.55)),
-              ),
-              Text(
-                '\$${log.triggeredPrice.toStringAsFixed(log.triggeredPrice < 5 ? 4 : 2)}',
-                style: TextStyle(
-                  fontFamily: 'monospace',
-                  fontSize: 12.5,
-                  color: statusColor,
-                  fontWeight: FontWeight.w800,
+          // 4. Custom Strategy Note (if present)
+          if (log.customNote != null && log.customNote!.trim().isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.25),
+                  width: 0.8,
                 ),
               ),
-              const SizedBox(width: 6),
-              Icon(
-                isUpward ? Icons.trending_up_rounded : (isDownward ? Icons.trending_down_rounded : Icons.info_outline_rounded),
-                size: 16,
-                color: statusColor,
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.edit_note_rounded,
+                    size: 16,
+                    color: theme.colorScheme.primary,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      log.customNote!,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
+          // 5. Card Footer: Status tag + Copy action
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 7,
+                    height: 7,
+                    decoration: BoxDecoration(
+                      color: statusColor,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 5),
+                  Text(
+                    isWarning
+                        ? (lang == 'fa' ? 'محافظت اسپم' : 'Suppressed')
+                        : (lang == 'fa' ? 'هشدار صادر شد' : 'Triggered'),
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                    ),
+                  ),
+                ],
+              ),
+              InkWell(
+                onTap: () {
+                  final textToCopy =
+                      '🔔 ${log.marketSymbol} (${log.exchangeId.toUpperCase()})\n'
+                      'Price: ${FormatUtils.formatPrice(log.triggeredPrice)}\n'
+                      '${log.title}\n${log.message}\n'
+                      'Time: ${log.timestamp}';
+                  Clipboard.setData(ClipboardData(text: textToCopy));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        lang == 'fa' ? 'گزارش در کلیپ‌بورد کپی شد 📋' : 'Log copied to clipboard 📋',
+                      ),
+                      duration: const Duration(seconds: 2),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                },
+                borderRadius: BorderRadius.circular(6),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.copy_rounded,
+                        size: 13,
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.45),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        lang == 'fa' ? 'کپی' : 'Copy',
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ],
           ),
         ],
       ),
     );
+  }
+
+  String _extractBaseCurrency(String marketSymbol) {
+    if (marketSymbol.contains('/')) {
+      return marketSymbol.split('/').first.trim();
+    }
+    if (marketSymbol.contains('-')) {
+      return marketSymbol.split('-').first.trim();
+    }
+    return marketSymbol;
+  }
+
+  String _formatConditionType(String conditionType, String lang) {
+    switch (conditionType) {
+      case 'priceThreshold':
+        return lang == 'fa' ? 'تارگت قیمت' : 'Target';
+      case 'percentChange':
+        return lang == 'fa' ? 'تغییر درصدی' : 'Percent';
+      case 'volumeChange':
+        return lang == 'fa' ? 'حجم معاملات' : 'Volume';
+      case 'absolutePriceChange':
+        return lang == 'fa' ? 'نوسان دلاری' : 'Delta';
+      default:
+        return conditionType;
+    }
+  }
+
+  String _formatTimeAgo(DateTime dt, String lang) {
+    final diff = DateTime.now().difference(dt);
+    if (diff.inSeconds < 45) {
+      return lang == 'fa' ? 'همین الان' : 'Just now';
+    }
+    if (diff.inMinutes < 60) {
+      final m = diff.inMinutes;
+      return lang == 'fa' ? '$m دقیقه قبل' : '${m}m ago';
+    }
+    if (diff.inHours < 24) {
+      final h = diff.inHours;
+      return lang == 'fa' ? '$h ساعت قبل' : '${h}h ago';
+    }
+    final d = diff.inDays;
+    return lang == 'fa' ? '$d روز قبل' : '${d}d ago';
   }
 
   List<_GroupedLogItem> _groupLogsByDay(List<NotificationLog> logs) {
