@@ -27,12 +27,6 @@ class SchedulerService {
   final Set<String> _evaluatingRuleUuids = {};
   final Map<String, (MarketTicker, DateTime)> _recentTickers = {};
 
-  static const Set<String> _filteredExchanges = {
-    'binance', 'kucoin', 'okx', 'bybit', 'mexc', 'gateio', 'bingx',
-    'bitget', 'coinbase', 'kraken', 'lbank', 'xt', 'toobit', 'kcex',
-    'ourbit', 'global_stocks', 'stocks', 'macro', 'forex', 'bonds'
-  };
-
   final _triggeredController = StreamController<AlertRule>.broadcast();
   Stream<AlertRule> get onRuleTriggered => _triggeredController.stream;
 

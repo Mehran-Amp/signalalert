@@ -11,7 +11,6 @@ class GoogleAuthService {
   ) async {
     final theme = Theme.of(context);
     final isFa = lang == 'fa' || lang == 'ar' || lang == 'ckb';
-    final emailController = TextEditingController(text: 'user@gmail.com');
 
     final result = await showDialog<bool>(
       context: context,

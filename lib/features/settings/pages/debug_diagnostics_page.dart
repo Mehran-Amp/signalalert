@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import '../../../core/localization/app_strings.dart';
 import '../../../core/services/fcm_notification_service.dart';
 import '../../../core/services/server_alert_service.dart';
 import '../../../core/theme/tokens.dart';

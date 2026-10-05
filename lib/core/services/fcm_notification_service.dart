@@ -7,7 +7,6 @@ import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../features/notifications/services/notification_service.dart';
-import '../../features/settings/services/sound_manager.dart';
 import 'tts_service.dart';
 
 /// Helper to read persisted master settings from settings.json

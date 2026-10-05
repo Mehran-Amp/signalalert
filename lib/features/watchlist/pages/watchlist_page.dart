@@ -443,7 +443,6 @@ class _WatchlistPageState extends State<WatchlistPage> {
     final isTriggeredOneShot = rule.isTriggered && rule.triggerMode == TriggerMode.oneShot;
     final isChecking = _checkingRuleUuids.contains(rule.uuid);
     final textMuted = theme.colorScheme.onSurface.withValues(alpha: 0.45);
-    final textSecondary = theme.colorScheme.onSurface.withValues(alpha: 0.7);
 
     final displayPrice = rule.currentDisplayPrice;
     final basePrice = rule.basePrice;
@@ -609,8 +608,8 @@ class _WatchlistPageState extends State<WatchlistPage> {
                           ),
                         ] else if (changePercent != null) ...[
                           Builder(builder: (context) {
-                            final isZero = changePercent!.abs() < 0.005;
-                            final isPositive = changePercent! > 0.005;
+                            final isZero = changePercent.abs() < 0.005;
+                            final isPositive = changePercent > 0.005;
                             final badgeColor = isZero
                                 ? textMuted
                                 : (isPositive ? AppTokens.positive : AppTokens.negative);
@@ -891,23 +890,6 @@ class _WatchlistPageState extends State<WatchlistPage> {
     );
   }
 
-  String _formatPrice(double price) {
-    if (price >= 1000) {
-      final parts = price.toStringAsFixed(2).split('.');
-      final whole = parts[0].replaceAllMapped(
-        RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-        (Match m) => '${m[1]},',
-      );
-      return '\$$whole.${parts[1]}';
-    } else if (price >= 1) {
-      return '\$${price.toStringAsFixed(2)}';
-    } else if (price >= 0.0001) {
-      return '\$${price.toStringAsFixed(4)}';
-    } else {
-      return '\$${price.toStringAsFixed(8)}';
-    }
-  }
-
   String _formatNextCheckTime(AlertRule rule, String lang) {
     final isFa = AppStrings.isRtl(lang);
     if (!rule.isActive) {
@@ -959,15 +941,6 @@ class _WatchlistPageState extends State<WatchlistPage> {
       final h = seconds ~/ 3600;
       return '$h ${AppStrings.get('hours', lang)}';
     }
-  }
-
-  String _formatTimeAgo(DateTime dt, String lang) {
-    final diff = DateTime.now().difference(dt);
-    if (diff.inSeconds < 10) return AppStrings.get('just_now', lang);
-    if (diff.inSeconds < 60) return '${diff.inSeconds}${AppStrings.get('seconds_ago', lang)}';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}${AppStrings.get('minutes_ago', lang)}';
-    if (diff.inHours < 24) return '${diff.inHours}${AppStrings.get('hours_ago', lang)}';
-    return '${diff.inDays}${AppStrings.get('days_ago', lang)}';
   }
 
   String _getExchangeDisplayName(String exchangeId, String lang) {
@@ -1069,81 +1042,5 @@ class _WatchlistPageState extends State<WatchlistPage> {
       case AlertConditionType.volumeChange:
         return '${lang == 'ckb' ? "هەڵکشانی قەبارە" : (isFa ? "جهش حجم" : "Volume jump")} ${(rule.volumePercent ?? 0).toStringAsFixed(1)}%';
     }
-  }
-
-  void _showHomeWidgetSheet(
-    BuildContext context,
-    JsonAlertRuleRepository repository,
-    String lang,
-    ThemeData theme,
-  ) {
-    final isFa = AppStrings.isRtl(lang);
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) {
-        return Container(
-          decoration: BoxDecoration(
-            color: theme.scaffoldBackgroundColor,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    isFa ? 'پیش‌نمایش ویجت صفحه اصلی' : 'Home Screen Widget Preview',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: theme.colorScheme.onSurface,
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close_rounded, size: 20),
-                    onPressed: () => Navigator.of(ctx).pop(),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                isFa
-                    ? 'این ویجت به صورت زنده آخرین نرخ‌ها، درصد فاصله تا هدف و وضعیت هشدارها را مستقیماً روی صفحه گوشی شما نمایش می‌دهد.'
-                    : 'This live widget displays latest prices, target progress, and alert statuses directly on your device home screen.',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
-                ),
-              ),
-              const SizedBox(height: 16),
-              AlertHomeWidgetView(
-                repository: repository,
-                lang: lang,
-                onAddNew: () {
-                  Navigator.of(ctx).pop();
-                  _openCreateFlow();
-                },
-              ),
-            ],
-          ),
-        );
-      },
-    );
   }
 }

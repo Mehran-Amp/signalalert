@@ -22,7 +22,6 @@ class _ServerStatusButtonState extends State<ServerStatusButton> {
   ServerConnectionStatus _status = ServerConnectionStatus.checking;
   int? _latencyMs;
   int? _activeServerAlerts;
-  int? _totalServerAlerts;
   String? _lastError;
   Timer? _pingTimer;
 
@@ -69,7 +68,6 @@ class _ServerStatusButtonState extends State<ServerStatusButton> {
                 _status = ServerConnectionStatus.online;
                 _latencyMs = stopwatch.elapsedMilliseconds;
                 _activeServerAlerts = data['active_alerts'] as int?;
-                _totalServerAlerts = data['total_alerts'] as int?;
                 _lastError = null;
               });
             }
@@ -530,8 +528,6 @@ class _ServerStatusButtonState extends State<ServerStatusButton> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     Color statusColor;
     IconData statusIcon;
     String tooltipText;

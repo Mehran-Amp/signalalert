@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
-import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -60,7 +59,6 @@ class NotificationService {
     );
 
     // Create Dedicated Android Notification Channels to strictly enforce OS-level sound and vibration rules
-    final vibrationPattern = Int64List.fromList([0, 500, 200, 500, 200, 500]);
     
     // Channel 1: Sound & Vibration
     const soundVibrateChannel = AndroidNotificationChannel(

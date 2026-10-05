@@ -153,7 +153,7 @@ class ServerAlertService {
     try {
       // Get the device's FCM token
       final fcmToken = await FCMNotificationService.getFCMToken();
-      if (fcmToken == null || fcmToken.isEmpty) {
+      if (fcmToken.isEmpty) {
         debugPrint('⚠️ FCM Token not available yet. Using fallback token for registration.');
       }
 
@@ -164,7 +164,7 @@ class ServerAlertService {
         'symbol': symbol.toUpperCase(),
         'target_price': targetPrice,
         'condition': condition.toUpperCase(),
-        'fcm_token': fcmToken ?? 'device_token_pending',
+        'fcm_token': fcmToken.isNotEmpty ? fcmToken : 'device_token_pending',
         'check_interval_seconds': checkIntervalSeconds,
         'trigger_mode': triggerMode,
         'sound_enabled': soundEnabled,
@@ -290,7 +290,7 @@ class ServerAlertService {
       final token = await FCMNotificationService.getFCMToken();
       final uri = Uri.parse('$_baseUrl/api/test/push').replace(
         queryParameters: {
-          if (token != null && token.isNotEmpty) 'fcm_token': token,
+          if (token.isNotEmpty) 'fcm_token': token,
           if (customTitle != null && customTitle.isNotEmpty) 'title': customTitle,
           if (customBody != null && customBody.isNotEmpty) 'body': customBody,
         },

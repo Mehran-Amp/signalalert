@@ -17,7 +17,6 @@ import 'features/exchanges/registry/exchange_registry.dart';
 import 'features/notifications/background/background_service_manager.dart';
 import 'features/notifications/repositories/notification_repository.dart';
 import 'features/notifications/services/notification_service.dart';
-import 'features/settings/models/app_settings.dart';
 import 'features/settings/services/settings_service.dart';
 
 void main() async {

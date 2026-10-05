@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/localization/app_strings.dart';
-import '../../../core/theme/tokens.dart';
 import '../../../core/utils/app_lifecycle_helper.dart';
 import '../services/settings_service.dart';
 
