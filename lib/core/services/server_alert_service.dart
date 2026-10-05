@@ -14,7 +14,7 @@ import 'fcm_notification_service.dart';
 class ServerAlertService {
   // Configurable base URL for the Python server
   static String _baseUrl = '';
-  static String _apiKey = const String.fromEnvironment('API_KEY', defaultValue: '6f39759e55b1e6562d129dbb6074250a18d2d7bf0bf37e7346d7e16266cad2cd');
+  static String _apiKey = const String.fromEnvironment('API_KEY', defaultValue: 'e4b7a1d92f6c8035a9e2b7d4f1c6083e');
   static bool _initialized = false;
   static DateTime? _circuitBreakerUntil;
 

@@ -4,6 +4,7 @@
 APP="server:app"
 HOST="0.0.0.0"
 PORT="8000"
+ENV_FILE=".env"
 LOG_FILE="server.log"
 PID_FILE="server.pid"
 WORKDIR="$(cd "$(dirname "$0")" && pwd)"
@@ -34,8 +35,16 @@ start() {
         exit 1
     fi
 
-    echo -e "${GREEN}[INFO] Starting server...${NC}"
-    nohup python -m uvicorn "$APP" --host "$HOST" --port "$PORT" > "$LOG_FILE" 2>&1 &
+    echo -e "${GREEN}[INFO] Starting server with env-file '$ENV_FILE'...${NC}"
+    
+    ENV_OPT=""
+    if [ -f "$ENV_FILE" ]; then
+        ENV_OPT="--env-file $ENV_FILE"
+    else
+        echo -e "${YELLOW}[WARN] Environment file '$ENV_FILE' not found! Server starting with default env...${NC}"
+    fi
+
+    nohup python -m uvicorn "$APP" --host "$HOST" --port "$PORT" $ENV_OPT > "$LOG_FILE" 2>&1 &
     echo $! > "$PID_FILE"
 
     sleep 2
