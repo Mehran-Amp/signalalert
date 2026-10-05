@@ -897,7 +897,7 @@ async def create_alert(alert_in: AlertCreate):
                 webhook_url=alert_in.webhook_url,
                 is_active=True,
                 created_at=datetime.utcnow().isoformat(),
-                last_checked_at=0.0,
+                last_checked_at=time.time(),
                 last_triggered_at=0.0
             )
             ALERTS_DB.append(new_alert)
@@ -927,7 +927,7 @@ async def sync_user_alerts(payload: dict):
             existing = existing_map.get(rule_id)
 
             last_trig = existing.last_triggered_at if existing else 0.0
-            last_chk = existing.last_checked_at if existing else 0.0
+            last_chk = existing.last_checked_at if (existing and existing.last_checked_at > 0) else time.time()
             is_act = bool(item.get('is_active', True))
             if existing and not existing.is_active and getattr(existing, 'trigger_mode', 'oneShot') == 'oneShot':
                 is_act = False

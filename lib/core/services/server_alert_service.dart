@@ -255,6 +255,7 @@ class ServerAlertService {
 
   /// Create and register a new alert on the Python server
   static Future<bool> createAlertOnServer({
+    String? ruleId,
     required String userId,
     required String exchange,
     required String symbol,
@@ -288,6 +289,7 @@ class ServerAlertService {
 
       final url = Uri.parse('$_baseUrl/api/alerts');
       final payload = {
+        if (ruleId != null && ruleId.isNotEmpty) 'id': ruleId,
         'user_id': userId,
         'exchange': exchange.toLowerCase(),
         'symbol': symbol.toUpperCase(),

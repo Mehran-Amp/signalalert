@@ -311,6 +311,7 @@ class AlertRule extends Equatable {
       isTriggered: false,
       cooldownUntil: cooldownUntil,
       triggerCount: triggerCount,
+      lastCheckedAt: DateTime.now(),
       createdAt: DateTime.now(),
     );
   }

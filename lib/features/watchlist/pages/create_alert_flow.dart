@@ -498,6 +498,7 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
       await widget.repository.saveRule(updatedRule);
       // Sync to Python Alert Engine
       ServerAlertService.createAlertOnServer(
+        ruleId: updatedRule.uuid,
         userId: 'user_default',
         exchange: exchangeId,
         symbol: pair.marketSymbol,
@@ -505,7 +506,7 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
         condition: _direction == AlertDirection.below ? 'BELOW' : 'ABOVE',
         checkIntervalSeconds: intervalSeconds,
         note: customNote,
-        triggerMode: 'oneShot',
+        triggerMode: updatedRule.triggerMode == TriggerMode.recurring ? 'recurring' : 'oneShot',
         soundEnabled: _soundEnabled,
         vibrationEnabled: _vibrationEnabled,
         ttsEnabled: _ttsEnabled,
@@ -537,6 +538,7 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
       await widget.repository.saveRule(newRule);
       // Sync to Python Alert Engine
       ServerAlertService.createAlertOnServer(
+        ruleId: newRule.uuid,
         userId: 'user_default',
         exchange: exchangeId,
         symbol: pair.marketSymbol,
@@ -544,7 +546,7 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
         condition: _direction == AlertDirection.below ? 'BELOW' : 'ABOVE',
         checkIntervalSeconds: intervalSeconds,
         note: customNote,
-        triggerMode: 'oneShot',
+        triggerMode: newRule.triggerMode == TriggerMode.recurring ? 'recurring' : 'oneShot',
         soundEnabled: _soundEnabled,
         vibrationEnabled: _vibrationEnabled,
         ttsEnabled: _ttsEnabled,
