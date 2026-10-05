@@ -608,8 +608,10 @@ class _WatchlistPageState extends State<WatchlistPage> {
                           ),
                         ] else if (changePercent != null) ...[
                           Builder(builder: (context) {
-                            final isZero = changePercent.abs() < 0.005;
-                            final isPositive = changePercent > 0.005;
+                            final cp = changePercent;
+                            if (cp == null) return const SizedBox.shrink();
+                            final isZero = cp.abs() < 0.005;
+                            final isPositive = cp > 0.005;
                             final badgeColor = isZero
                                 ? textMuted
                                 : (isPositive ? AppTokens.positive : AppTokens.negative);
@@ -625,7 +627,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
                                 borderRadius: BorderRadius.circular(5),
                               ),
                               child: Text(
-                                '$prefix${changePercent.abs().toStringAsFixed(2)}%',
+                                '$prefix${cp.abs().toStringAsFixed(2)}%',
                                 style: TextStyle(
                                   fontSize: 10.5,
                                   fontWeight: FontWeight.bold,
