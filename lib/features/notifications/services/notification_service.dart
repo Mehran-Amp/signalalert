@@ -59,26 +59,69 @@ class NotificationService {
       },
     );
 
-    // Create Max-Importance Android notification channel with sound & vibration
+    // Create Dedicated Android Notification Channels to strictly enforce OS-level sound and vibration rules
     final vibrationPattern = Int64List.fromList([0, 500, 200, 500, 200, 500]);
-    final androidChannel = AndroidNotificationChannel(
-      channelId,
-      channelName,
-      description: channelDescription,
+    
+    // Channel 1: Sound & Vibration
+    const soundVibrateChannel = AndroidNotificationChannel(
+      'alarmer_channel_sound_vibrate_v3',
+      'Price Alerts (Sound & Vibration)',
+      description: 'High-priority price alerts with audible ringtone and vibration.',
       importance: Importance.max,
       playSound: true,
       enableVibration: true,
-      vibrationPattern: vibrationPattern,
       showBadge: true,
       enableLights: true,
-      ledColor: const Color.fromARGB(255, 255, 0, 0),
+      ledColor: Color.fromARGB(255, 255, 0, 0),
       audioAttributesUsage: AudioAttributesUsage.alarm,
+    );
+
+    // Channel 2: Sound Only (Vibration 100% Disabled at OS level)
+    const soundOnlyChannel = AndroidNotificationChannel(
+      'alarmer_channel_sound_only_v3',
+      'Price Alerts (Sound Only)',
+      description: 'High-priority price alerts with audible chime and zero vibration.',
+      importance: Importance.max,
+      playSound: true,
+      enableVibration: false,
+      showBadge: true,
+      enableLights: true,
+      audioAttributesUsage: AudioAttributesUsage.alarm,
+    );
+
+    // Channel 3: Vibration Only (Muted ringtone, vibration enabled)
+    const vibrateOnlyChannel = AndroidNotificationChannel(
+      'alarmer_channel_vibrate_only_v3',
+      'Price Alerts (Vibration Only)',
+      description: 'High-priority price alerts with vibration only.',
+      importance: Importance.max,
+      playSound: false,
+      enableVibration: true,
+      showBadge: true,
+      enableLights: true,
+      audioAttributesUsage: AudioAttributesUsage.notification,
+    );
+
+    // Channel 4: Silent / Voice Only (Zero sound tone and Zero OS vibration)
+    const silentVoiceChannel = AndroidNotificationChannel(
+      'alarmer_channel_silent_voice_v3',
+      'Price Alerts (Silent & Voice Only)',
+      description: 'High-priority price alerts for voice announcements with zero vibration.',
+      importance: Importance.high,
+      playSound: false,
+      enableVibration: false,
+      showBadge: true,
+      enableLights: false,
+      audioAttributesUsage: AudioAttributesUsage.notification,
     );
 
     final androidImplementation = _notificationsPlugin
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
 
-    await androidImplementation?.createNotificationChannel(androidChannel);
+    await androidImplementation?.createNotificationChannel(soundVibrateChannel);
+    await androidImplementation?.createNotificationChannel(soundOnlyChannel);
+    await androidImplementation?.createNotificationChannel(vibrateOnlyChannel);
+    await androidImplementation?.createNotificationChannel(silentVoiceChannel);
 
     // Explicitly request notification & alarm permissions on Android 13+ (API 33+)
     await requestPermissions();
@@ -242,15 +285,32 @@ class NotificationService {
       } catch (_) {}
     }
 
-    // 3. System Level Notification Banner
+    // 3. System Level Notification Banner with exact matching Channel ID
+    final String selectedChannelId;
+    final String selectedChannelName;
+
+    if (effectiveSound && effectiveVibration) {
+      selectedChannelId = 'alarmer_channel_sound_vibrate_v3';
+      selectedChannelName = 'Price Alerts (Sound & Vibration)';
+    } else if (effectiveSound && !effectiveVibration) {
+      selectedChannelId = 'alarmer_channel_sound_only_v3';
+      selectedChannelName = 'Price Alerts (Sound Only)';
+    } else if (!effectiveSound && effectiveVibration) {
+      selectedChannelId = 'alarmer_channel_vibrate_only_v3';
+      selectedChannelName = 'Price Alerts (Vibration Only)';
+    } else {
+      selectedChannelId = 'alarmer_channel_silent_voice_v3';
+      selectedChannelName = 'Price Alerts (Silent & Voice Only)';
+    }
+
     final vibrationPattern = effectiveVibration
         ? Int64List.fromList([0, 500, 200, 500, 200, 500])
         : null;
     final androidDetails = AndroidNotificationDetails(
-      channelId,
-      channelName,
+      selectedChannelId,
+      selectedChannelName,
       channelDescription: channelDescription,
-      importance: Importance.max,
+      importance: (effectiveSound || effectiveVibration) ? Importance.max : Importance.high,
       priority: Priority.max,
       ticker: '⚡ Price Alert Triggered',
       enableVibration: effectiveVibration,
@@ -258,7 +318,7 @@ class NotificationService {
       playSound: effectiveSound,
       fullScreenIntent: true,
       category: AndroidNotificationCategory.alarm,
-      audioAttributesUsage: AudioAttributesUsage.alarm,
+      audioAttributesUsage: effectiveSound ? AudioAttributesUsage.alarm : AudioAttributesUsage.notification,
       visibility: NotificationVisibility.public,
       showWhen: true,
       when: DateTime.now().millisecondsSinceEpoch,

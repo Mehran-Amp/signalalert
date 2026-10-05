@@ -19,7 +19,6 @@ class JsonAlertRuleRepository {
   JsonAlertRuleRepository(this._storageDirectoryPath);
 
   File get _file => File('$_storageDirectoryPath/alerts.json');
-  File get _tempFile => File('$_storageDirectoryPath/alerts.json.tmp');
 
   /// Read-only snapshot of current in-memory rules
   List<AlertRule> get allRules => List.unmodifiable(_rules);
@@ -255,16 +254,22 @@ class JsonAlertRuleRepository {
     }
   }
 
-  /// Asynchronous atomic write: writes to alerts.json.tmp, then renames to alerts.json
+  Completer<void>? _pendingPersist;
+  bool _isPersisting = false;
+
+  /// Asynchronous atomic write: persists in-memory rules safely without file rename race conditions
   Future<void> _persist() async {
+    if (_isPersisting) {
+      _pendingPersist ??= Completer<void>();
+      return _pendingPersist!.future;
+    }
+    _isPersisting = true;
     try {
       final payload = {
         'version': 1,
         'rules': _rules.map((r) => r.toJson()).toList(),
       };
       final jsonString = jsonEncode(payload);
-
-      final tempFile = _tempFile;
       final targetFile = _file;
 
       // Ensure directory exists
@@ -272,15 +277,21 @@ class JsonAlertRuleRepository {
         await targetFile.parent.create(recursive: true);
       }
 
-      // Write to temp file
-      await tempFile.writeAsString(jsonString, flush: true);
-
-      // Atomic rename / replace
-      if (await tempFile.exists()) {
-        await tempFile.rename(targetFile.path);
-      }
+      // Safe atomic direct flush write
+      await targetFile.writeAsString(jsonString, flush: true);
     } catch (e, stack) {
       debugPrint('Error persisting rules to JSON: $e\n$stack');
+    } finally {
+      _isPersisting = false;
+      if (_pendingPersist != null) {
+        final next = _pendingPersist;
+        _pendingPersist = null;
+        _persist().then((_) {
+          if (!(next?.isCompleted ?? true)) next?.complete();
+        }).catchError((e) {
+          if (!(next?.isCompleted ?? true)) next?.completeError(e);
+        });
+      }
     }
   }
 
