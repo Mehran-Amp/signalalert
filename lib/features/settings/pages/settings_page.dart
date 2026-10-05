@@ -5,6 +5,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import '../../../core/localization/app_strings.dart';
 import '../../../core/services/google_auth_service.dart';
+import '../../../core/services/server_alert_service.dart';
 import '../../../core/theme/tokens.dart';
 import '../../../core/utils/app_lifecycle_helper.dart';
 import '../../alert_engine/repositories/json_alert_rule_repository.dart';
@@ -529,8 +530,11 @@ class _SettingsPageState extends State<SettingsPage> {
       body: ListView(
         padding: const EdgeInsets.symmetric(horizontal: AppTokens.space16, vertical: AppTokens.space20),
         children: [
-          // Section 0: User Profile & Optional Google Sign-In (Premium Ready)
+          // Section 0: User Profile & VIP Google Sign-In (Premium Promotion)
           _buildUserAccountCard(context, settingsService, settings, theme, lang, isFa),
+
+          // Section 0.5: Telegram Bot VIP Alerts
+          _buildTelegramIntegrationCard(context, settingsService, settings, theme, lang, isFa),
 
           // Section 1: Languages (10 Languages)
           _buildSectionHeader(AppStrings.get('select_language', lang), theme),
@@ -1422,25 +1426,26 @@ class _SettingsPageState extends State<SettingsPage> {
     bool isFa,
   ) {
     final isSignedIn = settings.isSignedInWithGoogle;
+    final isPremium = settings.isPremium || isSignedIn;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: AppTokens.space20),
+      margin: const EdgeInsets.only(bottom: AppTokens.space16),
       padding: const EdgeInsets.all(AppTokens.space16),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: isSignedIn
-              ? AppTokens.warning.withValues(alpha: 0.45)
+          color: isPremium
+              ? AppTokens.warning.withValues(alpha: 0.6)
               : theme.dividerColor,
-          width: isSignedIn ? 1.4 : 1.0,
+          width: isPremium ? 1.4 : 1.0,
         ),
-        boxShadow: isSignedIn
+        boxShadow: isPremium
             ? [
                 BoxShadow(
-                  color: AppTokens.warning.withValues(alpha: 0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, 2),
+                  color: AppTokens.warning.withValues(alpha: 0.08),
+                  blurRadius: 12,
+                  offset: const Offset(0, 3),
                 )
               ]
             : null,
@@ -1455,16 +1460,16 @@ class _SettingsPageState extends State<SettingsPage> {
                 height: 44,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: isSignedIn
+                  color: isPremium
                       ? AppTokens.warning.withValues(alpha: 0.15)
                       : theme.colorScheme.surfaceContainerHighest,
                   border: Border.all(
-                    color: isSignedIn ? AppTokens.warning : theme.dividerColor,
+                    color: isPremium ? AppTokens.warning : theme.dividerColor,
                     width: 1.5,
                   ),
                 ),
                 child: Center(
-                  child: isSignedIn
+                  child: isPremium
                       ? const Text('👑', style: TextStyle(fontSize: 22))
                       : Image.network(
                           'https://www.gstatic.com/images/branding/product/1x/gsa_512dp.png',
@@ -1485,7 +1490,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           child: Text(
                             isSignedIn
                                 ? (settings.userDisplayName ?? 'Google User')
-                                : (isFa ? 'حساب کاربری مهمان (رایگان)' : 'Guest User (Free Plan)'),
+                                : (isFa ? 'حساب کاربری مهمان' : 'Guest User'),
                             style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.bold,
@@ -1498,22 +1503,22 @@ class _SettingsPageState extends State<SettingsPage> {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
-                            color: isSignedIn
+                            color: isPremium
                                 ? AppTokens.warning.withValues(alpha: 0.2)
                                 : theme.colorScheme.surfaceContainerHighest,
                             borderRadius: BorderRadius.circular(6),
                             border: Border.all(
-                              color: isSignedIn ? AppTokens.warning : theme.dividerColor,
+                              color: isPremium ? AppTokens.warning : theme.dividerColor,
                             ),
                           ),
                           child: Text(
-                            isSignedIn
-                                ? (isFa ? 'عضو طلایی' : 'PREMIUM READY')
-                                : (isFa ? 'اختیاری' : 'OPTIONAL'),
+                            isPremium
+                                ? (isFa ? '👑 عضو ویژه (PRO / VIP)' : '👑 VIP PRO')
+                                : (isFa ? 'طرح رایگان' : 'FREE PLAN'),
                             style: TextStyle(
                               fontSize: 9.5,
                               fontWeight: FontWeight.bold,
-                              color: isSignedIn ? AppTokens.warning : theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                              color: isPremium ? AppTokens.warning : theme.colorScheme.onSurface.withValues(alpha: 0.6),
                             ),
                           ),
                         ),
@@ -1524,8 +1529,8 @@ class _SettingsPageState extends State<SettingsPage> {
                       isSignedIn
                           ? (settings.userEmail ?? '')
                           : (isFa
-                              ? 'ورود با اکانت گوگل جهت ارتقا به پریمیوم در آینده'
-                              : 'Sign in to unlock Premium & Cloud sync in future'),
+                              ? 'ورود با گوگل برای فعال‌سازی رایگان اشتراک ویژه VIP'
+                              : 'Sign in to unlock VIP perks & Cloud sync'),
                       style: TextStyle(
                         fontSize: 11,
                         color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
@@ -1537,6 +1542,52 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ],
           ),
+
+          // VIP Perks Highlights Banner
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: isPremium
+                  ? AppTokens.warning.withValues(alpha: 0.08)
+                  : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: isPremium
+                    ? AppTokens.warning.withValues(alpha: 0.25)
+                    : theme.dividerColor.withValues(alpha: 0.5),
+                width: 0.8,
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  isPremium ? Icons.verified_rounded : Icons.star_rounded,
+                  size: 16,
+                  color: isPremium ? AppTokens.warning : theme.colorScheme.primary,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    isFa
+                        ? (isPremium
+                            ? '⭐️ تمام امکانات ویژه فعال است: آلارم در تلگرام، عبور از محدودیت باتری و آلارم نامحدود'
+                            : '⭐️ با ورود با حساب گوگل، اتصال به تلگرام و قابلیت‌های VIP برای شما فعال می‌شود.')
+                        : (isPremium
+                            ? '⭐️ VIP Active: Telegram alerts, bypass sleep & unlimited alerts'
+                            : '⭐️ Sign in with Google to activate VIP Telegram & Pro alerts.'),
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w600,
+                      color: isPremium ? AppTokens.warning : theme.colorScheme.onSurface.withValues(alpha: 0.8),
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
           const SizedBox(height: 12),
           Divider(height: 1, color: theme.dividerColor),
           const SizedBox(height: 10),
@@ -1546,7 +1597,7 @@ class _SettingsPageState extends State<SettingsPage> {
               Text(
                 isSignedIn
                     ? (isFa ? '☁️ آماده پشتیبان‌گیری ابری' : '☁️ Cloud Backup Ready')
-                    : (isFa ? 'بدون نیاز به ورود اجباری' : '100% Free & Local-First'),
+                    : (isFa ? 'بدون نیاز به پرداخت هزینه' : '100% Free & Local-First'),
                 style: TextStyle(
                   fontSize: 10.5,
                   color: isSignedIn ? AppTokens.positive : theme.colorScheme.onSurface.withValues(alpha: 0.5),
@@ -1583,7 +1634,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     if (signedIn && context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text(isFa ? '🎉 با موفقیت به حساب گوگل متصل شدید (عضو ویژه)!' : '🎉 Connected to Google account!'),
+                          content: Text(isFa ? '🎉 با موفقیت به حساب گوگل متصل شدید (عضو ویژه VIP)!' : '🎉 Connected to Google account (VIP Activated)!'),
                           backgroundColor: AppTokens.positive,
                           behavior: SnackBarBehavior.floating,
                         ),
@@ -1606,6 +1657,415 @@ class _SettingsPageState extends State<SettingsPage> {
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildTelegramIntegrationCard(
+    BuildContext context,
+    SettingsService settingsService,
+    AppSettings settings,
+    ThemeData theme,
+    String lang,
+    bool isFa,
+  ) {
+    final isConnected = settings.isTelegramConnected;
+    final telegramColor = const Color(0xFF229ED9); // Telegram Official Blue
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: AppTokens.space20),
+      padding: const EdgeInsets.all(AppTokens.space16),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isConnected
+              ? telegramColor.withValues(alpha: 0.6)
+              : theme.dividerColor,
+          width: isConnected ? 1.4 : 1.0,
+        ),
+        boxShadow: isConnected
+            ? [
+                BoxShadow(
+                  color: telegramColor.withValues(alpha: 0.08),
+                  blurRadius: 10,
+                  offset: const Offset(0, 2),
+                )
+              ]
+            : null,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: telegramColor.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: telegramColor.withValues(alpha: 0.4), width: 1.2),
+                ),
+                child: Center(
+                  child: Icon(Icons.send_rounded, color: telegramColor, size: 20),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            isFa ? '📡 اتصال به ربات تلگرام (VIP)' : '📡 Telegram Bot Alerts (VIP)',
+                            style: TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.bold,
+                              color: theme.colorScheme.onSurface,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                          decoration: BoxDecoration(
+                            color: isConnected
+                                ? AppTokens.positive.withValues(alpha: 0.15)
+                                : theme.colorScheme.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(5),
+                          ),
+                          child: Text(
+                            isConnected
+                                ? (isFa ? 'متصل شد ✅' : 'CONNECTED ✅')
+                                : (isFa ? 'در انتظار اتصال ⏳' : 'PENDING ⏳'),
+                            style: TextStyle(
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.bold,
+                              color: isConnected ? AppTokens.positive : theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      isFa
+                          ? 'دریافت ۱۰۰٪ تضمینی آلارم‌ها در چت یا کانال تلگرام حتی در حالت خواب گوشی'
+                          : '100% Guaranteed instant alert delivery to Telegram chat or channel',
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 12),
+
+          if (isConnected) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              decoration: BoxDecoration(
+                color: telegramColor.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: telegramColor.withValues(alpha: 0.25), width: 0.8),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.check_circle_outline_rounded, size: 16, color: telegramColor),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Chat ID: ${settings.telegramChatId}',
+                    style: TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: telegramColor,
+                    ),
+                  ),
+                  const Spacer(),
+                  InkWell(
+                    onTap: () => _showTelegramSetupDialog(context, settingsService, settings, lang, isFa),
+                    child: Text(
+                      isFa ? 'ویرایش / تغییر' : 'Change',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      await settingsService.setTelegramChatId(null);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(isFa ? 'اتصال تلگرام غیرفعال شد.' : 'Telegram disconnected.'),
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                      }
+                    },
+                    icon: const Icon(Icons.link_off_rounded, size: 14),
+                    label: Text(
+                      isFa ? 'قطع اتصال' : 'Disconnect',
+                      style: const TextStyle(fontSize: 11),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppTokens.negative,
+                      side: BorderSide(color: AppTokens.negative.withValues(alpha: 0.4)),
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () async {
+                      if (settings.telegramChatId != null && settings.telegramChatId!.isNotEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(isFa ? '⏳ در حال ارسال پیام تست به تلگرام...' : '⏳ Sending test alert to Telegram...'),
+                            duration: const Duration(seconds: 1),
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                        final res = await ServerAlertService.sendTelegramTestAlert(settings.telegramChatId!);
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(res['success'] == true
+                                  ? (isFa ? '🎉 پیام تست با موفقیت به تلگرام شما ارسال شد!' : '🎉 Test alert sent to Telegram!')
+                                  : (res['error'] ?? 'خطا در ارسال پیام')),
+                              backgroundColor: res['success'] == true ? AppTokens.positive : AppTokens.negative,
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        }
+                      }
+                    },
+                    icon: const Icon(Icons.notifications_active_rounded, size: 14),
+                    label: Text(
+                      isFa ? 'تست ارسال پیام' : 'Test Alert',
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: telegramColor,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ] else ...[
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () => _showTelegramSetupDialog(context, settingsService, settings, lang, isFa),
+                icon: const Icon(Icons.send_rounded, size: 15),
+                label: Text(
+                  isFa ? 'اتصال به ربات تلگرام 📱 (دریافت Chat ID)' : 'Connect Telegram Bot 📱 (Get Chat ID)',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: telegramColor,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  void _showTelegramSetupDialog(
+    BuildContext context,
+    SettingsService settingsService,
+    AppSettings settings,
+    String lang,
+    bool isFa,
+  ) {
+    final controller = TextEditingController(text: settings.telegramChatId ?? '');
+    final theme = Theme.of(context);
+    final isRtl = AppStrings.isRtl(lang);
+    final telegramColor = const Color(0xFF229ED9);
+    const botUsername = '@aisocialfeedbot';
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) {
+          bool isTesting = false;
+          return Directionality(
+            textDirection: isRtl ? TextDirection.rtl : TextDirection.ltr,
+            child: AlertDialog(
+              backgroundColor: theme.colorScheme.surface,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+              title: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: telegramColor.withValues(alpha: 0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.send_rounded, color: telegramColor, size: 20),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      isFa ? 'اتصال به ربات تلگرام SignalAlert' : 'Connect Telegram Alert Bot',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                        color: theme.colorScheme.onSurface,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      isFa
+                          ? 'مراحل اتصال ربات:\n'
+                            '۱. در تلگرام وارد ربات زیر شوید:\n'
+                          : 'Setup Steps:\n'
+                            '1. Open the Telegram bot:\n',
+                      style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface.withValues(alpha: 0.8), height: 1.4),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: telegramColor.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: telegramColor.withValues(alpha: 0.3)),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            botUsername,
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontFamily: 'monospace',
+                              color: telegramColor,
+                              fontSize: 13,
+                            ),
+                          ),
+                          InkWell(
+                            onTap: () {
+                              Clipboard.setData(const ClipboardData(text: botUsername));
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(isFa ? 'آیدی ربات کپی شد 📋' : 'Bot handle copied 📋'),
+                                  duration: const Duration(seconds: 2),
+                                  behavior: SnackBarBehavior.floating,
+                                ),
+                              );
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: telegramColor,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                isFa ? 'کپی آیدی' : 'Copy',
+                                style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Colors.white),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      isFa
+                          ? '۲. دکمه /start را در ربات بزنید تا شناسه عددی (Chat ID) شما را تحویل دهد.\n'
+                            '۳. عدد Chat ID را در کادر زیر وارد کنید:'
+                          : '2. Send /start to the bot to get your numeric Chat ID.\n'
+                            '3. Paste your Chat ID below:',
+                      style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface.withValues(alpha: 0.8), height: 1.4),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: controller,
+                      keyboardType: TextInputType.number,
+                      style: TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
+                      decoration: InputDecoration(
+                        labelText: 'Telegram Chat ID',
+                        hintText: 'e.g. 712345678',
+                        prefixIcon: Icon(Icons.numbers_rounded, color: telegramColor),
+                        filled: true,
+                        fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: Text(
+                    AppStrings.get('cancel', lang),
+                    style: TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.6)),
+                  ),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    final id = controller.text.trim();
+                    if (id.isNotEmpty) {
+                      await settingsService.setTelegramChatId(id);
+                      if (context.mounted) {
+                        Navigator.of(ctx).pop();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(isFa ? '🎉 اتصال تلگرام با موفقیت فعال شد!' : '🎉 Telegram connected successfully!'),
+                            backgroundColor: AppTokens.positive,
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                      }
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: telegramColor,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  child: Text(isFa ? 'ذخیره و اتصال' : 'Save & Connect'),
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }

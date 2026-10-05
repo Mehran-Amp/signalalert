@@ -36,6 +36,15 @@ from firebase_admin import credentials, messaging
 SERVICE_ACCOUNT_FILE = "serviceAccountKey.json"
 firebase_initialized = False
 
+DEFAULT_TELEGRAM_BOT_TOKEN = "8597547058:AAFNRkiAnCU3NLdTgRs_Oz4p8GKkV-fR7jg"
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", DEFAULT_TELEGRAM_BOT_TOKEN)
+TELEGRAM_BOT_METADATA: Dict[str, Any] = {
+    "username": "aisocialfeedbot",
+    "first_name": "AiSFeed",
+    "id": 8597547058,
+    "is_connected": False
+}
+
 if os.path.exists(SERVICE_ACCOUNT_FILE):
     try:
         cred = credentials.Certificate(SERVICE_ACCOUNT_FILE)
@@ -155,6 +164,10 @@ async def lifespan(app: FastAPI):
     timeout = httpx.Timeout(5.0, connect=3.0)
     http_client = httpx.AsyncClient(limits=limits, timeout=timeout)
 
+    # Initialize Telegram Bot & launch polling worker
+    await init_telegram_bot(http_client)
+    tg_task = asyncio.create_task(telegram_bot_polling_loop())
+
     scheduler.add_job(
         check_alerts_job,
         'interval',
@@ -164,11 +177,12 @@ async def lifespan(app: FastAPI):
         misfire_grace_time=15
     )
     scheduler.start()
-    print("🚀 [SignalAlert Engine] Online (2s High-Performance Async Scheduler & Connection Pool Ready).")
+    print("🚀 [SignalAlert Engine] Online (2s High-Performance Async Scheduler, Telegram Bot & Connection Pool Ready).")
 
     yield
 
     # Shutdown: Cleanly close pool and scheduler
+    tg_task.cancel()
     scheduler.shutdown(wait=False)
     if http_client:
         await http_client.aclose()
@@ -407,15 +421,80 @@ def send_fcm_notification(fcm_token: str, title: str, body: str, data_payload: d
         return False, str(e)
 
 async def send_telegram_alert(client: httpx.AsyncClient, chat_id: str, message: str, bot_token: Optional[str] = None):
-    token = bot_token or os.getenv("TELEGRAM_BOT_TOKEN")
+    token = bot_token or TELEGRAM_BOT_TOKEN
     if not token or not chat_id:
         return
     try:
         url = f"https://api.telegram.org/bot{token}/sendMessage"
-        await client.post(url, json={"chat_id": chat_id, "text": message, "parse_mode": "HTML"}, timeout=4.0)
+        await client.post(url, json={"chat_id": chat_id, "text": message, "parse_mode": "HTML", "disable_web_page_preview": True}, timeout=6.0)
         METRICS["telegram_sent"] += 1
     except Exception as e:
         print(f"⚠️ [Telegram Dispatch Error] {e}")
+
+async def init_telegram_bot(client: httpx.AsyncClient):
+    global TELEGRAM_BOT_METADATA
+    if not TELEGRAM_BOT_TOKEN:
+        return
+    try:
+        res = await client.get(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getMe", timeout=6.0)
+        if res.status_code == 200:
+            data = res.json().get("result", {})
+            TELEGRAM_BOT_METADATA["username"] = data.get("username", "aisocialfeedbot")
+            TELEGRAM_BOT_METADATA["first_name"] = data.get("first_name", "AiSFeed")
+            TELEGRAM_BOT_METADATA["id"] = data.get("id", 8597547058)
+            TELEGRAM_BOT_METADATA["is_connected"] = True
+            print(f"🤖 [Telegram Bot] Connected to @{TELEGRAM_BOT_METADATA['username']} ({TELEGRAM_BOT_METADATA['first_name']})")
+    except Exception as e:
+        print(f"⚠️ [Telegram Bot Init Note] {e}")
+
+async def telegram_bot_polling_loop():
+    """Background listener for user /start interactions to supply Chat ID immediately"""
+    if not TELEGRAM_BOT_TOKEN:
+        return
+    offset = 0
+    print("📡 [Telegram Bot] Polling listener active for instant user Chat ID onboarding.")
+    while True:
+        try:
+            if http_client is None:
+                await asyncio.sleep(2)
+                continue
+
+            url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates"
+            params = {"offset": offset, "timeout": 20, "allowed_updates": ["message"]}
+            res = await http_client.get(url, params=params, timeout=25.0)
+            if res.status_code == 200:
+                data = res.json()
+                for update in data.get("result", []):
+                    offset = update.get("update_id", offset) + 1
+                    msg = update.get("message") or {}
+                    chat = msg.get("chat") or {}
+                    chat_id = chat.get("id")
+                    text = (msg.get("text") or "").strip()
+                    user_name = chat.get("first_name") or chat.get("username") or "کاربر گرامی"
+
+                    if chat_id:
+                        welcome_msg = (
+                            f"👋 <b>سلام {user_name} عزیز! به ربات رسمی SignalAlert خوش آمدید.</b>\n\n"
+                            f"🆔 <b>شناسه چت (Chat ID) شما:</b>\n"
+                            f"<code>{chat_id}</code>\n"
+                            f"<i>(روی عدد بالا لمس کنید تا کپی شود)</i>\n\n"
+                            f"📱 <b>نحوه اتصال به اپلیکیشن:</b>\n"
+                            f"۱. وارد تب <b>تنظیمات ⚙️</b> در اپلیکیشن SignalAlert شوید.\n"
+                            f"۲. گزینه <b>«اتصال به تلگرام 📱»</b> را انتخاب کنید.\n"
+                            f"۳. شناسه <code>{chat_id}</code> را وارد و دکمه ذخیره را بزنید.\n\n"
+                            f"⚡ پس از اتصال، تمامی آلارم‌های قیمت و تغییرات تارگت شما به صورت ۲۴/۷ و فوری به این چت ارسال خواهند شد."
+                        )
+                        reply_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+                        await http_client.post(reply_url, json={
+                            "chat_id": chat_id,
+                            "text": welcome_msg,
+                            "parse_mode": "HTML",
+                            "disable_web_page_preview": True
+                        }, timeout=5.0)
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            await asyncio.sleep(4)
 
 async def send_webhook_alert(client: httpx.AsyncClient, webhook_url: str, payload: dict):
     if not webhook_url:
@@ -527,7 +606,31 @@ async def check_alerts_job():
 
                 # 2. Dispatch Optional Telegram Message
                 if alert.telegram_chat_id:
-                    tg_msg = f"<b>{title}</b>\n{body}\n🕒 {datetime.utcnow().strftime('%H:%M:%S UTC')}"
+                    cond_fa = "عبور به بالا (Above 🟢)" if is_above else "افت به پایین (Below 🔴)"
+                    target_formatted = f"${alert.target_price:,.4f}".rstrip('0').rstrip('.') if alert.target_price < 1 else f"${alert.target_price:,.2f}"
+                    if alert.symbol.endswith('TMN') or alert.symbol.endswith('IRT'):
+                        target_formatted = f"{int(alert.target_price):,} TMN"
+
+                    tg_lines = [
+                        f"🚨 <b>هشدار فعال شد: {display_symbol}</b>",
+                        "",
+                        f"📊 <b>وضعیت:</b> {emoji} <code>{pct_str}</code>",
+                        f"💰 <b>قیمت لحظه‌ای:</b> <b><code>{price_formatted}</code></b> {arrow}",
+                        f"🎯 <b>قیمت تارگت:</b> <code>{target_formatted}</code>",
+                        f"⚖️ <b>شرط:</b> {cond_fa}",
+                        f"🏛️ <b>صرافی / بازار:</b> {exchange_name}",
+                    ]
+                    if alert.note and alert.note.strip():
+                        clean_note = alert.note.strip()
+                        if clean_note.startswith('📝'):
+                            clean_note = clean_note[1:].strip()
+                        tg_lines.append(f"📝 <b>یادداشت تریدر:</b> <i>{clean_note}</i>")
+
+                    tg_lines.append(f"🕒 <b>زمان:</b> <code>{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}</code>")
+                    tg_lines.append("")
+                    tg_lines.append("⚡ <i>ارسال شده توسط ربات هوشمند SignalAlert Enterprise</i>")
+
+                    tg_msg = "\n".join(tg_lines)
                     asyncio.create_task(send_telegram_alert(http_client, alert.telegram_chat_id, tg_msg))
 
                 # 3. Dispatch Optional Webhook
@@ -869,3 +972,57 @@ async def test_push_notification(fcm_token: Optional[str] = None, title: Optiona
         "body_sent": test_body,
         "timestamp": datetime.utcnow().isoformat()
     }
+
+class TelegramTestRequest(BaseModel):
+    chat_id: str
+
+@app.get("/api/telegram/bot-info")
+@app.get("/telegram/bot-info")
+def get_telegram_bot_info():
+    uname = TELEGRAM_BOT_METADATA.get("username", "aisocialfeedbot")
+    return {
+        "bot_token_configured": bool(TELEGRAM_BOT_TOKEN),
+        "username": uname,
+        "first_name": TELEGRAM_BOT_METADATA.get("first_name", "AiSFeed"),
+        "is_connected": TELEGRAM_BOT_METADATA.get("is_connected", False),
+        "bot_url": f"https://t.me/{uname}",
+        "bot_handle": f"@{uname}"
+    }
+
+@app.post("/api/telegram/test-message")
+@app.post("/telegram/test-message")
+async def send_telegram_test_message(req: TelegramTestRequest):
+    global http_client
+    if not http_client:
+        raise HTTPException(status_code=503, detail="Server client not initialized.")
+    if not TELEGRAM_BOT_TOKEN:
+        raise HTTPException(status_code=400, detail="Telegram Bot Token is not configured.")
+
+    chat_id = (req.chat_id or "").strip()
+    if not chat_id:
+        raise HTTPException(status_code=400, detail="Valid chat_id is required.")
+
+    test_msg = (
+        "🎉 <b>تست موفقیت‌آمیز اتصال تلگرام SignalAlert!</b>\n\n"
+        "✅ ارتباط ربات تلگرام با اپلیکیشن با موفقیت برقرار شد.\n"
+        "⚡ از این پس هشدارهای قیمت به صورت لحظه‌ای و ۲۴/۷ به این چت ارسال خواهند شد.\n\n"
+        f"🕒 زمان: <code>{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}</code>\n\n"
+        "<i>SignalAlert Enterprise Real-time Engine</i>"
+    )
+
+    try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+        res = await http_client.post(url, json={
+            "chat_id": chat_id,
+            "text": test_msg,
+            "parse_mode": "HTML",
+            "disable_web_page_preview": True
+        }, timeout=8.0)
+        if res.status_code == 200:
+            METRICS["telegram_sent"] += 1
+            return {"status": "ok", "message": "پیام تست با موفقیت به تلگرام شما ارسال شد!", "chat_id": chat_id}
+        else:
+            return {"status": "error", "detail": res.text, "status_code": res.status_code}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+

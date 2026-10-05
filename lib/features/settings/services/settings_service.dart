@@ -88,6 +88,22 @@ class SettingsService extends ChangeNotifier {
     await update(_settings.copyWith(hasCompletedLanguageSetup: true));
   }
 
+  Future<void> setTelegramChatId(String? chatId) async {
+    final cleanId = chatId?.trim();
+    await update(_settings.copyWith(
+      telegramChatId: cleanId,
+      telegramAlertsEnabled: cleanId != null && cleanId.isNotEmpty,
+    ));
+  }
+
+  Future<void> toggleTelegramAlerts(bool enabled) async {
+    await update(_settings.copyWith(telegramAlertsEnabled: enabled));
+  }
+
+  Future<void> setPremium(bool isPremium) async {
+    await update(_settings.copyWith(isPremium: isPremium));
+  }
+
   Future<void> signInWithGoogle({
     required String email,
     required String displayName,
@@ -98,7 +114,7 @@ class SettingsService extends ChangeNotifier {
       userEmail: email,
       userDisplayName: displayName,
       userPhotoUrl: photoUrl,
-      isPremium: true, // Early adopter Google sign-in gets free premium perks!
+      isPremium: true, // Google sign-in unlocks Premium perks!
     ));
   }
 

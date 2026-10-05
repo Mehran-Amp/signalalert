@@ -29,6 +29,8 @@ class AppSettings {
   final String? userPhotoUrl;
   final bool isPremium;
   final String accountType; // 'guest' | 'google'
+  final String? telegramChatId;
+  final bool telegramAlertsEnabled;
 
   const AppSettings({
     this.themePalette = AppThemePalette.lightPurpleBlue,
@@ -46,10 +48,15 @@ class AppSettings {
     this.userPhotoUrl,
     this.isPremium = false,
     this.accountType = 'guest',
+    this.telegramChatId,
+    this.telegramAlertsEnabled = false,
   });
 
   /// Helper whether user is logged in with Google
   bool get isSignedInWithGoogle => accountType == 'google' && userEmail != null && userEmail!.isNotEmpty;
+
+  /// Helper whether Telegram bot integration is active
+  bool get isTelegramConnected => telegramChatId != null && telegramChatId!.trim().isNotEmpty;
 
   /// Resolves effective TTS voice language code ('fa', 'en', 'ar', etc.)
   String get effectiveTtsLanguage =>
@@ -71,6 +78,8 @@ class AppSettings {
     String? userPhotoUrl,
     bool? isPremium,
     String? accountType,
+    String? telegramChatId,
+    bool? telegramAlertsEnabled,
   }) {
     return AppSettings(
       themePalette: themePalette ?? this.themePalette,
@@ -88,6 +97,8 @@ class AppSettings {
       userPhotoUrl: userPhotoUrl ?? this.userPhotoUrl,
       isPremium: isPremium ?? this.isPremium,
       accountType: accountType ?? this.accountType,
+      telegramChatId: telegramChatId ?? this.telegramChatId,
+      telegramAlertsEnabled: telegramAlertsEnabled ?? this.telegramAlertsEnabled,
     );
   }
 
@@ -107,6 +118,8 @@ class AppSettings {
         'userPhotoUrl': userPhotoUrl,
         'isPremium': isPremium,
         'accountType': accountType,
+        'telegramChatId': telegramChatId,
+        'telegramAlertsEnabled': telegramAlertsEnabled,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) {
@@ -137,6 +150,8 @@ class AppSettings {
       userPhotoUrl: json['userPhotoUrl'] as String?,
       isPremium: (json['isPremium'] as bool?) ?? false,
       accountType: (json['accountType'] as String?) ?? 'guest',
+      telegramChatId: json['telegramChatId'] as String?,
+      telegramAlertsEnabled: (json['telegramAlertsEnabled'] as bool?) ?? false,
     );
   }
 

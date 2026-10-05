@@ -64,6 +64,17 @@ class ServerAlertService {
     try {
       final fcmToken = await FCMNotificationService.getFCMToken();
       final activeRules = rules.where((r) => r.isActive).toList();
+
+      // Retrieve telegram_chat_id if saved in settings.json
+      String? telegramChatId;
+      try {
+        final dir = await getApplicationDocumentsDirectory();
+        final sFile = File('${dir.path}/settings.json');
+        if (await sFile.exists()) {
+          final sData = jsonDecode(await sFile.readAsString());
+          telegramChatId = sData['telegramChatId'] as String?;
+        }
+      } catch (_) {}
       
       final alertsPayload = activeRules.map((rule) {
         final effectiveTarget = rule.targetPrice ?? rule.upperTargetPrice ?? rule.lowerTargetPrice ?? 0.0;
@@ -84,6 +95,7 @@ class ServerAlertService {
           'sound': rule.customSound ?? 'alarm_siren',
           'is_active': rule.isActive,
           'fcm_token': fcmToken,
+          if (telegramChatId != null && telegramChatId.isNotEmpty) 'telegram_chat_id': telegramChatId,
         };
       }).toList();
 
@@ -157,6 +169,17 @@ class ServerAlertService {
         debugPrint('⚠️ FCM Token not available yet. Using fallback token for registration.');
       }
 
+      // Retrieve telegram_chat_id if saved in settings.json
+      String? telegramChatId;
+      try {
+        final dir = await getApplicationDocumentsDirectory();
+        final sFile = File('${dir.path}/settings.json');
+        if (await sFile.exists()) {
+          final sData = jsonDecode(await sFile.readAsString());
+          telegramChatId = sData['telegramChatId'] as String?;
+        }
+      } catch (_) {}
+
       final url = Uri.parse('$_baseUrl/api/alerts');
       final payload = {
         'user_id': userId,
@@ -172,6 +195,7 @@ class ServerAlertService {
         'tts_enabled': ttsEnabled,
         'sound': sound,
         if (note != null && note.isNotEmpty) 'note': note,
+        if (telegramChatId != null && telegramChatId.isNotEmpty) 'telegram_chat_id': telegramChatId,
       };
 
       debugPrint('📤 Sending alert to Python server: $payload');
@@ -306,4 +330,56 @@ class ServerAlertService {
       return {'success': false, 'error': e.toString()};
     }
   }
+
+  /// Dispatches a real test message to verify the user's Telegram Chat ID connection
+  static Future<Map<String, dynamic>> sendTelegramTestAlert(String chatId) async {
+    const defaultBotToken = '8597547058:AAFNRkiAnCU3NLdTgRs_Oz4p8GKkV-fR7jg';
+    final cleanId = chatId.trim();
+    if (cleanId.isEmpty) {
+      return {'success': false, 'error': 'Chat ID is empty'};
+    }
+
+    // 1. If custom server is configured, try server endpoint first
+    if (isServerAvailable) {
+      try {
+        final url = Uri.parse('$_baseUrl/api/telegram/test-message');
+        final response = await http.post(
+          url,
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'chat_id': cleanId}),
+        ).timeout(const Duration(seconds: 6));
+        if (response.statusCode == 200) {
+          return {'success': true, 'message': 'پیام تست به تلگرام ارسال شد.'};
+        }
+      } catch (_) {}
+    }
+
+    // 2. Direct Telegram Bot API fallback
+    try {
+      final url = Uri.parse('https://api.telegram.org/bot$defaultBotToken/sendMessage');
+      final testMsg = '🎉 <b>تست اتصال تلگرام در اپلیکیشن SignalAlert</b>\n\n'
+          '✅ ارتباط ربات تلگرام با اپلیکیشن با موفقیت برقرار شد.\n'
+          '⚡ هشدارهای معاملاتی و نوسانات قیمت از این پس به صورت آنی به این چت ارسال خواهند شد.\n\n'
+          '<i>SignalAlert Enterprise Engine</i>';
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'chat_id': cleanId,
+          'text': testMsg,
+          'parse_mode': 'HTML',
+          'disable_web_page_preview': true,
+        }),
+      ).timeout(const Duration(seconds: 8));
+
+      if (response.statusCode == 200) {
+        return {'success': true, 'message': 'پیام تست به تلگرام ارسال شد.'};
+      } else {
+        return {'success': false, 'error': 'کد چت آیدی نامعتبر است یا هنوز دکمه Start را در ربات نزده‌اید.'};
+      }
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
 }
+
