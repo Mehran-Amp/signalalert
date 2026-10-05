@@ -62,6 +62,8 @@ class AppSettings {
   String get effectiveTtsLanguage =>
       ttsVoiceLanguage == 'app_default' ? language : ttsVoiceLanguage;
 
+  static const Object _sentinel = Object();
+
   AppSettings copyWith({
     AppThemePalette? themePalette,
     String? language,
@@ -73,12 +75,12 @@ class AppSettings {
     double? alarmVolume,
     int? alarmDurationSec,
     bool? hasCompletedLanguageSetup,
-    String? userEmail,
-    String? userDisplayName,
-    String? userPhotoUrl,
+    Object? userEmail = _sentinel,
+    Object? userDisplayName = _sentinel,
+    Object? userPhotoUrl = _sentinel,
     bool? isPremium,
     String? accountType,
-    String? telegramChatId,
+    Object? telegramChatId = _sentinel,
     bool? telegramAlertsEnabled,
   }) {
     return AppSettings(
@@ -92,12 +94,12 @@ class AppSettings {
       alarmVolume: alarmVolume ?? this.alarmVolume,
       alarmDurationSec: alarmDurationSec ?? this.alarmDurationSec,
       hasCompletedLanguageSetup: hasCompletedLanguageSetup ?? this.hasCompletedLanguageSetup,
-      userEmail: userEmail ?? this.userEmail,
-      userDisplayName: userDisplayName ?? this.userDisplayName,
-      userPhotoUrl: userPhotoUrl ?? this.userPhotoUrl,
+      userEmail: identical(userEmail, _sentinel) ? this.userEmail : (userEmail as String?),
+      userDisplayName: identical(userDisplayName, _sentinel) ? this.userDisplayName : (userDisplayName as String?),
+      userPhotoUrl: identical(userPhotoUrl, _sentinel) ? this.userPhotoUrl : (userPhotoUrl as String?),
       isPremium: isPremium ?? this.isPremium,
       accountType: accountType ?? this.accountType,
-      telegramChatId: telegramChatId ?? this.telegramChatId,
+      telegramChatId: identical(telegramChatId, _sentinel) ? this.telegramChatId : (telegramChatId as String?),
       telegramAlertsEnabled: telegramAlertsEnabled ?? this.telegramAlertsEnabled,
     );
   }

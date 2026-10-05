@@ -89,10 +89,10 @@ class SettingsService extends ChangeNotifier {
   }
 
   Future<void> setTelegramChatId(String? chatId) async {
-    final cleanId = chatId?.trim();
+    final cleanId = (chatId != null && chatId.trim().isNotEmpty) ? chatId.trim() : null;
     await update(_settings.copyWith(
       telegramChatId: cleanId,
-      telegramAlertsEnabled: cleanId != null && cleanId.isNotEmpty,
+      telegramAlertsEnabled: cleanId != null,
     ));
   }
 

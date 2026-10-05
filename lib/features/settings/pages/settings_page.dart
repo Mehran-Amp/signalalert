@@ -1669,7 +1669,8 @@ class _SettingsPageState extends State<SettingsPage> {
     String lang,
     bool isFa,
   ) {
-    final isConnected = settings.isTelegramConnected;
+    final isSignedIn = settings.isSignedInWithGoogle;
+    final isConnected = isSignedIn && settings.isTelegramConnected;
     final telegramColor = const Color(0xFF229ED9); // Telegram Official Blue
 
     return Container(
@@ -1681,7 +1682,7 @@ class _SettingsPageState extends State<SettingsPage> {
         border: Border.all(
           color: isConnected
               ? telegramColor.withValues(alpha: 0.6)
-              : theme.dividerColor,
+              : (!isSignedIn ? AppTokens.warning.withValues(alpha: 0.4) : theme.dividerColor),
           width: isConnected ? 1.4 : 1.0,
         ),
         boxShadow: isConnected
@@ -1703,12 +1704,23 @@ class _SettingsPageState extends State<SettingsPage> {
                 width: 38,
                 height: 38,
                 decoration: BoxDecoration(
-                  color: telegramColor.withValues(alpha: 0.15),
+                  color: !isSignedIn
+                      ? AppTokens.warning.withValues(alpha: 0.12)
+                      : telegramColor.withValues(alpha: 0.15),
                   shape: BoxShape.circle,
-                  border: Border.all(color: telegramColor.withValues(alpha: 0.4), width: 1.2),
+                  border: Border.all(
+                    color: !isSignedIn
+                        ? AppTokens.warning.withValues(alpha: 0.4)
+                        : telegramColor.withValues(alpha: 0.4),
+                    width: 1.2,
+                  ),
                 ),
                 child: Center(
-                  child: Icon(Icons.send_rounded, color: telegramColor, size: 20),
+                  child: Icon(
+                    !isSignedIn ? Icons.lock_outline_rounded : Icons.send_rounded,
+                    color: !isSignedIn ? AppTokens.warning : telegramColor,
+                    size: 20,
+                  ),
                 ),
               ),
               const SizedBox(width: 10),
@@ -1732,19 +1744,25 @@ class _SettingsPageState extends State<SettingsPage> {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
                           decoration: BoxDecoration(
-                            color: isConnected
-                                ? AppTokens.positive.withValues(alpha: 0.15)
-                                : theme.colorScheme.surfaceContainerHighest,
+                            color: !isSignedIn
+                                ? AppTokens.warning.withValues(alpha: 0.15)
+                                : (isConnected
+                                    ? AppTokens.positive.withValues(alpha: 0.15)
+                                    : theme.colorScheme.surfaceContainerHighest),
                             borderRadius: BorderRadius.circular(5),
                           ),
                           child: Text(
-                            isConnected
-                                ? (isFa ? 'متصل شد ✅' : 'CONNECTED ✅')
-                                : (isFa ? 'در انتظار اتصال ⏳' : 'PENDING ⏳'),
+                            !isSignedIn
+                                ? (isFa ? '🔒 نیاز به ورود' : '🔒 LOGIN REQUIRED')
+                                : (isConnected
+                                    ? (isFa ? 'متصل شد ✅' : 'CONNECTED ✅')
+                                    : (isFa ? 'در انتظار اتصال ⏳' : 'PENDING ⏳')),
                             style: TextStyle(
                               fontSize: 9.5,
                               fontWeight: FontWeight.bold,
-                              color: isConnected ? AppTokens.positive : theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                              color: !isSignedIn
+                                  ? AppTokens.warning
+                                  : (isConnected ? AppTokens.positive : theme.colorScheme.onSurface.withValues(alpha: 0.6)),
                             ),
                           ),
                         ),
@@ -1768,7 +1786,80 @@ class _SettingsPageState extends State<SettingsPage> {
 
           const SizedBox(height: 12),
 
-          if (isConnected) ...[
+          if (!isSignedIn) ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppTokens.warning.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppTokens.warning.withValues(alpha: 0.3), width: 0.8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.info_outline_rounded, color: AppTokens.warning, size: 17),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          isFa
+                              ? 'اتصال به تلگرام نیازمند ورود به حساب کاربری است'
+                              : 'Telegram integration requires an active account',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.bold,
+                            color: AppTokens.warning,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    isFa
+                        ? 'برای ثبت اختصاصی آلارم‌ها در سرور و مدیریت دقیق اعلان‌های ارسالی به تلگرام، ابتدا باید وارد حساب کاربری گوگل خود شوید.'
+                        : 'To bind alerts exclusively to your account and control notifications, please sign in with your Google account first.',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
+                      height: 1.35,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () async {
+                        final signedIn = await GoogleAuthService.promptGoogleSignIn(context, settingsService, lang);
+                        if (signedIn && context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(isFa ? '🎉 با موفقیت وارد شدید! اکنون می‌توانید ربات تلگرام را متصل کنید.' : '🎉 Signed in! You can now connect the Telegram bot.'),
+                              backgroundColor: AppTokens.positive,
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.login_rounded, size: 15),
+                      label: Text(
+                        isFa ? 'ورود با حساب گوگل جهت فعال‌سازی تلگرام' : 'Sign In with Google to Enable Telegram',
+                        style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: theme.colorScheme.primary,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(vertical: 9),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ] else if (isConnected) ...[
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
               decoration: BoxDecoration(
@@ -1812,9 +1903,10 @@ class _SettingsPageState extends State<SettingsPage> {
                     onPressed: () async {
                       await settingsService.setTelegramChatId(null);
                       if (context.mounted) {
+                        ServerAlertService.syncWithServer(context);
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
-                            content: Text(isFa ? 'اتصال تلگرام غیرفعال شد.' : 'Telegram disconnected.'),
+                            content: Text(isFa ? 'اتصال تلگرام با موفقیت قطع شد.' : 'Telegram disconnected successfully.'),
                             behavior: SnackBarBehavior.floating,
                           ),
                         );
@@ -1907,6 +1999,16 @@ class _SettingsPageState extends State<SettingsPage> {
     String lang,
     bool isFa,
   ) {
+    if (!settings.isSignedInWithGoogle) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(isFa ? '⚠️ برای اتصال تلگرام ابتدا باید با حساب گوگل وارد شوید.' : '⚠️ Please sign in with Google first to connect Telegram.'),
+          backgroundColor: AppTokens.warning,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
     final controller = TextEditingController(text: settings.telegramChatId ?? '');
     final theme = Theme.of(context);
     final isRtl = AppStrings.isRtl(lang);
@@ -2031,6 +2133,26 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
               ),
               actions: [
+                if (settings.isTelegramConnected)
+                  TextButton(
+                    onPressed: () async {
+                      await settingsService.setTelegramChatId(null);
+                      if (context.mounted) {
+                        Navigator.of(ctx).pop();
+                        ServerAlertService.syncWithServer(context);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(isFa ? 'اتصال تلگرام با موفقیت قطع شد.' : 'Telegram disconnected successfully.'),
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                      }
+                    },
+                    child: Text(
+                      isFa ? 'قطع اتصال' : 'Disconnect',
+                      style: const TextStyle(color: AppTokens.negative, fontWeight: FontWeight.bold),
+                    ),
+                  ),
                 TextButton(
                   onPressed: () => Navigator.of(ctx).pop(),
                   child: Text(
@@ -2045,10 +2167,23 @@ class _SettingsPageState extends State<SettingsPage> {
                       await settingsService.setTelegramChatId(id);
                       if (context.mounted) {
                         Navigator.of(ctx).pop();
+                        ServerAlertService.syncWithServer(context);
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Text(isFa ? '🎉 اتصال تلگرام با موفقیت فعال شد!' : '🎉 Telegram connected successfully!'),
                             backgroundColor: AppTokens.positive,
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                      }
+                    } else {
+                      await settingsService.setTelegramChatId(null);
+                      if (context.mounted) {
+                        Navigator.of(ctx).pop();
+                        ServerAlertService.syncWithServer(context);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(isFa ? 'اتصال تلگرام قطع شد.' : 'Telegram disconnected.'),
                             behavior: SnackBarBehavior.floating,
                           ),
                         );
