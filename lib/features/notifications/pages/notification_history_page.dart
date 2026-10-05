@@ -224,7 +224,7 @@ class _NotificationHistoryPageState extends State<NotificationHistoryPage> {
         horizontal: AppTokens.space16,
         vertical: AppTokens.space6,
       ),
-      padding: const EdgeInsets.all(AppTokens.space14),
+      padding: const EdgeInsets.all(AppTokens.space12),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
