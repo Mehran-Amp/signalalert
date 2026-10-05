@@ -383,6 +383,23 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
   Future<void> _saveAlert(String lang) async {
     final intervalSeconds = _calculateTotalIntervalSeconds();
 
+    // Enforce minimum 3 minutes (180 seconds) check interval rule
+    if (intervalSeconds < 180) {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      final isRtl = (lang == 'fa' || lang == 'ar' || lang == 'ckb');
+      final msg = isRtl
+          ? '⏱️ حداقل زمان پایش آلارم باید ۳ دقیقه (۱۸۰ ثانیه) یا بیشتر باشد.'
+          : '⏱️ Minimum check interval must be 3 minutes (180 seconds) or more.';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(msg),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+      return;
+    }
+
     String exchangeId;
     CurrencyPair pair;
 

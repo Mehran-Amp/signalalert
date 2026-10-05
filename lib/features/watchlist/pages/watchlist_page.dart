@@ -18,6 +18,178 @@ import 'create_alert_flow.dart';
 /// The Main Screen of Alarmer: Personal Price Alerts.
 /// Highlights the latest checked price prominently (large and bold).
 /// Supports full tap-to-edit and a 100% reliable in-app floating undo toast.
+class TargetProgressState {
+  final double progressFactor; // 0.0 to 1.0
+  final Color? color;          // TradingView Green (0xFF089981), TradingView Red (0xFFF23645), or null
+  final int percentageInt;     // 0 to 100
+
+  const TargetProgressState({
+    required this.progressFactor,
+    required this.color,
+    required this.percentageInt,
+  });
+}
+
+TargetProgressState _computeTargetProgressState(AlertRule rule) {
+  const Color tvGreen = Color(0xFF089981); // Official TradingView Bullish Green
+  const Color tvRed = Color(0xFFF23645);   // Official TradingView Bearish Red
+
+  final displayPrice = rule.currentDisplayPrice;
+  final basePrice = rule.basePrice;
+
+  if (displayPrice == null || displayPrice <= 0 || basePrice == null || basePrice <= 0) {
+    return const TargetProgressState(progressFactor: 0.0, color: null, percentageInt: 0);
+  }
+
+  double progress = 0.0;
+  Color? activeColor;
+
+  switch (rule.conditionType) {
+    case AlertConditionType.priceThreshold:
+      if (rule.direction == AlertDirection.bothSides) {
+        // Both-Way Channel / Resistance & Support
+        final upper = rule.upperTargetPrice;
+        final lower = rule.lowerTargetPrice;
+
+        if (displayPrice > basePrice) {
+          // Bullish movement towards upper resistance target
+          activeColor = tvGreen;
+          if (upper != null && upper > basePrice) {
+            progress = (displayPrice - basePrice) / (upper - basePrice);
+          } else if (upper != null && upper > 0) {
+            progress = (displayPrice - basePrice) / upper;
+          }
+        } else if (displayPrice < basePrice) {
+          // Bearish movement towards lower support target
+          activeColor = tvRed;
+          if (lower != null && lower < basePrice && basePrice > lower) {
+            progress = (basePrice - displayPrice) / (basePrice - lower);
+          } else if (lower != null && lower > 0) {
+            progress = (basePrice - displayPrice) / basePrice;
+          }
+        } else {
+          // No price movement -> Empty Layer 2
+          progress = 0.0;
+          activeColor = null;
+        }
+      } else if (rule.direction == AlertDirection.above) {
+        // Single Target: Above
+        final target = rule.targetPrice ?? 0.0;
+        if (displayPrice > basePrice) {
+          activeColor = tvGreen;
+          if (target > basePrice) {
+            progress = (displayPrice - basePrice) / (target - basePrice);
+          } else if (target > 0) {
+            progress = displayPrice / target;
+          }
+        } else {
+          // Moving in opposite direction (downward) -> Empty Layer 2
+          progress = 0.0;
+          activeColor = null;
+        }
+      } else if (rule.direction == AlertDirection.below) {
+        // Single Target: Below
+        final target = rule.targetPrice ?? 0.0;
+        if (displayPrice < basePrice) {
+          activeColor = tvRed;
+          if (basePrice > target && target > 0) {
+            progress = (basePrice - displayPrice) / (basePrice - target);
+          } else if (basePrice > 0) {
+            progress = (basePrice - displayPrice) / basePrice;
+          }
+        } else {
+          // Moving in opposite direction (upward) -> Empty Layer 2
+          progress = 0.0;
+          activeColor = null;
+        }
+      }
+      break;
+
+    case AlertConditionType.percentChange:
+      final targetPct = rule.percent ?? 0.0;
+      final actualPct = ((displayPrice - basePrice) / basePrice) * 100.0;
+
+      if (rule.direction == AlertDirection.above) {
+        if (actualPct > 0) {
+          activeColor = tvGreen;
+          progress = targetPct > 0 ? (actualPct / targetPct) : 0.0;
+        } else {
+          progress = 0.0;
+          activeColor = null;
+        }
+      } else if (rule.direction == AlertDirection.below) {
+        if (actualPct < 0) {
+          activeColor = tvRed;
+          progress = targetPct > 0 ? (actualPct.abs() / targetPct) : 0.0;
+        } else {
+          progress = 0.0;
+          activeColor = null;
+        }
+      } else {
+        // Both directions (% change)
+        if (actualPct > 0) {
+          activeColor = tvGreen;
+          progress = targetPct > 0 ? (actualPct / targetPct) : 0.0;
+        } else if (actualPct < 0) {
+          activeColor = tvRed;
+          progress = targetPct > 0 ? (actualPct.abs() / targetPct) : 0.0;
+        } else {
+          progress = 0.0;
+          activeColor = null;
+        }
+      }
+      break;
+
+    case AlertConditionType.absolutePriceChange:
+      final delta = rule.deltaAbsolute ?? 0.0;
+      final diff = displayPrice - basePrice;
+
+      if (rule.direction == AlertDirection.above) {
+        if (diff > 0) {
+          activeColor = tvGreen;
+          progress = delta > 0 ? (diff / delta) : 0.0;
+        } else {
+          progress = 0.0;
+          activeColor = null;
+        }
+      } else if (rule.direction == AlertDirection.below) {
+        if (diff < 0) {
+          activeColor = tvRed;
+          progress = delta > 0 ? (diff.abs() / delta) : 0.0;
+        } else {
+          progress = 0.0;
+          activeColor = null;
+        }
+      } else {
+        if (diff > 0) {
+          activeColor = tvGreen;
+          progress = delta > 0 ? (diff / delta) : 0.0;
+        } else if (diff < 0) {
+          activeColor = tvRed;
+          progress = delta > 0 ? (diff.abs() / delta) : 0.0;
+        } else {
+          progress = 0.0;
+          activeColor = null;
+        }
+      }
+      break;
+
+    case AlertConditionType.volumeChange:
+      activeColor = tvGreen;
+      progress = 0.5;
+      break;
+  }
+
+  final clampedProgress = progress.clamp(0.0, 1.0);
+  final pctInt = (clampedProgress * 100).round();
+
+  return TargetProgressState(
+    progressFactor: clampedProgress,
+    color: activeColor,
+    percentageInt: pctInt,
+  );
+}
+
 class WatchlistPage extends StatefulWidget {
   const WatchlistPage({super.key});
 
@@ -466,14 +638,8 @@ class _WatchlistPageState extends State<WatchlistPage> {
       changePercent = ((displayPrice - basePrice) / basePrice) * 100.0;
     }
 
-    // Target Proximity Calculation (0.0 to 1.0)
-    double targetProximity = 0.5;
-    if (rule.conditionType == AlertConditionType.priceThreshold && rule.targetPrice != null && rule.targetPrice! > 0 && displayPrice != null) {
-      targetProximity = (displayPrice / rule.targetPrice!).clamp(0.0, 1.0);
-    } else if (rule.conditionType == AlertConditionType.percentChange && rule.percent != null && rule.percent! > 0 && changePercent != null) {
-      targetProximity = (changePercent.abs() / rule.percent!).clamp(0.0, 1.0);
-    }
-    final int proximityPercent = (targetProximity * 100).round();
+    // Compute Target Progress State (TradingView Green/Red two-layer bar)
+    final progState = _computeTargetProgressState(rule);
 
     return Dismissible(
       key: Key(rule.uuid),
@@ -709,7 +875,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
                                   ? Icons.gps_fixed_rounded
                                   : Icons.trending_up_rounded,
                               size: 13,
-                              color: theme.colorScheme.primary,
+                              color: progState.color ?? theme.colorScheme.primary,
                             ),
                             const SizedBox(width: 5),
                             Text(
@@ -723,14 +889,12 @@ class _WatchlistPageState extends State<WatchlistPage> {
                           ],
                         ),
                         Text(
-                          '$proximityPercent% ${lang == 'fa' ? 'تا هدف' : 'to target'}',
+                          '${progState.percentageInt}% ${lang == 'fa' ? 'تا هدف' : 'to target'}',
                           style: TextStyle(
                             fontSize: 10,
                             fontWeight: FontWeight.bold,
                             fontFamily: 'monospace',
-                            color: proximityPercent >= 85
-                                ? AppTokens.warning
-                                : theme.colorScheme.primary,
+                            color: progState.color ?? textMuted,
                           ),
                         ),
                       ],
@@ -740,25 +904,31 @@ class _WatchlistPageState extends State<WatchlistPage> {
                       borderRadius: BorderRadius.circular(4),
                       child: Stack(
                         children: [
+                          // Fixed Layer 1: Fixed Theme Base Color Layer
                           Container(
-                            height: 3.5,
+                            height: 4,
                             width: double.infinity,
-                            color: theme.colorScheme.surfaceContainerHighest,
+                            color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.75),
                           ),
-                          FractionallySizedBox(
-                            widthFactor: targetProximity.clamp(0.05, 1.0),
-                            child: Container(
-                              height: 3.5,
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  colors: [
-                                    theme.colorScheme.primary,
-                                    proximityPercent >= 85 ? AppTokens.warning : const Color(0xFF06B6D4),
+                          // Dynamic Layer 2: TradingView Green (Bullish) or TradingView Red (Bearish)
+                          if (progState.color != null && progState.progressFactor > 0)
+                            FractionallySizedBox(
+                              widthFactor: progState.progressFactor,
+                              child: Container(
+                                height: 4,
+                                decoration: BoxDecoration(
+                                  color: progState.color,
+                                  borderRadius: BorderRadius.circular(4),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: progState.color!.withValues(alpha: 0.4),
+                                      blurRadius: 4,
+                                      offset: const Offset(0, 1),
+                                    ),
                                   ],
                                 ),
                               ),
                             ),
-                          ),
                         ],
                       ),
                     ),
