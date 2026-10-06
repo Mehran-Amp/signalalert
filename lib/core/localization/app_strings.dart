@@ -1488,7 +1488,7 @@ class AppStrings {
 
     // 8. FRENCH (Français - LTR)
     'fr': {
-    'iran_cat_gold_funds': '🏆 Fonds d'or (TSETMC)',
+    'iran_cat_gold_funds': '🏆 Fonds d\'or (TSETMC)',
     'iran_cat_official': '🏛️ Taux officiels ICE',
     'iran_cat_bourse': '📈 Indices boursiers de Téhéran',
       'iran_cat_tether': '🟢 Tether des Échanges (USDT)',

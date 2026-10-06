@@ -80,6 +80,8 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
   final Map<String, double> _macroLivePrices = {};
 
   // Iran Flow State
+  int _iranSubTab = 0;
+  Exchange? _selectedIranExchange;
   String _iranCategoryFilter = 'all';
   String _iranSearchQuery = '';
   Map<String, dynamic>? _selectedIranDomesticAsset;
