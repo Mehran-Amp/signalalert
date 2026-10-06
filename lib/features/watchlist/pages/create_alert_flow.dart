@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../../core/localization/app_strings.dart';
 import '../../../core/theme/tokens.dart';
 import '../../../core/utils/crypto_icons.dart';
+import '../../../core/utils/format_utils.dart';
 import '../../alert_engine/models/alert_rule.dart';
 import '../../alert_engine/repositories/json_alert_rule_repository.dart';
 import '../../exchanges/base/crypto_catalog_data.dart';
@@ -86,6 +87,9 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
   String _iranSearchQuery = '';
   Map<String, dynamic>? _selectedIranDomesticAsset;
   final Map<String, double> _iranLivePrices = {};
+  bool _isLoadingIranPairs = false;
+  String _iranPairSearchQuery = '';
+  List<CurrencyPair> _iranExchangePairs = [];
 
   // Snapshot
   double? _currentPrice;
@@ -298,6 +302,7 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
     if (_flowType == MarketFlowType.iran || quoteCurrency == 'TMN' || quoteCurrency == 'IRT' || quoteCurrency == 'تومان') {
       return FormatUtils.formatIranPrice(price, unit: 'ت');
     }
+    final numStr = _formatSmartNumber(price);
     final isRials = quoteCurrency == 'IRR' || quoteCurrency == 'ریال';
     if (isRials) {
       final faNum = FormatUtils.toPersianDigits(FormatUtils.formatPrice(price, showSymbol: false));
