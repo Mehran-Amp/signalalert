@@ -11,6 +11,7 @@ import '../../../core/utils/symbol_filter_helper.dart';
 /// provides TTL-based caching, in-flight request collapsing, and parallel searching.
 class ExchangeRegistry {
   static const String globalStocksId = 'global_stocks';
+  static const String iranMarketId = 'iran_market';
   static const Duration pairCacheTtl = Duration(minutes: 10);
 
   final Map<String, Exchange> _exchanges = {};
@@ -34,6 +35,8 @@ class ExchangeRegistry {
     ..sort((a, b) {
       if (a.id == globalStocksId) return -1;
       if (b.id == globalStocksId) return 1;
+      if (a.id == iranMarketId) return -1;
+      if (b.id == iranMarketId) return 1;
       return a.name.toLowerCase().compareTo(b.name.toLowerCase());
     });
 

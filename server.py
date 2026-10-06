@@ -430,6 +430,71 @@ EXACT_YF_MAP: Dict[str, str] = {
     'CRYPTO_FGI': 'CRYPTO_FGI',
 }
 
+TGJU_MAP = {
+    'USD_TMN': 'price_dollar_rl',
+    'USD': 'price_dollar_rl',
+    'DOLLAR': 'price_dollar_rl',
+    'EUR_TMN': 'price_eur',
+    'EUR': 'price_eur',
+    'GBP_TMN': 'price_gbp',
+    'GBP': 'price_gbp',
+    'AED_TMN': 'price_aed',
+    'AED': 'price_aed',
+    'DIRHAM': 'price_aed',
+    'TRY_TMN': 'price_try',
+    'TRY': 'price_try',
+    'LIRA': 'price_try',
+    'CAD_TMN': 'price_cad',
+    'CAD': 'price_cad',
+    'AUD_TMN': 'price_aud',
+    'CNY_TMN': 'price_cny',
+    'CHF_TMN': 'price_chf',
+    'SAR_TMN': 'price_sar',
+    'KWD_TMN': 'price_kwd',
+    'BHD_TMN': 'price_bhd',
+    'OMR_TMN': 'price_omr',
+    'QAR_TMN': 'price_qar',
+    'IQD_TMN': 'price_iqd',
+    'AFN_TMN': 'price_afn',
+    'SEK_TMN': 'price_sek',
+    'NOK_TMN': 'price_nok',
+    'RUB_TMN': 'price_rub',
+    'INR_TMN': 'price_inr',
+    'JPY_TMN': 'price_jpy',
+    'AZN_TMN': 'price_azn',
+    'GEL_TMN': 'price_gel',
+    'AMD_TMN': 'price_amd',
+    'GERAM18': 'geram18',
+    'GOLD18': 'geram18',
+    'GERAM24': 'geram24',
+    'GOLD24': 'geram24',
+    'MESGHAL': 'mesghal',
+    'MITHQAL': 'mesghal',
+    'GOLD_USED': 'gold_mini_size',
+    'GOLD_MELTED': 'gold_futures',
+    'COIN_EMAMI': 'sekee',
+    'EMAMI': 'sekee',
+    'COIN_BAHAR': 'sekeb',
+    'BAHAR': 'sekeb',
+    'COIN_HALF': 'nim',
+    'HALF_COIN': 'nim',
+    'COIN_QUARTER': 'rob',
+    'QUARTER_COIN': 'rob',
+    'COIN_GRAM': 'gerami',
+    'GRAM_COIN': 'gerami',
+    'SANA_USD': 'sana_sell_usd',
+    'SANA_EUR': 'sana_sell_eur',
+    'SANA_AED': 'sana_sell_aed',
+    'NIMA_USD': 'nima_sell_usd',
+    'NIMA_EUR': 'nima_sell_eur',
+    'NIMA_AED': 'nima_sell_aed',
+    'TEDPIX': 'bourse',
+    'TEDPIX_EQUAL': 'bourse_equal',
+}
+
+CACHE_TTL_IRAN = 60.0 # Strict 60-second cache as requested for Iran markets
+IRAN_MARKET_CACHE: Dict[str, Tuple[float, float, Dict[str, Any]]] = {}
+
 FOREX_PAIRS = {
     'EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'USDCAD', 'USDCHF', 'NZDUSD',
     'EURGBP', 'EURJPY', 'GBPJPY', 'EURCHF', 'AUDJPY', 'GBPAUD', 'USDCNY',
@@ -600,6 +665,77 @@ async def fetch_price_with_trace(
         matching_keys = [sym_clean, nobitex_sym]
         if sym_clean in ['USDT', 'USDTTMN', 'USDTIRT']:
             matching_keys.extend(['USDTTMN', 'USDTIRT', 'USDT_IRT', 'USDT_TMN'])
+
+        # 1-0. Direct TGJU Profile / Gold / Coins / Free Currency / Bourse check with 60-second TTL
+        tgju_slug = TGJU_MAP.get(sym_clean) or TGJU_MAP.get(sym_clean.replace('/', '_')) or (TGJU_MAP.get(sym_clean[:-3]) if sym_clean.endswith('TMN') else None)
+        if tgju_slug:
+            now_tg = time.time()
+            cached_tgju = IRAN_MARKET_CACHE.get(tgju_slug)
+            if cached_tgju and (now_tg - cached_tgju[1]) < CACHE_TTL_IRAN:
+                traces.append({
+                    'source': 'TGJU / بازار تهران (RAM Cache 60s)',
+                    'url': f'https://www.tgju.org/profile/{tgju_slug}',
+                    'status_code': 200,
+                    'latency_ms': 0.1,
+                    'parsed_price': cached_tgju[0],
+                    'asOf': int(now_tg),
+                    'state': 'LIVE',
+                    'currency': 'TMN' if not tgju_slug.startswith('bourse') else 'واحد',
+                    'success': True
+                })
+                if final_price is None:
+                    final_price = cached_tgju[0]
+                    final_meta = cached_tgju[2]
+                if not collect_all_traces:
+                    return final_price, traces
+
+            def _extract_tgju_html(resp_text):
+                m = re.findall(r'>([0-9]{1,3}(?:,[0-9]{3})+)<', resp_text)
+                if m:
+                    valid_nums = [float(n.replace(',', '')) for n in m if float(n.replace(',', '')) > 100]
+                    if valid_nums:
+                        raw_val = valid_nums[0]
+                        is_bourse = tgju_slug.startswith('bourse')
+                        final_val = raw_val if is_bourse else (raw_val / 10.0)
+                        item_meta = {
+                            'price': final_val,
+                            'state': 'LIVE',
+                            'currency': 'واحد' if is_bourse else 'TMN',
+                            'source': 'TGJU / بازار تهران'
+                        }
+                        IRAN_MARKET_CACHE[tgju_slug] = (final_val, time.time(), item_meta)
+                        return item_meta
+                return None
+
+            t0_tg = time.time()
+            try:
+                tg_res = await client.get(
+                    f'https://www.tgju.org/profile/{tgju_slug}',
+                    headers={'User-Agent': f'Mozilla/5.0 (Windows NT 10.0; Win64; x64) SignalAlert/{APP_VERSION}', 'Accept': 'text/html'},
+                    timeout=3.5
+                )
+                if tg_res.status_code == 200:
+                    ext = _extract_tgju_html(tg_res.text)
+                    if ext and ext.get('price', 0) > 0:
+                        val = ext['price']
+                        traces.append({
+                            'source': 'TGJU / بازار تهران',
+                            'url': f'https://www.tgju.org/profile/{tgju_slug}',
+                            'status_code': 200,
+                            'latency_ms': round((time.time() - t0_tg) * 1000, 2),
+                            'parsed_price': val,
+                            'asOf': int(time.time()),
+                            'state': 'LIVE',
+                            'currency': ext.get('currency', 'TMN'),
+                            'success': True
+                        })
+                        if final_price is None:
+                            final_price = val
+                            final_meta = ext
+                        if not collect_all_traces:
+                            return final_price, traces
+            except Exception as e:
+                traces.append({'source': 'TGJU / بازار تهران', 'url': f'https://www.tgju.org/profile/{tgju_slug}', 'status_code': 0, 'latency_ms': round((time.time() - t0_tg) * 1000, 2), 'error': str(e), 'success': False})
 
         # 1a. Nobitex Market Stats API (Official aggregated prices for all markets)
         def _extract_nobitex_stats(data):

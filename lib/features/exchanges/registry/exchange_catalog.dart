@@ -22,6 +22,7 @@ import '../okx/okx_exchange.dart';
 import '../ourbit/ourbit_exchange.dart';
 import '../ramzinex/ramzinex_exchange.dart';
 import '../stocks/global_stocks_exchange.dart';
+import '../stocks/iran_domestic_exchange.dart';
 import '../tabdeal/tabdeal_exchange.dart';
 import '../tetherland/tetherland_exchange.dart';
 import '../toobit/toobit_exchange.dart';
@@ -31,16 +32,21 @@ import '../xt/xt_exchange.dart';
 /// Standard Catalog of cryptocurrency and global markets adapters.
 class ExchangeCatalog {
   static const String globalStocksId = 'global_stocks';
+  static const String iranMarketId = 'iran_market';
 
   /// Equities, indices, commodities, and macro market adapters
   static List<Exchange> buildMarketsProviders() => [
     GlobalStocksExchange(),
   ];
 
-  /// Cryptocurrency and domestic market adapters
-  static List<Exchange> buildCryptoExchanges() {
+  /// Iran Domestic Market: Gold, Coins, Free FX, Bourse
+  static List<Exchange> buildIranDomesticProviders() => [
+    IranDomesticExchange(),
+  ];
+
+  /// Iranian domestic cryptocurrency exchanges
+  static List<Exchange> buildIranCryptoExchanges() {
     return <Exchange>[
-      // --- IRANIAN & MIDDLE EAST EXCHANGES (Full Tomans & Tether Catalog) ---
       NobitexExchange(),
       WallexExchange(),
       RamzinexExchange(),
@@ -62,7 +68,12 @@ class ExchangeCatalog {
         name: 'Exir',
         defaultCounterCurrency: 'TMN',
       ),
+    ];
+  }
 
+  /// International cryptocurrency exchanges (Pure Global - No Domestic Mix)
+  static List<Exchange> buildInternationalCryptoExchanges() {
+    return <Exchange>[
       // --- TIER 1 GLOBAL CRYPTO EXCHANGES (Full Catalog & Live API) ---
       BinanceExchange(),
       KuCoinExchange(),
@@ -287,10 +298,19 @@ class ExchangeCatalog {
     ];
   }
 
+  /// Combined crypto exchanges (Domestic + International)
+  static List<Exchange> buildCryptoExchanges() {
+    return <Exchange>[
+      ...buildIranCryptoExchanges(),
+      ...buildInternationalCryptoExchanges(),
+    ];
+  }
+
   /// Combined catalog containing all market providers and crypto exchanges
   static List<Exchange> buildAllExchanges() {
     final exchanges = <Exchange>[
       ...buildMarketsProviders(),
+      ...buildIranDomesticProviders(),
       ...buildCryptoExchanges(),
     ];
 
@@ -298,6 +318,8 @@ class ExchangeCatalog {
     exchanges.sort((a, b) {
       if (a.id == globalStocksId) return -1;
       if (b.id == globalStocksId) return 1;
+      if (a.id == iranMarketId) return -1;
+      if (b.id == iranMarketId) return 1;
       return a.name.toLowerCase().compareTo(b.name.toLowerCase());
     });
 

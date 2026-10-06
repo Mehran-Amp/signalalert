@@ -11,6 +11,7 @@ import '../../exchanges/base/exchange.dart';
 import '../../exchanges/base/exchange_category.dart';
 import '../../exchanges/registry/exchange_registry.dart';
 import '../../exchanges/stocks/global_stocks_exchange.dart';
+import '../../exchanges/stocks/iran_domestic_exchange.dart';
 import '../../settings/services/settings_service.dart';
 import '../../settings/services/sound_manager.dart';
 import '../../../core/services/tts_service.dart';
@@ -23,6 +24,7 @@ enum MarketFlowType {
   none,
   crypto,
   macro,
+  iran,
 }
 
 class CreateAlertFlow extends StatefulWidget {
@@ -76,6 +78,17 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
   String _macroSearchQuery = '';
   Map<String, dynamic>? _selectedMacroAsset;
   final Map<String, double> _macroLivePrices = {};
+
+  // Iran Flow State
+  int _iranSubTab = 0; // 0: Gold/Coins/Currencies/Bourse, 1: Iranian Crypto Exchanges
+  String _iranCategoryFilter = 'all';
+  String _iranSearchQuery = '';
+  Map<String, dynamic>? _selectedIranDomesticAsset;
+  Exchange? _selectedIranExchange;
+  List<CurrencyPair> _iranExchangePairs = [];
+  bool _isLoadingIranPairs = false;
+  String _iranPairSearchQuery = '';
+  final Map<String, double> _iranLivePrices = {};
 
   // Snapshot
   double? _currentPrice;
@@ -166,6 +179,28 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
             'price': rule.currentDisplayPrice ?? 0.0,
           },
         );
+      } else if (rule.exchangeId == 'iran_market') {
+        _flowType = MarketFlowType.iran;
+        _step = 2;
+        _iranSubTab = 0;
+        _selectedIranDomesticAsset = IranDomesticExchange.predefinedAssets.firstWhere(
+          (s) => s['symbol'] == rule.baseCurrency,
+          orElse: () => {
+            'symbol': rule.baseCurrency,
+            'name': rule.pair.displayName,
+            'nameFa': rule.pair.displayName,
+            'cat': 'Custom',
+            'unit': 'تومان',
+            'price': rule.currentDisplayPrice ?? 0.0,
+          },
+        );
+      } else if (['nobitex', 'wallex', 'ramzinex', 'tabdeal', 'bitbarg', 'tetherland', 'abantether', 'sarmayex', 'exir'].contains(rule.exchangeId)) {
+        _flowType = MarketFlowType.iran;
+        _step = 3;
+        _iranSubTab = 1;
+        _selectedIranExchange = widget.registry.get(rule.exchangeId);
+        _selectedExchange = _selectedIranExchange;
+        _selectedPair = rule.pair;
       } else {
         _flowType = MarketFlowType.crypto;
         _step = 3;
@@ -310,6 +345,48 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
   }
 
   Future<void> _fetchLivePriceForSelectedAsset() async {
+    // 0. Iran Domestic Asset Special Handling (60s Server Cache & Local TGJU)
+    if (_flowType == MarketFlowType.iran && _selectedIranDomesticAsset != null) {
+      final sym = _selectedIranDomesticAsset!['symbol'] as String;
+      final unit = (_selectedIranDomesticAsset!['unit'] as String?) ?? 'TMN';
+      final pair = CurrencyPair(baseCurrency: sym, counterCurrency: unit, marketSymbol: sym);
+
+      setState(() => _isLoadingPrice = true);
+
+      // Local fetch
+      try {
+        final snapshot = await widget.registry.fetchSnapshotFrom('iran_market', pair).timeout(const Duration(seconds: 5));
+        if (snapshot != null && snapshot.price > 0 && mounted) {
+          setState(() {
+            _iranLivePrices[sym] = snapshot.price;
+            _currentPrice = snapshot.price;
+            _targetPriceController.text = _formatSmartNumber(snapshot.price);
+            _preferServerProxy = false;
+            _isLoadingPrice = false;
+          });
+          return;
+        }
+      } catch (_) {}
+
+      // Server fetch with 60s cache
+      try {
+        final serverPrice = await ServerAlertService.fetchPriceViaServer('iran_market', sym);
+        if (serverPrice != null && serverPrice > 0 && mounted) {
+          setState(() {
+            _iranLivePrices[sym] = serverPrice;
+            _currentPrice = serverPrice;
+            _targetPriceController.text = _formatSmartNumber(serverPrice);
+            _preferServerProxy = true;
+            _isLoadingPrice = false;
+          });
+          return;
+        }
+      } catch (_) {}
+
+      if (mounted) setState(() => _isLoadingPrice = false);
+      return;
+    }
+
     if (_selectedPair == null || _selectedExchange == null) return;
     setState(() {
       _isLoadingPrice = true;
@@ -356,6 +433,113 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
     if (mounted) {
       setState(() => _isLoadingPrice = false);
     }
+  }
+
+  Future<void> _onIranDomesticAssetChosen(Map<String, dynamic> asset) async {
+    setState(() {
+      _selectedIranDomesticAsset = asset;
+      _selectedIranExchange = null;
+      _selectedExchange = null;
+      _selectedPair = null;
+      _step = 2;
+      _isLoadingPrice = true;
+      _currentPrice = (asset['price'] as num?)?.toDouble();
+      if (_currentPrice != null && _currentPrice! > 0) {
+        _targetPriceController.text = _formatSmartNumber(_currentPrice!);
+      }
+    });
+
+    final sym = asset['symbol'] as String;
+    final unit = (asset['unit'] as String?) ?? 'TMN';
+    final pair = CurrencyPair(baseCurrency: sym, counterCurrency: unit, marketSymbol: sym);
+
+    // 1. Try local direct fetch
+    try {
+      final snapshot = await widget.registry.fetchSnapshotFrom('iran_market', pair).timeout(const Duration(seconds: 5));
+      if (snapshot != null && snapshot.price > 0 && mounted) {
+        setState(() {
+          _iranLivePrices[sym] = snapshot.price;
+          _currentPrice = snapshot.price;
+          _targetPriceController.text = _formatSmartNumber(snapshot.price);
+          _preferServerProxy = false;
+          _isLoadingPrice = false;
+        });
+        return;
+      }
+    } catch (_) {}
+
+    // 2. Fallback server fetch with 60-second cache
+    try {
+      final serverPrice = await ServerAlertService.fetchPriceViaServer('iran_market', sym);
+      if (serverPrice != null && serverPrice > 0 && mounted) {
+        setState(() {
+          _iranLivePrices[sym] = serverPrice;
+          _currentPrice = serverPrice;
+          _targetPriceController.text = _formatSmartNumber(serverPrice);
+          _preferServerProxy = true;
+          _isLoadingPrice = false;
+        });
+        return;
+      }
+    } catch (_) {}
+
+    if (mounted) {
+      setState(() => _isLoadingPrice = false);
+    }
+  }
+
+  Future<void> _onIranExchangeChosen(Exchange ex) async {
+    setState(() {
+      _selectedIranExchange = ex;
+      _selectedIranDomesticAsset = null;
+      _selectedExchange = ex;
+      _step = 2;
+      _isLoadingIranPairs = true;
+      _iranPairSearchQuery = '';
+    });
+
+    await _fetchPairsForIranExchange();
+  }
+
+  Future<void> _fetchPairsForIranExchange({bool forceRefresh = false}) async {
+    if (_selectedIranExchange == null) return;
+    setState(() => _isLoadingIranPairs = true);
+
+    try {
+      List<CurrencyPair> pairs;
+      if (forceRefresh) {
+        pairs = await widget.registry.refreshCurrencyPairs(_selectedIranExchange!.id);
+      } else {
+        pairs = await widget.registry.getCurrencyPairs(_selectedIranExchange!.id);
+      }
+      if (mounted) {
+        setState(() {
+          _iranExchangePairs = pairs;
+          _isLoadingIranPairs = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        final fallback = CryptoCatalogData.buildPairs(
+          quoteCurrencies: [_selectedIranExchange?.defaultCounterCurrency ?? 'TMN', 'USDT'],
+        );
+        setState(() {
+          _iranExchangePairs = fallback;
+          _isLoadingIranPairs = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _onIranPairChosen(CurrencyPair pair) async {
+    setState(() {
+      _selectedPair = pair;
+      _step = 3;
+      _isLoadingPrice = true;
+      _currentPrice = null;
+    });
+
+    await _fetchLivePriceForSelectedAsset();
   }
 
   Future<void> _onPairChosen(CurrencyPair pair) async {
@@ -459,6 +643,22 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
       if (_selectedExchange == null || _selectedPair == null) return;
       exchangeId = _selectedExchange!.id;
       pair = _selectedPair!;
+    } else if (_flowType == MarketFlowType.iran) {
+      if (_selectedIranDomesticAsset != null) {
+        exchangeId = 'iran_market';
+        final sym = _selectedIranDomesticAsset!['symbol'] as String;
+        final unit = (_selectedIranDomesticAsset!['unit'] as String?) ?? 'TMN';
+        pair = CurrencyPair(
+          baseCurrency: sym,
+          counterCurrency: unit,
+          marketSymbol: sym,
+        );
+      } else if (_selectedIranExchange != null && _selectedPair != null) {
+        exchangeId = _selectedIranExchange!.id;
+        pair = _selectedPair!;
+      } else {
+        return;
+      }
     } else {
       if (_selectedMacroAsset == null) return;
       exchangeId = 'global_stocks';
@@ -647,6 +847,23 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
   void _handleBackNavigation() {
     if (widget.initialRule != null) {
       Navigator.of(context).pop();
+    } else if (_flowType == MarketFlowType.iran) {
+      if (_step == 3) {
+        setState(() => _step = 2);
+      } else if (_step == 2) {
+        setState(() {
+          _selectedIranDomesticAsset = null;
+          _selectedIranExchange = null;
+          _selectedExchange = null;
+          _selectedPair = null;
+          _step = 1;
+        });
+      } else {
+        setState(() {
+          _flowType = MarketFlowType.none;
+          _step = 1;
+        });
+      }
     } else if (_step > 1) {
       setState(() => _step--);
     } else if (_flowType != MarketFlowType.none) {
@@ -687,7 +904,13 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
                 ? AppStrings.get('edit_alert_title', lang)
                 : (_flowType == MarketFlowType.none
                     ? AppStrings.get('choose_market_step', lang)
-                    : (_flowType == MarketFlowType.crypto ? AppStrings.get('crypto_market_title', lang) : AppStrings.get('macro_market_title', lang))),
+                    : (_flowType == MarketFlowType.crypto
+                        ? AppStrings.get('crypto_market_title', lang)
+                        : (_flowType == MarketFlowType.macro
+                            ? AppStrings.get('macro_market_title', lang)
+                            : (_step == 2 && _selectedIranExchange != null
+                                ? '${AppStrings.get('exchange', lang)}: ${_selectedIranExchange!.name}'
+                                : AppStrings.get('iran_market_title', lang))))),
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
           ),
         ),
@@ -703,8 +926,13 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
       if (_step == 1) return _buildCryptoExchangePicker(theme, lang);
       if (_step == 2) return _buildCryptoPairPicker(theme, lang);
       return _buildConditionAndFrequencyStep(theme, lang);
-    } else {
+    } else if (_flowType == MarketFlowType.macro) {
       if (_step == 1) return _buildMacroAssetPicker(theme, lang);
+      return _buildConditionAndFrequencyStep(theme, lang);
+    } else {
+      // MarketFlowType.iran
+      if (_step == 1) return _buildIranMarketPicker(theme, lang);
+      if (_step == 2 && _selectedIranExchange != null) return _buildIranCryptoPairPicker(theme, lang);
       return _buildConditionAndFrequencyStep(theme, lang);
     }
   }
@@ -743,17 +971,17 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
         ),
         const SizedBox(height: 24),
 
-        // CARD 1: CRYPTO MARKET
+        // CARD 1: INTERNATIONAL CRYPTO MARKET (Exclusively Global)
         _buildMarketCard(
           theme: theme,
-          icon: Icons.bolt_rounded,
+          icon: Icons.public_rounded,
           iconBg: theme.colorScheme.primary.withValues(alpha: 0.15),
           iconColor: theme.colorScheme.primary,
           borderColor: theme.colorScheme.primary.withValues(alpha: 0.35),
           badgeText: AppStrings.get('crypto_market_badge', lang),
           title: AppStrings.get('crypto_market_title', lang),
           description: AppStrings.get('crypto_market_desc', lang),
-          tags: ['Binance', 'Nobitex', 'KuCoin', 'Wallex', 'CoinGecko'],
+          tags: ['Binance', 'Bybit', 'OKX', 'KuCoin', 'MEXC', 'Gate.io'],
           buttonText: AppStrings.get('crypto_market_cta', lang),
           buttonColor: theme.colorScheme.primary,
           onTap: () {
@@ -766,7 +994,7 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
 
         const SizedBox(height: 18),
 
-        // CARD 2: US STOCKS, BONDS & FOREX
+        // CARD 2: GLOBAL STOCKS, BONDS & FOREX
         _buildMarketCard(
           theme: theme,
           icon: Icons.account_balance_rounded,
@@ -776,13 +1004,37 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
           badgeText: AppStrings.get('macro_market_badge', lang),
           title: AppStrings.get('macro_market_title', lang),
           description: AppStrings.get('macro_market_desc', lang),
-          tags: ['US10Y', 'EUR/USD', 'NVDA', 'Gold (XAU)', 'S&P 500'],
+          tags: ['NVDA', 'Apple', 'Gold (XAU)', 'EUR/USD', 'S&P 500', 'US10Y'],
           buttonText: AppStrings.get('macro_market_cta', lang),
           buttonColor: theme.colorScheme.secondary,
           onTap: () {
             setState(() {
               _flowType = MarketFlowType.macro;
               _step = 1;
+            });
+          },
+        ),
+
+        const SizedBox(height: 18),
+
+        // CARD 3: IRAN DOMESTIC & TOMAN MARKET (Dedicated 2-Part Hub)
+        _buildMarketCard(
+          theme: theme,
+          icon: Icons.monetization_on_rounded,
+          iconBg: const Color(0xFFFFB300).withValues(alpha: 0.15),
+          iconColor: const Color(0xFFFFB300),
+          borderColor: const Color(0xFFFFB300).withValues(alpha: 0.4),
+          badgeText: AppStrings.get('iran_market_badge', lang),
+          title: AppStrings.get('iran_market_title', lang),
+          description: AppStrings.get('iran_market_desc', lang),
+          tags: ['دلار آزاد', 'طلای ۱۸ عیار', 'سکه امامی', 'نوبیتکس', 'والکس', 'تبدیل', 'تترلند'],
+          buttonText: AppStrings.get('iran_market_cta', lang),
+          buttonColor: const Color(0xFFFFB300),
+          onTap: () {
+            setState(() {
+              _flowType = MarketFlowType.iran;
+              _step = 1;
+              _iranSubTab = 0;
             });
           },
         ),
@@ -902,7 +1154,16 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
   }
 
   Widget _buildCryptoExchangePicker(ThemeData theme, String lang) {
-    final allExchanges = widget.registry.getAll().where((ex) => ex.id != 'global_stocks').toList();
+    const iranExchangeIds = {
+      'iran_market', 'nobitex', 'wallex', 'ramzinex', 'tabdeal', 'bitbarg',
+      'tetherland', 'abantether', 'sarmayex', 'exir'
+    };
+    final allExchanges = widget.registry.getAll().where((ex) {
+      if (ex.id == 'global_stocks' || iranExchangeIds.contains(ex.id)) return false;
+      if (ex.category == ExchangeCategory.middleEast || ex.defaultCounterCurrency == 'TMN') return false;
+      return true;
+    }).toList();
+
     final filtered = allExchanges.where((ex) {
       if (_selectedCategory != ExchangeCategory.all && ex.category != _selectedCategory) {
         return false;
@@ -1349,23 +1610,566 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
     );
   }
 
+  
+  // =========================================================================
+  // IRAN MARKET HUB (2 SECTIONS: 1. GOLD/COINS/FREE FX, 2. IRANIAN CRYPTO)
+  // =========================================================================
+  Widget _buildIranMarketPicker(ThemeData theme, String lang) {
+    return Column(
+      children: [
+        // Sub-Tab Switcher (Segmented Selector)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: Container(
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: theme.dividerColor),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: InkWell(
+                    onTap: () => setState(() => _iranSubTab = 0),
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        color: _iranSubTab == 0
+                            ? const Color(0xFFFFB300).withValues(alpha: 0.2)
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(12),
+                        border: _iranSubTab == 0
+                            ? Border.all(color: const Color(0xFFFFB300), width: 1.5)
+                            : null,
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        AppStrings.get('iran_subtab_domestic', lang),
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: _iranSubTab == 0 ? FontWeight.w900 : FontWeight.w600,
+                          color: _iranSubTab == 0
+                              ? const Color(0xFFFFB300)
+                              : theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: InkWell(
+                    onTap: () => setState(() => _iranSubTab = 1),
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        color: _iranSubTab == 1
+                            ? theme.colorScheme.primary.withValues(alpha: 0.2)
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(12),
+                        border: _iranSubTab == 1
+                            ? Border.all(color: theme.colorScheme.primary, width: 1.5)
+                            : null,
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        AppStrings.get('iran_subtab_crypto', lang),
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: _iranSubTab == 1 ? FontWeight.w900 : FontWeight.w600,
+                          color: _iranSubTab == 1
+                              ? theme.colorScheme.primary
+                              : theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        // Live Cache Status Banner
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFB300).withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFFFFB300).withValues(alpha: 0.2)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.bolt_rounded, size: 14, color: Color(0xFFFFB300)),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    '⚡ نرخ‌های زنده بازار تهران و صرافی‌ها مستقیماً با کش هوشمند ۶۰ ثانیه سرور پایش می‌شوند.',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        // Section Body
+        Expanded(
+          child: _iranSubTab == 0
+              ? _buildIranDomesticSubTab(theme, lang)
+              : _buildIranCryptoExchangesSubTab(theme, lang),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildIranDomesticSubTab(ThemeData theme, String lang) {
+    final allAssets = IranDomesticExchange.predefinedAssets;
+    final filtered = allAssets.where((a) {
+      if (_iranCategoryFilter != 'all') {
+        if (a['cat'] != _iranCategoryFilter) return false;
+      }
+      final q = _iranSearchQuery.trim().toLowerCase();
+      if (q.isEmpty) return true;
+      final sym = (a['symbol'] as String).toLowerCase();
+      final name = (a['name'] as String).toLowerCase();
+      final nameFa = (a['nameFa'] as String).toLowerCase();
+      return sym.contains(q) || name.contains(q) || nameFa.contains(q);
+    }).toList();
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          child: TextField(
+            onChanged: (val) => setState(() => _iranSearchQuery = val),
+            style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurface),
+            decoration: InputDecoration(
+              hintText: AppStrings.get('iran_search_domestic_hint', lang),
+              prefixIcon: Icon(Icons.search, size: 20, color: theme.colorScheme.onSurface.withValues(alpha: 0.5)),
+              filled: true,
+              fillColor: theme.colorScheme.surface,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: theme.dividerColor)),
+            ),
+          ),
+        ),
+
+        // Category Filter Chips in Persian
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: [
+              _buildIranChip(AppStrings.get('iran_cat_all', lang), 'all', theme),
+              _buildIranChip(AppStrings.get('iran_cat_gold', lang), 'Gold', theme),
+              _buildIranChip(AppStrings.get('iran_cat_coins', lang), 'Coins', theme),
+              _buildIranChip(AppStrings.get('iran_cat_currencies', lang), 'Currencies', theme),
+              _buildIranChip(AppStrings.get('iran_cat_official', lang), 'Official', theme),
+              _buildIranChip(AppStrings.get('iran_cat_bourse', lang), 'Bourse', theme),
+            ],
+          ),
+        ),
+
+        Expanded(
+          child: ListView.separated(
+            padding: const EdgeInsets.all(16),
+            itemCount: filtered.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 8),
+            itemBuilder: (context, index) {
+              final asset = filtered[index];
+              final sym = asset['symbol'] as String;
+              final unit = (asset['unit'] as String?) ?? 'تومان';
+              final livePrice = _iranLivePrices[sym] ?? (asset['price'] as num?)?.toDouble();
+              final displayName = asset['nameFa'] as String? ?? asset['name'] as String;
+              final iconStr = asset['icon']?.toString() ?? '🪙';
+
+              return InkWell(
+                onTap: () => _onIranDomesticAssetChosen(asset),
+                borderRadius: BorderRadius.circular(14),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surface,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: theme.dividerColor),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFB300).withValues(alpha: 0.12),
+                          shape: BoxShape.circle,
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          iconStr,
+                          style: const TextStyle(fontSize: 20),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              displayName,
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: theme.colorScheme.onSurface),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '$sym · ${asset['cat'] ?? ''}',
+                              style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurface.withValues(alpha: 0.55)),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            livePrice != null ? _formatSmartPrice(livePrice, unit) : '—',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                              fontFamily: 'monospace',
+                              color: const Color(0xFFFFB300),
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            AppStrings.get('select_cta', lang),
+                            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFFFFB300)),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildIranChip(String label, String catKey, ThemeData theme) {
+    final isSelected = _iranCategoryFilter == catKey;
+    return Padding(
+      padding: const EdgeInsets.only(right: 6, bottom: 6),
+      child: FilterChip(
+        selected: isSelected,
+        label: Text(label),
+        labelStyle: TextStyle(
+          fontSize: 11,
+          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+          color: isSelected ? const Color(0xFFFFB300) : theme.colorScheme.onSurface.withValues(alpha: 0.7),
+        ),
+        selectedColor: const Color(0xFFFFB300).withValues(alpha: 0.15),
+        backgroundColor: theme.colorScheme.surface,
+        side: BorderSide(color: isSelected ? const Color(0xFFFFB300) : theme.dividerColor),
+        onSelected: (_) => setState(() => _iranCategoryFilter = catKey),
+      ),
+    );
+  }
+
+  Widget _buildIranCryptoExchangesSubTab(ThemeData theme, String lang) {
+    const iranExchangeIds = [
+      'nobitex', 'wallex', 'tabdeal', 'ramzinex', 'tetherland', 'bitbarg',
+      'abantether', 'sarmayex', 'exir'
+    ];
+    final iranExchanges = iranExchangeIds
+        .map((id) => widget.registry.get(id))
+        .whereType<Exchange>()
+        .toList();
+
+    final filtered = iranExchanges.where((ex) {
+      final q = _exchangeSearchQuery.trim().toLowerCase();
+      if (q.isEmpty) return true;
+      return ex.name.toLowerCase().contains(q) || ex.id.toLowerCase().contains(q);
+    }).toList();
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          child: TextField(
+            onChanged: (val) => setState(() => _exchangeSearchQuery = val),
+            style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurface),
+            decoration: InputDecoration(
+              hintText: AppStrings.get('iran_search_exchange_hint', lang),
+              prefixIcon: Icon(Icons.search, size: 20, color: theme.colorScheme.onSurface.withValues(alpha: 0.5)),
+              filled: true,
+              fillColor: theme.colorScheme.surface,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: theme.dividerColor)),
+            ),
+          ),
+        ),
+        Expanded(
+          child: ListView.separated(
+            padding: const EdgeInsets.all(16),
+            itemCount: filtered.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 8),
+            itemBuilder: (context, index) {
+              final ex = filtered[index];
+              return InkWell(
+                onTap: () => _onIranExchangeChosen(ex),
+                borderRadius: BorderRadius.circular(14),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surface,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: theme.dividerColor),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 38,
+                        height: 38,
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                          shape: BoxShape.circle,
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          ex.name.substring(0, 1).toUpperCase(),
+                          style: TextStyle(fontWeight: FontWeight.bold, color: theme.colorScheme.primary),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(ex.name, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: theme.colorScheme.onSurface)),
+                            const SizedBox(height: 2),
+                            Text(
+                              '🇮🇷 صرافی ایرانی · تسویه ${ex.defaultCounterCurrency}',
+                              style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurface.withValues(alpha: 0.55)),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(Icons.arrow_forward_ios_rounded, size: 14, color: theme.colorScheme.onSurface.withValues(alpha: 0.4)),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildIranCryptoPairPicker(ThemeData theme, String lang) {
+    final filtered = SymbolFilterHelper.filterAndSort(_iranExchangePairs, _iranPairSearchQuery);
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surface,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: theme.dividerColor),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Text(
+                    '${AppStrings.get('exchange', lang)}: ${_selectedIranExchange?.name} (${_iranExchangePairs.length} ${AppStrings.get('pair', lang)})',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: theme.colorScheme.onSurface),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                ElevatedButton.icon(
+                  onPressed: _isLoadingIranPairs ? null : () => _fetchPairsForIranExchange(forceRefresh: true),
+                  icon: _isLoadingIranPairs
+                      ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Icon(Icons.sync_rounded, size: 14),
+                  label: Text(AppStrings.get('refresh_list', lang), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: theme.colorScheme.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: TextField(
+            onChanged: (val) => setState(() => _iranPairSearchQuery = val),
+            style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurface),
+            decoration: InputDecoration(
+              hintText: AppStrings.get('iran_search_crypto_pair_hint', lang),
+              prefixIcon: Icon(Icons.search, size: 20, color: theme.colorScheme.onSurface.withValues(alpha: 0.5)),
+              filled: true,
+              fillColor: theme.colorScheme.surface,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: theme.dividerColor)),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+
+        Expanded(
+          child: _isLoadingIranPairs
+              ? Center(child: CircularProgressIndicator(color: theme.colorScheme.primary))
+              : (filtered.isEmpty
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.search_off_rounded, size: 48, color: theme.colorScheme.onSurface.withValues(alpha: 0.3)),
+                            const SizedBox(height: 12),
+                            Text(
+                              'نماد مورد نظر یافت نشد',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: theme.colorScheme.onSurface),
+                            ),
+                            if (_iranPairSearchQuery.trim().isNotEmpty) ...[
+                              const SizedBox(height: 16),
+                              ElevatedButton.icon(
+                                onPressed: () {
+                                  final base = _iranPairSearchQuery.trim().toUpperCase();
+                                  final quote = _selectedIranExchange?.defaultCounterCurrency ?? 'TMN';
+                                  _onIranPairChosen(CurrencyPair(
+                                    baseCurrency: base,
+                                    counterCurrency: quote,
+                                    marketSymbol: '$base$quote',
+                                  ));
+                                },
+                                icon: const Icon(Icons.add_circle_outline_rounded, size: 18),
+                                label: Text(
+                                  'پایش دستی ${_iranPairSearchQuery.trim().toUpperCase()} / ${_selectedIranExchange?.defaultCounterCurrency ?? "TMN"}',
+                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: theme.colorScheme.primary,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    )
+                  : ListView.separated(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: filtered.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 8),
+                      itemBuilder: (context, index) {
+                        final pair = filtered[index];
+                        final fullName = CryptoIcons.getName(pair.baseCurrency);
+                        return InkWell(
+                          onTap: () => _onIranPairChosen(pair),
+                          borderRadius: BorderRadius.circular(14),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.surface,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: theme.dividerColor),
+                            ),
+                            child: Row(
+                              children: [
+                                CryptoIcons.buildLogo(pair.baseCurrency, size: 36),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        pair.displayName,
+                                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: theme.colorScheme.onSurface),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        fullName,
+                                        style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurface.withValues(alpha: 0.55)),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    AppStrings.get('select_cta', lang),
+                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: theme.colorScheme.primary),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    )),
+        ),
+      ],
+    );
+  }
+
   Widget _buildConditionAndFrequencyStep(ThemeData theme, String lang) {
     final isFa = lang == 'fa' || lang == 'ar' || lang == 'ckb';
     final String assetName;
+    final String quoteCurrency;
+    final String? exchangeDisplayName;
+
     if (_flowType == MarketFlowType.crypto) {
       assetName = _selectedPair?.displayName ?? '';
+      quoteCurrency = _selectedPair?.counterCurrency ?? 'USDT';
+      exchangeDisplayName = _selectedExchange?.name;
+    } else if (_flowType == MarketFlowType.iran) {
+      if (_selectedIranDomesticAsset != null) {
+        assetName = (_selectedIranDomesticAsset!['nameFa'] as String?) ?? (_selectedIranDomesticAsset!['name'] as String? ?? '');
+        quoteCurrency = (_selectedIranDomesticAsset!['unit'] as String?) ?? 'تومان';
+        exchangeDisplayName = '🇮🇷 بازار تهران (تومان)';
+      } else {
+        assetName = _selectedPair?.displayName ?? '';
+        quoteCurrency = _selectedPair?.counterCurrency ?? 'TMN';
+        exchangeDisplayName = _selectedIranExchange?.name;
+      }
     } else {
       final macro = _selectedMacroAsset;
       if (macro != null) {
         assetName = (isFa ? macro['nameFa'] : macro['name']) as String? ?? '';
+        quoteCurrency = (macro['unit'] as String?) ?? 'USD';
       } else {
         assetName = '';
+        quoteCurrency = 'USD';
       }
+      exchangeDisplayName = '🏛️ بازارهای جهانی';
     }
-
-    final quoteCurrency = _flowType == MarketFlowType.crypto
-        ? (_selectedPair?.counterCurrency ?? 'USDT')
-        : (_selectedMacroAsset?['unit'] as String? ?? 'USD');
 
     return ListView(
       padding: const EdgeInsets.all(20),
@@ -1418,16 +2222,24 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
                               ),
                             ),
                             const SizedBox(width: 8),
-                            if (_selectedExchange != null)
+                            if (exchangeDisplayName != null)
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                 decoration: BoxDecoration(
-                                  color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                                  color: _flowType == MarketFlowType.iran
+                                      ? const Color(0xFFFFB300).withValues(alpha: 0.15)
+                                      : theme.colorScheme.primary.withValues(alpha: 0.12),
                                   borderRadius: BorderRadius.circular(6),
                                 ),
                                 child: Text(
-                                  _selectedExchange!.name,
-                                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: theme.colorScheme.primary),
+                                  exchangeDisplayName,
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                    color: _flowType == MarketFlowType.iran
+                                        ? const Color(0xFFFFB300)
+                                        : theme.colorScheme.primary,
+                                  ),
                                 ),
                               ),
                           ],
