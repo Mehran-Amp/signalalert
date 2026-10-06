@@ -1518,7 +1518,19 @@ async def test_push_notification(fcm_token: Optional[str] = None, title: Optiona
         fcm_token=token_to_use,
         title=test_title,
         body=test_body,
-        data_payload={"type": "test_ping", "timestamp": str(time.time()), "source": "api_test_endpoint"}
+        data_payload={
+            "alert_id": f"test_ping_{int(time.time())}",
+            "symbol": "BTC/USDT",
+            "price": "68500",
+            "note": "تست اتصال زنده سرور",
+            "sound_enabled": "true",
+            "vibration_enabled": "true",
+            "tts_enabled": "true",
+            "sound": "alarm_siren",
+            "type": "test_ping",
+            "timestamp": str(time.time()),
+            "source": "api_test_endpoint"
+        }
     )
 
     return {
