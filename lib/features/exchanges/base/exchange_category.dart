@@ -3,6 +3,7 @@ import '../../../core/localization/app_strings.dart';
 enum ExchangeCategory {
   all,
   tier1,
+  iran,
   middleEast,
   asia,
   europe,
@@ -17,6 +18,8 @@ extension ExchangeCategoryExt on ExchangeCategory {
         return AppStrings.get('cat_all_exchanges', lang);
       case ExchangeCategory.tier1:
         return AppStrings.get('cat_tier1', lang);
+      case ExchangeCategory.iran:
+        return AppStrings.get('cat_iran', lang);
       case ExchangeCategory.middleEast:
         return AppStrings.get('cat_middle_east', lang);
       case ExchangeCategory.asia:
@@ -40,8 +43,10 @@ extension ExchangeCategoryExt on ExchangeCategory {
         return '🌐';
       case ExchangeCategory.tier1:
         return '⭐';
-      case ExchangeCategory.middleEast:
+      case ExchangeCategory.iran:
         return '🇮🇷';
+      case ExchangeCategory.middleEast:
+        return '🕌';
       case ExchangeCategory.asia:
         return '⛩️';
       case ExchangeCategory.europe:

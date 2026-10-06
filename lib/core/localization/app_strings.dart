@@ -11,6 +11,7 @@ class AppStrings {
   static final Map<String, Map<String, String>> _translations = {
     // 1. FARSI / PERSIAN (فارسی - RTL)
     'fa': {
+      'cat_iran': 'ایران و بازار داخلی',
       'crypto_market_title': '⚡ بازار رمزارزهای بین‌المللی',
       'crypto_market_badge': 'صرافی‌های جهانی و دلاری',
       'crypto_market_desc': 'صرافی‌های معتبر بین‌المللی (بایننس، کوکوین، اوکی‌اکس، بای‌بیت، مکسی و...) با دسترسی به هزاران جفت‌ارز دلاری و تتری',
@@ -216,6 +217,7 @@ class AppStrings {
 
     // 2. ENGLISH (English - LTR)
     'en': {
+      'cat_iran': 'Iran & Domestic Market',
       'crypto_market_title': '⚡ International Crypto Market',
       'crypto_market_badge': 'Global & USD/USDT Exchanges',
       'crypto_market_desc': 'Top global exchanges (Binance, Bybit, OKX, KuCoin, MEXC, Coinbase, etc.) with thousands of USD/USDT pairs.',
@@ -421,6 +423,7 @@ class AppStrings {
 
     // 3. KURDISH SORANI (کوردی سۆرانی - RTL)
     'ckb': {
+      'cat_iran': 'ئێران و بازاڕی ناوخۆ',
       'crypto_market_title': '⚡ بازاڕی کریپتۆی نێودەوڵەتی',
       'crypto_market_badge': 'ئاڵوگۆڕە جیهانییەکان بە دۆلار',
       'crypto_market_desc': 'ئاڵوگۆڕە نێودەوڵەتییە باوەڕپێکراوەکان (باینانس، بای‌بیت، ئۆکەی‌ئێکس، کوکۆین، مێکسی و...) بە هەزاران جووتەدراو.',
@@ -626,6 +629,7 @@ class AppStrings {
 
     // 4. ARABIC (العربية - RTL)
     'ar': {
+      'cat_iran': 'إيران والسوق المحلي',
       'crypto_market_title': '⚡ سوق العملات المشفرة الدولي',
       'crypto_market_badge': 'منصات عالمية بالدولار وUSDT',
       'crypto_market_desc': 'أفضل المنصات العالمية (Binance, Bybit, OKX, KuCoin, MEXC) مع آلاف أزواج العملات.',
@@ -831,6 +835,7 @@ class AppStrings {
 
     // 5. TURKISH (Türkçe - LTR)
     'tr': {
+      'cat_iran': 'İran ve İç Piyasa',
       'crypto_market_title': '⚡ Uluslararası Kripto Piyasası',
       'crypto_market_badge': 'Küresel ve USD/USDT Borsaları',
       'crypto_market_desc': 'Binance, Bybit, OKX, KuCoin, MEXC gibi binlerce pariteye sahip küresel borsalar.',
@@ -1036,6 +1041,7 @@ class AppStrings {
 
     // 6. GERMAN (Deutsch - LTR)
     'de': {
+      'cat_iran': 'Iran & Inlandsmarkt',
       'crypto_market_title': '⚡ Internationaler Krypto-Markt',
       'crypto_market_badge': 'Globale & USD/USDT Börsen',
       'crypto_market_desc': 'Führende globale Krypto-Börsen (Binance, Bybit, OKX, KuCoin) mit Tausenden von Paaren.',
@@ -1241,6 +1247,7 @@ class AppStrings {
 
     // 7. SPANISH (Español - LTR)
     'es': {
+      'cat_iran': 'Irán y Mercado Doméstico',
       'crypto_market_title': '⚡ Mercado Cripto Internacional',
       'crypto_market_badge': 'Exchanges Globales y USD/USDT',
       'crypto_market_desc': 'Exchanges globales líderes (Binance, Bybit, OKX, KuCoin) con miles de pares.',
@@ -1446,6 +1453,7 @@ class AppStrings {
 
     // 8. FRENCH (Français - LTR)
     'fr': {
+      'cat_iran': 'Iran & Marché Intérieur',
       'crypto_market_title': '⚡ Marché Crypto International',
       'crypto_market_badge': 'Échanges Mondiaux & USD/USDT',
       'crypto_market_desc': 'Principaux échanges mondiaux (Binance, Bybit, OKX, KuCoin) avec des milliers de paires.',
@@ -1651,6 +1659,7 @@ class AppStrings {
 
     // 9. RUSSIAN (Русский - LTR)
     'ru': {
+      'cat_iran': 'Иран и Внутренний Рынок',
       'crypto_market_title': '⚡ Международный Крипторынок',
       'crypto_market_badge': 'Глобальные биржи USD/USDT',
       'crypto_market_desc': 'Ведущие мировые биржи (Binance, Bybit, OKX, KuCoin) с тысячами торговых пар.',
@@ -1856,6 +1865,7 @@ class AppStrings {
 
     // 10. CHINESE (中文 - LTR)
     'zh': {
+      'cat_iran': '伊朗与本土市场',
       'crypto_market_title': '⚡ 国际加密货币市场',
       'crypto_market_badge': '全球顶级 USD/USDT 交易所',
       'crypto_market_desc': '全球主流交易所（Binance、Bybit、OKX、KuCoin 等），涵盖数千个交易对。',
