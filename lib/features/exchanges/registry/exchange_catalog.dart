@@ -298,12 +298,9 @@ class ExchangeCatalog {
     ];
   }
 
-  /// Combined crypto exchanges (Domestic + International)
+  /// Combined crypto exchanges (Strictly International & Global)
   static List<Exchange> buildCryptoExchanges() {
-    return <Exchange>[
-      ...buildIranCryptoExchanges(),
-      ...buildInternationalCryptoExchanges(),
-    ];
+    return buildInternationalCryptoExchanges();
   }
 
   /// Combined catalog containing all market providers and crypto exchanges

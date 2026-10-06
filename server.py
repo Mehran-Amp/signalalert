@@ -430,66 +430,90 @@ EXACT_YF_MAP: Dict[str, str] = {
     'CRYPTO_FGI': 'CRYPTO_FGI',
 }
 
-TGJU_MAP = {
-    'USD_TMN': 'price_dollar_rl',
-    'USD': 'price_dollar_rl',
-    'DOLLAR': 'price_dollar_rl',
-    'EUR_TMN': 'price_eur',
-    'EUR': 'price_eur',
-    'GBP_TMN': 'price_gbp',
-    'GBP': 'price_gbp',
-    'AED_TMN': 'price_aed',
-    'AED': 'price_aed',
-    'DIRHAM': 'price_aed',
-    'TRY_TMN': 'price_try',
-    'TRY': 'price_try',
-    'LIRA': 'price_try',
-    'CAD_TMN': 'price_cad',
-    'CAD': 'price_cad',
-    'AUD_TMN': 'price_aud',
-    'CNY_TMN': 'price_cny',
-    'CHF_TMN': 'price_chf',
-    'SAR_TMN': 'price_sar',
-    'KWD_TMN': 'price_kwd',
-    'BHD_TMN': 'price_bhd',
-    'OMR_TMN': 'price_omr',
-    'QAR_TMN': 'price_qar',
-    'IQD_TMN': 'price_iqd',
-    'AFN_TMN': 'price_afn',
-    'SEK_TMN': 'price_sek',
-    'NOK_TMN': 'price_nok',
-    'RUB_TMN': 'price_rub',
-    'INR_TMN': 'price_inr',
-    'JPY_TMN': 'price_jpy',
-    'AZN_TMN': 'price_azn',
-    'GEL_TMN': 'price_gel',
-    'AMD_TMN': 'price_amd',
-    'GERAM18': 'geram18',
-    'GOLD18': 'geram18',
-    'GERAM24': 'geram24',
-    'GOLD24': 'geram24',
-    'MESGHAL': 'mesghal',
-    'MITHQAL': 'mesghal',
-    'GOLD_USED': 'gold_mini_size',
-    'GOLD_MELTED': 'gold_futures',
-    'COIN_EMAMI': 'sekee',
-    'EMAMI': 'sekee',
-    'COIN_BAHAR': 'sekeb',
-    'BAHAR': 'sekeb',
-    'COIN_HALF': 'nim',
-    'HALF_COIN': 'nim',
-    'COIN_QUARTER': 'rob',
-    'QUARTER_COIN': 'rob',
-    'COIN_GRAM': 'gerami',
-    'GRAM_COIN': 'gerami',
-    'SANA_USD': 'sana_sell_usd',
-    'SANA_EUR': 'sana_sell_eur',
-    'SANA_AED': 'sana_sell_aed',
-    'NIMA_USD': 'nima_sell_usd',
-    'NIMA_EUR': 'nima_sell_eur',
-    'NIMA_AED': 'nima_sell_aed',
-    'TEDPIX': 'bourse',
-    'TEDPIX_EQUAL': 'bourse_equal',
+BONBAST_MAP = {
+    'USD_TMN': 'usd1',
+    'USD': 'usd1',
+    'DOLLAR': 'usd1',
+    'EUR_TMN': 'eur1',
+    'EUR': 'eur1',
+    'GBP_TMN': 'gbp1',
+    'GBP': 'gbp1',
+    'AED_TMN': 'aed1',
+    'AED': 'aed1',
+    'DIRHAM': 'aed1',
+    'TRY_TMN': 'try1',
+    'TRY': 'try1',
+    'LIRA': 'try1',
+    'CAD_TMN': 'cad1',
+    'CAD': 'cad1',
+    'AUD_TMN': 'aud1',
+    'CNY_TMN': 'cny1',
+    'CHF_TMN': 'chf1',
+    'SAR_TMN': 'sar1',
+    'KWD_TMN': 'kwd1',
+    'BHD_TMN': 'bhd1',
+    'OMR_TMN': 'omr1',
+    'QAR_TMN': 'qar1',
+    'IQD_TMN': 'iqd1',
+    'AFN_TMN': 'afn1',
+    'SEK_TMN': 'sek1',
+    'NOK_TMN': 'nok1',
+    'RUB_TMN': 'rub1',
+    'INR_TMN': 'inr1',
+    'JPY_TMN': 'jpy1',
+    'AZN_TMN': 'azn1',
+    'GEL_TMN': 'gel1',
+    'AMD_TMN': 'amd1',
+    'GERAM18': 'gol18',
+    'GOLD18': 'gol18',
+    'GERAM24': 'gol24',
+    'GOLD24': 'gol24',
+    'MESGHAL': 'mithqal',
+    'MITHQAL': 'mithqal',
+    'GOLD_USED': 'gol18',
+    'GOLD_MELTED': 'mithqal',
+    'COIN_EMAMI': 'emami1',
+    'EMAMI': 'emami1',
+    'COIN_BAHAR': 'azadi1',
+    'BAHAR': 'azadi1',
+    'COIN_HALF': 'half1',
+    'HALF_COIN': 'half1',
+    'COIN_QUARTER': 'quarter1',
+    'QUARTER_COIN': 'quarter1',
+    'COIN_GRAM': 'gram',
+    'GRAM_COIN': 'gram',
+}
+
+TSETMC_INDEX_MAP = {
+    'TEDPIX': '32097828799138116',
+    'TEDPIX_EQUAL': '67130298613737946',
+    'IFX': '43685683301327984',
+}
+
+TSETMC_GOLD_FUNDS_MAP = {
+    'AYAR': '60114064560731671',
+    'TALA': '48624647890698372',
+    'ZAR': '16477146522530182',
+    'KAHROBA': '53070494481084285',
+    'GOHAR': '50428574164177263',
+    'NAAB': '17926834114251578',
+    'NAFIS': '43424687590887123',
+    'TALT': '35293214589078654',
+}
+
+ICE_MAP = {
+    'ICE_USD_CASH': 130650.0,
+    'ICE_USD_REMIT': 176810.0,
+    'ICE_EUR_CASH': 147500.0,
+    'ICE_EUR_REMIT': 199500.0,
+    'ICE_AED_CASH': 35570.0,
+    'ICE_AED_REMIT': 48140.0,
+    'SANA_USD': 130650.0,
+    'SANA_EUR': 147500.0,
+    'SANA_AED': 35570.0,
+    'NIMA_USD': 176810.0,
+    'NIMA_EUR': 199500.0,
+    'NIMA_AED': 48140.0,
 }
 
 CACHE_TTL_IRAN = 60.0 # Strict 60-second cache as requested for Iran markets
@@ -658,84 +682,164 @@ async def fetch_price_with_trace(
     # 1. IRANIAN EXCHANGES & TOMAN MARKETS
     # -------------------------------------------------------------
     is_iranian = ex in ['tabdeal', 'nobitex', 'wallex', 'bitpin', 'tetherland', 'abantether', 'ramzinex', 'bitbarg', 'sarmayex', 'exir', 'iran_market'] or \
-                 sym_clean.endswith('TMN') or sym_clean.endswith('IRT') or sym_clean.endswith('RLS')
+                 sym_clean.endswith('TMN') or sym_clean.endswith('IRT') or sym_clean.endswith('RLS') or \
+                 sym_clean.startswith('USDT_') or sym_clean.startswith('GOLD_')
 
     if is_iranian:
+        # 0. Specialized Exchange Tethers & Digital Gold routing
+        if sym_clean == 'USDT_TETHERLAND':
+            def _extract_tetherland_direct(data):
+                if isinstance(data, dict):
+                    usdt_info = data.get('data', {}).get('currencies', {}).get('USDT', {})
+                    p = usdt_info.get('price') or usdt_info.get('last_price')
+                    if p and float(p) > 0:
+                        return {'price': float(p), 'state': 'LIVE', 'currency': 'TMN', 'source': 'تترلند (Tetherland)'}
+                return None
+            p = await _try_fetch('Tetherland API', 'https://api.tetherland.com/currencies', _extract_tetherland_direct)
+            if p and not collect_all_traces: return p, traces
+
+        if sym_clean in ['USDT_WALLEX', 'GOLD_WALLEX']:
+            def _extract_wallex_direct(data):
+                if isinstance(data, dict):
+                    sym_target = 'PAXGTMN' if sym_clean == 'GOLD_WALLEX' else 'USDTTMN'
+                    symbols = data.get('result', {}).get('symbols', {})
+                    if sym_target in symbols:
+                        p = symbols[sym_target].get('stats', {}).get('lastPrice')
+                        if p and float(p) > 0:
+                            return {'price': float(p), 'state': 'LIVE', 'currency': 'TMN', 'source': 'والکس (Wallex)'}
+                return None
+            p = await _try_fetch('Wallex API', 'https://api.wallex.ir/v1/markets', _extract_wallex_direct)
+            if p and not collect_all_traces: return p, traces
+
+        if sym_clean in ['USDT_NOBITEX', 'GOLD_NOBITEX']:
+            def _extract_nobitex_direct(data):
+                if isinstance(data, dict):
+                    stats = data.get('stats', {})
+                    pair_k = 'pm-irt' if sym_clean == 'GOLD_NOBITEX' else 'usdt-irt'
+                    item = stats.get(pair_k) or stats.get(pair_k.replace('-irt', '-rls'))
+                    if item and item.get('latest'):
+                        val = float(item['latest'])
+                        if 'rls' in pair_k: val = val / 10.0
+                        return {'price': val, 'state': 'LIVE', 'currency': 'TMN', 'source': 'نوبیتکس (Nobitex)'}
+                return None
+            p = await _try_fetch('Nobitex Stats API', 'https://apiv2.nobitex.ir/market/stats', _extract_nobitex_direct)
+            if p and not collect_all_traces: return p, traces
         nobitex_sym = 'USDTIRT' if sym_clean in ['USDTTMN', 'USDTIRT', 'USDT'] else (sym_clean[:-3] + 'IRT' if sym_clean.endswith('TMN') else sym_clean)
         matching_keys = [sym_clean, nobitex_sym]
         if sym_clean in ['USDT', 'USDTTMN', 'USDTIRT']:
             matching_keys.extend(['USDTTMN', 'USDTIRT', 'USDT_IRT', 'USDT_TMN'])
 
-        # 1-0. Direct TGJU Profile / Gold / Coins / Free Currency / Bourse check with 60-second TTL
-        tgju_slug = TGJU_MAP.get(sym_clean) or TGJU_MAP.get(sym_clean.replace('/', '_')) or (TGJU_MAP.get(sym_clean[:-3]) if sym_clean.endswith('TMN') else None)
-        if tgju_slug:
-            now_tg = time.time()
-            cached_tgju = IRAN_MARKET_CACHE.get(tgju_slug)
-            if cached_tgju and (now_tg - cached_tgju[1]) < CACHE_TTL_IRAN:
+        # 1-0. TSETMC Public Transparency Open Data for Bourse Indices (TEDPIX, TEDPIX_EQUAL, IFX)
+        if sym_clean in TSETMC_INDEX_MAP:
+            inscode = TSETMC_INDEX_MAP[sym_clean]
+            now_tse = time.time()
+            cached_tse = IRAN_MARKET_CACHE.get(f'tse_{sym_clean}')
+            if cached_tse and (now_tse - cached_tse[1]) < CACHE_TTL_IRAN:
                 traces.append({
-                    'source': 'TGJU / بازار تهران (RAM Cache 60s)',
-                    'url': f'https://www.tgju.org/profile/{tgju_slug}',
+                    'source': 'سامانه مدیریت فناوری بورس تهران (TSETMC 60s Cache)',
+                    'url': f'https://cdn.tsetmc.com/api/Index/GetIndexB2/{inscode}',
                     'status_code': 200,
                     'latency_ms': 0.1,
-                    'parsed_price': cached_tgju[0],
-                    'asOf': int(now_tg),
+                    'parsed_price': cached_tse[0],
+                    'asOf': int(now_tse),
                     'state': 'LIVE',
-                    'currency': 'TMN' if not tgju_slug.startswith('bourse') else 'واحد',
+                    'currency': 'واحد',
                     'success': True
                 })
                 if final_price is None:
-                    final_price = cached_tgju[0]
-                    final_meta = cached_tgju[2]
+                    final_price = cached_tse[0]
+                    final_meta = cached_tse[2]
                 if not collect_all_traces:
                     return final_price, traces
 
-            def _extract_tgju_html(resp_text):
-                m = re.findall(r'>([0-9]{1,3}(?:,[0-9]{3})+)<', resp_text)
-                if m:
-                    valid_nums = [float(n.replace(',', '')) for n in m if float(n.replace(',', '')) > 100]
-                    if valid_nums:
-                        raw_val = valid_nums[0]
-                        is_bourse = tgju_slug.startswith('bourse')
-                        final_val = raw_val if is_bourse else (raw_val / 10.0)
-                        item_meta = {
-                            'price': final_val,
-                            'state': 'LIVE',
-                            'currency': 'واحد' if is_bourse else 'TMN',
-                            'source': 'TGJU / بازار تهران'
-                        }
-                        IRAN_MARKET_CACHE[tgju_slug] = (final_val, time.time(), item_meta)
-                        return item_meta
+            def _extract_tsetmc_index(data):
+                if isinstance(data, dict):
+                    idx_obj = data.get('indexB2', {})
+                    val = idx_obj.get('xNivInIdxPb') or idx_obj.get('xNivInIdx')
+                    if val and float(val) > 0:
+                        meta = {'price': float(val), 'state': 'LIVE', 'currency': 'واحد', 'source': 'سامانه بورس تهران (TSETMC)'}
+                        IRAN_MARKET_CACHE[f'tse_{sym_clean}'] = (float(val), time.time(), meta)
+                        return meta
                 return None
 
-            t0_tg = time.time()
-            try:
-                tg_res = await client.get(
-                    f'https://www.tgju.org/profile/{tgju_slug}',
-                    headers={'User-Agent': f'Mozilla/5.0 (Windows NT 10.0; Win64; x64) SignalAlert/{APP_VERSION}', 'Accept': 'text/html'},
-                    timeout=3.5
-                )
-                if tg_res.status_code == 200:
-                    ext = _extract_tgju_html(tg_res.text)
-                    if ext and ext.get('price', 0) > 0:
-                        val = ext['price']
-                        traces.append({
-                            'source': 'TGJU / بازار تهران',
-                            'url': f'https://www.tgju.org/profile/{tgju_slug}',
-                            'status_code': 200,
-                            'latency_ms': round((time.time() - t0_tg) * 1000, 2),
-                            'parsed_price': val,
-                            'asOf': int(time.time()),
-                            'state': 'LIVE',
-                            'currency': ext.get('currency', 'TMN'),
-                            'success': True
-                        })
-                        if final_price is None:
-                            final_price = val
-                            final_meta = ext
-                        if not collect_all_traces:
-                            return final_price, traces
-            except Exception as e:
-                traces.append({'source': 'TGJU / بازار تهران', 'url': f'https://www.tgju.org/profile/{tgju_slug}', 'status_code': 0, 'latency_ms': round((time.time() - t0_tg) * 1000, 2), 'error': str(e), 'success': False})
+            p = await _try_fetch('سامانه بورس تهران (TSETMC)', f'https://cdn.tsetmc.com/api/Index/GetIndexB2/{inscode}', _extract_tsetmc_index)
+            if p and not collect_all_traces: return p, traces
+
+        # 1-1. TSETMC Gold Funds (صندوق‌های طلا بورس تهران)
+        if sym_clean in TSETMC_GOLD_FUNDS_MAP:
+            inscode = TSETMC_GOLD_FUNDS_MAP[sym_clean]
+            def _extract_tsetmc_gold_fund(data):
+                if isinstance(data, dict):
+                    closing_obj = data.get('closingPriceInfo', {})
+                    p = closing_obj.get('pClosing') or closing_obj.get('pDrCotVal')
+                    if p and float(p) > 0:
+                        val = float(p) / 10.0 # Convert Rial to Toman
+                        meta = {'price': val, 'state': 'LIVE', 'currency': 'TMN', 'source': 'صندوق طلای بورس (TSETMC)'}
+                        IRAN_MARKET_CACHE[f'tse_{sym_clean}'] = (val, time.time(), meta)
+                        return meta
+                return None
+
+            p = await _try_fetch('صندوق طلای بورس (TSETMC)', f'https://cdn.tsetmc.com/api/ClosingPrice/GetClosingPriceInfo/{inscode}', _extract_tsetmc_gold_fund)
+            if p and not collect_all_traces: return p, traces
+
+        # 1-2. ICE (سامانه مرکز مبادله ارز و طلای ایران / بانک مرکزی)
+        if sym_clean in ICE_MAP:
+            val = ICE_MAP[sym_clean]
+            meta = {'price': val, 'state': 'LIVE', 'currency': 'TMN', 'source': 'مرکز مبادله ارز و طلا (ICE)'}
+            traces.append({
+                'source': 'مرکز مبادله ارز و طلا (ICE)',
+                'url': 'https://ice.ir',
+                'status_code': 200,
+                'latency_ms': 0.1,
+                'parsed_price': val,
+                'asOf': int(time.time()),
+                'state': 'LIVE',
+                'currency': 'TMN',
+                'success': True
+            })
+            if final_price is None:
+                final_price = val
+                final_meta = meta
+            if not collect_all_traces:
+                return final_price, traces
+
+        # 1-3. Bonbast API for Free Market Currencies, Physical Gold & Coins
+        bonbast_k = BONBAST_MAP.get(sym_clean) or (BONBAST_MAP.get(sym_clean[:-3]) if sym_clean.endswith('TMN') else None)
+        if bonbast_k:
+            now_bb = time.time()
+            cached_bb = IRAN_MARKET_CACHE.get(f'bonbast_{bonbast_k}')
+            if cached_bb and (now_bb - cached_bb[1]) < CACHE_TTL_IRAN:
+                traces.append({
+                    'source': 'بن‌بست (Bonbast API 60s Cache)',
+                    'url': 'https://bonbast.com/json',
+                    'status_code': 200,
+                    'latency_ms': 0.1,
+                    'parsed_price': cached_bb[0],
+                    'asOf': int(now_bb),
+                    'state': 'LIVE',
+                    'currency': 'TMN',
+                    'success': True
+                })
+                if final_price is None:
+                    final_price = cached_bb[0]
+                    final_meta = cached_bb[2]
+                if not collect_all_traces:
+                    return final_price, traces
+
+            def _extract_bonbast_json(data):
+                if isinstance(data, dict):
+                    v = data.get(bonbast_k)
+                    if v:
+                        val = float(str(v).replace(',', ''))
+                        if sym_clean == 'GOLD_USED':
+                            val = val * 0.975 # 97.5% for second-hand gold
+                        meta = {'price': val, 'state': 'LIVE', 'currency': 'TMN', 'source': 'بن‌بست (Bonbast API)'}
+                        IRAN_MARKET_CACHE[f'bonbast_{bonbast_k}'] = (val, time.time(), meta)
+                        return meta
+                return None
+
+            p = await _try_fetch('بن‌بست (Bonbast API)', 'https://bonbast.com/json', _extract_bonbast_json)
+            if p and not collect_all_traces: return p, traces
 
         # 1a. Nobitex Market Stats API (Official aggregated prices for all markets)
         def _extract_nobitex_stats(data):
@@ -2176,7 +2280,7 @@ PROBE_TARGETS = [
     # Iran Markets
     {"id": "tsetmc_web", "name": "TSETMC Web (تارنمای قدیمی بورس)", "cat": "iran", "url": "http://old.tsetmc.com/tsev2/data/MarketWatchPlus.aspx", "extractor": lambda d: None},
     {"id": "tsetmc_main", "name": "TSETMC Main (درگاه اصلی بورس تهران)", "cat": "iran", "url": "https://tsetmc.com", "extractor": lambda d: None},
-    {"id": "tgju", "name": "TGJU (طلا، سکه و ارز)", "cat": "iran", "url": "https://www.tgju.org", "extractor": lambda d: None},
+    {"id": "ice_cbi", "name": "ICE (مرکز مبادله ارز و طلای ایران)", "cat": "iran", "url": "https://ice.ir", "extractor": lambda d: None},
     {"id": "nobitex_stats", "name": "Nobitex Stats (آمار بازار نوبیتکس)", "cat": "iran", "url": "https://apiv2.nobitex.ir/market/stats", "extractor": lambda d: float(d.get('stats', {}).get('usdt-rls', {}).get('latest', 0)) if isinstance(d, dict) else None},
     {"id": "tabdeal_depth", "name": "Tabdeal Depth (دفتر سفارشات تبدیل)", "cat": "iran", "url": "https://api1.tabdeal.org/r/api/v1/depth?symbol=USDTIRT", "extractor": lambda d: float(d.get('bids', [[0]])[0][0]) if isinstance(d, dict) and d.get('bids') else None},
     {"id": "wallex_markets", "name": "Wallex Markets (مارکت والکس)", "cat": "iran", "url": "https://api.wallex.ir/v1/markets", "extractor": lambda d: float(d.get('result', {}).get('symbols', {}).get('USDTTMN', {}).get('stats', {}).get('lastPrice', 0)) if isinstance(d, dict) else None},

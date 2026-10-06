@@ -90,6 +90,63 @@ class FormatUtils {
     return basePrice;
   }
 
+  /// Converts any English digits in a string or number to Persian digits (۰-۹)
+  static String toPersianDigits(dynamic input) {
+    if (input == null) return '';
+    final str = input.toString();
+    const english = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+    const persian = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+    var result = str;
+    for (int i = 0; i < english.length; i++) {
+      result = result.replaceAll(english[i], persian[i]);
+    }
+    return result;
+  }
+
+  /// Converts Persian (۰-۹) or Arabic (٠-٩) digits to standard ASCII digits (0-9)
+  static String normalizePersianDigits(String input) {
+    if (input.isEmpty) return '';
+    const persian = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+    const arabic = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+    const english = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+    var result = input;
+    for (int i = 0; i < 10; i++) {
+      result = result.replaceAll(persian[i], english[i]).replaceAll(arabic[i], english[i]);
+    }
+    return result;
+  }
+
+  /// Formats prices specifically for the Iran Market UI (100% Persian digits with 'ت' or 'تومان')
+  static String formatIranPrice(double price, {String unit = 'ت'}) {
+    if (price.isNaN || price.isInfinite) return '۰ $unit';
+    final absPrice = price.abs();
+    String formattedEn;
+    if (absPrice >= 1000) {
+      formattedEn = _noDecimal.format(price);
+    } else if (absPrice >= 1) {
+      formattedEn = price.toStringAsFixed(2);
+    } else {
+      formattedEn = price.toStringAsFixed(4);
+    }
+    final faNum = toPersianDigits(formattedEn);
+    return '$faNum $unit';
+  }
+
+  /// Formats prices for Alert List / Card rows in English digits with 'T' (e.g. 268,500 T)
+  static String formatAlertCardPrice(double price, String quoteCurrency) {
+    final isToman = quoteCurrency == 'TMN' || quoteCurrency == 'IRT' || quoteCurrency == 'تومان';
+    final isRial = quoteCurrency == 'IRR' || quoteCurrency == 'RLS' || quoteCurrency == 'ریال';
+    if (isToman) {
+      final numStr = price >= 1000 ? _noDecimal.format(price) : price.toStringAsFixed(2);
+      return '$numStr T';
+    }
+    if (isRial) {
+      final numStr = price >= 1000 ? _noDecimal.format(price) : price.toStringAsFixed(2);
+      return '$numStr RLS';
+    }
+    return formatPrice(price, currencySymbol: quoteCurrency);
+  }
+
   /// Formats volume with compact SI units (K, M, B)
   static String formatVolume(double volume) {
     if (volume >= 1000000000) {

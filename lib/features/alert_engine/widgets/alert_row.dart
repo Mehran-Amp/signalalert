@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/localization/app_strings.dart';
 import '../../../core/theme/tokens.dart';
+import '../../../core/utils/format_utils.dart';
 import '../../settings/services/settings_service.dart';
 import '../models/alert_rule.dart';
 import 'cooldown_timer.dart';
@@ -264,10 +265,10 @@ class AlertRow extends StatelessWidget {
   String _buildConditionDescription(AlertRule rule, String lang) {
     switch (rule.conditionType) {
       case AlertConditionType.priceThreshold:
-        final target = (rule.targetPrice ?? 0.0).toStringAsFixed(rule.targetPrice != null && rule.targetPrice! < 1 ? 4 : 2);
+        final target = FormatUtils.formatAlertCardPrice(rule.targetPrice ?? 0.0, rule.counterCurrency);
         final isAbove = rule.direction == AlertDirection.above;
         if (lang == 'fa') {
-          return 'عبور قیمت ${isAbove ? 'به بالاتر از' : 'به پایین‌تر از'} \$$target';
+          return 'عبور قیمت ${isAbove ? 'به بالاتر از' : 'به پایین‌تر از'} $target';
         } else if (lang == 'ckb') {
           return 'تێپەڕینی نرخ بۆ ${isAbove ? 'سەرەوەی' : 'خوارەوەی'} \$$target';
         } else if (lang == 'ar') {

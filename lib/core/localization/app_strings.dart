@@ -11,6 +11,11 @@ class AppStrings {
   static final Map<String, Map<String, String>> _translations = {
     // 1. FARSI / PERSIAN (فارسی - RTL)
     'fa': {
+    'iran_cat_gold_funds': '🏆 صندوق‌های طلا (TSETMC)',
+    'iran_cat_official': '🏛️ مرکز مبادله و حواله (ICE)',
+    'iran_cat_bourse': '📈 شاخص‌های بورس (TSETMC)',
+      'iran_cat_tether': '🟢 تتر صرافی‌ها (USDT)',
+      'iran_cat_digital_gold': '🪙 طلای صرافی‌ها (Gold)',
       'cat_iran': 'ایران و بازار داخلی',
       'crypto_market_title': '⚡ بازار رمزارزهای بین‌المللی',
       'crypto_market_badge': 'صرافی‌های جهانی و دلاری',
@@ -217,6 +222,11 @@ class AppStrings {
 
     // 2. ENGLISH (English - LTR)
     'en': {
+    'iran_cat_gold_funds': '🏆 Gold Funds (TSETMC)',
+    'iran_cat_official': '🏛️ ICE Official & Remittance',
+    'iran_cat_bourse': '📈 TSE Bourse Indices',
+      'iran_cat_tether': '🟢 Exchange Tethers (USDT)',
+      'iran_cat_digital_gold': '🪙 Exchange Digital Gold',
       'cat_iran': 'Iran & Domestic Market',
       'crypto_market_title': '⚡ International Crypto Market',
       'crypto_market_badge': 'Global & USD/USDT Exchanges',
@@ -423,6 +433,11 @@ class AppStrings {
 
     // 3. KURDISH SORANI (کوردی سۆرانی - RTL)
     'ckb': {
+    'iran_cat_gold_funds': '🏆 سندووقەکانی زێڕ (TSETMC)',
+    'iran_cat_official': '🏛️ حەواڵە و فەرمی (ICE)',
+    'iran_cat_bourse': '📈 بۆرسەی تاران',
+      'iran_cat_tether': '🟢 تەتەری ئاڵوگۆڕەکان',
+      'iran_cat_digital_gold': '🪙 زێڕی ئاڵوگۆڕەکان',
       'cat_iran': 'ئێران و بازاڕی ناوخۆ',
       'crypto_market_title': '⚡ بازاڕی کریپتۆی نێودەوڵەتی',
       'crypto_market_badge': 'ئاڵوگۆڕە جیهانییەکان بە دۆلار',
@@ -629,6 +644,11 @@ class AppStrings {
 
     // 4. ARABIC (العربية - RTL)
     'ar': {
+    'iran_cat_gold_funds': '🏆 صناديق الذهب (TSETMC)',
+    'iran_cat_official': '🏛️ أسعار الصرف الرسمية (ICE)',
+    'iran_cat_bourse': '📈 مؤشرات بورصة طهران',
+      'iran_cat_tether': '🟢 تيذر المنصات (USDT)',
+      'iran_cat_digital_gold': '🪙 الذهب الرقمي للمنصات',
       'cat_iran': 'إيران والسوق المحلي',
       'crypto_market_title': '⚡ سوق العملات المشفرة الدولي',
       'crypto_market_badge': 'منصات عالمية بالدولار وUSDT',
@@ -835,6 +855,11 @@ class AppStrings {
 
     // 5. TURKISH (Türkçe - LTR)
     'tr': {
+    'iran_cat_gold_funds': '🏆 Altın Fonları (TSETMC)',
+    'iran_cat_official': '🏛️ Resmi Döviz & Havale (ICE)',
+    'iran_cat_bourse': '📈 Tahran Borsa Endeksleri',
+      'iran_cat_tether': '🟢 Borsa Tetherleri (USDT)',
+      'iran_cat_digital_gold': '🪙 Dijital Altın',
       'cat_iran': 'İran ve İç Piyasa',
       'crypto_market_title': '⚡ Uluslararası Kripto Piyasası',
       'crypto_market_badge': 'Küresel ve USD/USDT Borsaları',
@@ -1041,6 +1066,11 @@ class AppStrings {
 
     // 6. GERMAN (Deutsch - LTR)
     'de': {
+    'iran_cat_gold_funds': '🏆 Gold-ETFs (TSETMC)',
+    'iran_cat_official': '🏛️ ICE Offiziell & Überweisung',
+    'iran_cat_bourse': '📈 Teheran Börsenindizes',
+      'iran_cat_tether': '🟢 Börsen-Tether (USDT)',
+      'iran_cat_digital_gold': '🪙 Börsen-Gold',
       'cat_iran': 'Iran & Inlandsmarkt',
       'crypto_market_title': '⚡ Internationaler Krypto-Markt',
       'crypto_market_badge': 'Globale & USD/USDT Börsen',
@@ -1247,6 +1277,11 @@ class AppStrings {
 
     // 7. SPANISH (Español - LTR)
     'es': {
+    'iran_cat_gold_funds': '🏆 Fondos de Oro (TSETMC)',
+    'iran_cat_official': '🏛️ Oficial y Remesas ICE',
+    'iran_cat_bourse': '📈 Índices de la Bolsa de Teherán',
+      'iran_cat_tether': '🟢 Tether de Exchanges (USDT)',
+      'iran_cat_digital_gold': '🪙 Oro Digital',
       'cat_iran': 'Irán y Mercado Doméstico',
       'crypto_market_title': '⚡ Mercado Cripto Internacional',
       'crypto_market_badge': 'Exchanges Globales y USD/USDT',
@@ -1453,6 +1488,11 @@ class AppStrings {
 
     // 8. FRENCH (Français - LTR)
     'fr': {
+    'iran_cat_gold_funds': '🏆 Fonds d'or (TSETMC)',
+    'iran_cat_official': '🏛️ Taux officiels ICE',
+    'iran_cat_bourse': '📈 Indices boursiers de Téhéran',
+      'iran_cat_tether': '🟢 Tether des Échanges (USDT)',
+      'iran_cat_digital_gold': '🪙 Or Numérique',
       'cat_iran': 'Iran & Marché Intérieur',
       'crypto_market_title': '⚡ Marché Crypto International',
       'crypto_market_badge': 'Échanges Mondiaux & USD/USDT',
@@ -1659,6 +1699,11 @@ class AppStrings {
 
     // 9. RUSSIAN (Русский - LTR)
     'ru': {
+    'iran_cat_gold_funds': '🏆 Золотые фонды (TSETMC)',
+    'iran_cat_official': '🏛️ Официальный курс ICE',
+    'iran_cat_bourse': '📈 Индексы Тегеранской биржи',
+      'iran_cat_tether': '🟢 Тезер Бирж (USDT)',
+      'iran_cat_digital_gold': '🪙 Цифровое Золото',
       'cat_iran': 'Иран и Внутренний Рынок',
       'crypto_market_title': '⚡ Международный Крипторынок',
       'crypto_market_badge': 'Глобальные биржи USD/USDT',
@@ -1865,6 +1910,11 @@ class AppStrings {
 
     // 10. CHINESE (中文 - LTR)
     'zh': {
+    'iran_cat_gold_funds': '🏆 黄金基金 (TSETMC)',
+    'iran_cat_official': '🏛️ ICE 官方与汇款汇率',
+    'iran_cat_bourse': '📈 德黑兰证券指数',
+      'iran_cat_tether': '🟢 交易所泰达币 (USDT)',
+      'iran_cat_digital_gold': '🪙 交易所数字黄金',
       'cat_iran': '伊朗与本土市场',
       'crypto_market_title': '⚡ 国际加密货币市场',
       'crypto_market_badge': '全球顶级 USD/USDT 交易所',
