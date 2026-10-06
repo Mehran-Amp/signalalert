@@ -36,6 +36,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import httpx
 import firebase_admin
 from firebase_admin import credentials, messaging
+from firebase_admin import exceptions as fb_exceptions
 
 APP_VERSION = "2.6.0"
 
@@ -607,6 +608,16 @@ async def is_safe_webhook_url_async(url_str: str) -> bool:
             return False
     return True
 
+# Strong references so fire-and-forget tasks cannot be garbage-collected mid-flight
+# (asyncio keeps only weak refs; a collected task = a silently lost notification).
+_BG_TASKS: set = set()
+
+def _spawn(coro):
+    task = asyncio.create_task(coro)
+    _BG_TASKS.add(task)
+    task.add_done_callback(_BG_TASKS.discard)
+    return task
+
 def _send_fcm_sync(fcm_token: str, title: str, body: str, data_payload: dict = None, ttl_seconds: int = 300) -> Tuple[bool, str]:
     if not firebase_admin._apps:
         return False, "Firebase Admin SDK not initialized."
@@ -625,10 +636,24 @@ def _send_fcm_sync(fcm_token: str, title: str, body: str, data_payload: dict = N
             android=messaging.AndroidConfig(priority='high', ttl=effective_ttl, direct_boot_ok=True),
             apns=messaging.APNSConfig(payload=messaging.APNSPayload(aps=messaging.Aps(content_available=True, badge=1)))
         )
-        response = messaging.send(message)
-        METRICS["fcm_success"] += 1
-        print(f"🚀 [FCM Push] Sent (TTL: {effective_ttl}): {response}")
-        return True, f"FCM Message ID: {response}"
+        # Retry transient failures (FCM 5xx / quota) so a blip never drops an alert.
+        last_err = None
+        for attempt, delay in enumerate((0, 0.5, 1.5), start=1):
+            if delay:
+                time.sleep(delay)
+            try:
+                response = messaging.send(message)
+                METRICS["fcm_success"] += 1
+                print(f"🚀 [FCM Push] Sent (TTL: {effective_ttl}, attempt {attempt}): {response}")
+                return True, f"FCM Message ID: {response}"
+            except (fb_exceptions.UnavailableError, fb_exceptions.InternalError, messaging.QuotaExceededError) as e:
+                last_err = e
+                print(f"⚠️ [FCM Push] transient error (attempt {attempt}): {e}")
+        raise last_err
+    except messaging.UnregisteredError:
+        METRICS["fcm_failed"] += 1
+        print(f"❌ [FCM Push] token no longer registered: ...{fcm_token[-6:]}")
+        return False, "UNREGISTERED"
     except Exception as e:
         METRICS["fcm_failed"] += 1
         print(f"❌ [FCM Push Error] {e}")
@@ -906,7 +931,7 @@ async def check_alerts_job():
             body = "\n".join(body_lines)
 
             # 1. Dispatch High-Priority FCM Push for Cloud Backup (Non-blocking Thread Execution)
-            asyncio.create_task(
+            _spawn(
                 send_fcm_notification_async(
                     fcm_token=alert.fcm_token,
                     title=title,
@@ -965,7 +990,7 @@ async def check_alerts_job():
                 tg_lines.append("⚡ <i>ارسال شده توسط ربات هوشمند SignalAlert Enterprise</i>")
 
                 tg_msg = "\n".join(tg_lines)
-                asyncio.create_task(send_telegram_alert(http_client, alert.telegram_chat_id, tg_msg))
+                _spawn(send_telegram_alert(http_client, alert.telegram_chat_id, tg_msg))
 
             # 3. Dispatch Optional Webhook with SSRF Protection
             if alert.webhook_url:
@@ -978,7 +1003,7 @@ async def check_alerts_job():
                     "condition": alert.condition,
                     "timestamp": datetime.now(timezone.utc).isoformat()
                 }
-                asyncio.create_task(send_webhook_alert(http_client, alert.webhook_url, hook_data))
+                _spawn(send_webhook_alert(http_client, alert.webhook_url, hook_data))
 
     for alert in ready_alerts:
         try:

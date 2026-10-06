@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -9,217 +8,152 @@ import 'package:uuid/uuid.dart';
 import '../../features/notifications/services/notification_service.dart';
 import 'tts_service.dart';
 
-/// Helper to read persisted master settings from settings.json
-Future<Map<String, dynamic>> _loadMasterSettings() async {
-  try {
-    final dir = await getApplicationDocumentsDirectory();
-    final file = File('${dir.path}/settings.json');
-    if (await file.exists()) {
-      final content = await file.readAsString();
-      if (content.trim().isNotEmpty) {
-        return jsonDecode(content) as Map<String, dynamic>;
-      }
-    }
-  } catch (_) {}
-  return {};
+/// Stable Android notification id derived from the server alert id, so a
+/// repeated push for the same rule REPLACES its banner instead of stacking.
+/// Never collides with the foreground-service notification (777).
+int _notificationIdFor(RemoteMessage m, String alertId) {
+  final seed = alertId.isNotEmpty ? alertId : (m.messageId ?? m.hashCode.toString());
+  final id = seed.hashCode & 0x7FFFFFFF;
+  return id == 777 ? 778 : id;
 }
 
-/// Top-level background message handler for FCM
-@pragma('vm:entry-point')
-Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  try {
-    await Firebase.initializeApp();
-  } catch (_) {}
+/// Shared by the background handler and the foreground listener.
+/// [inApp] = true when the UI/service isolate is alive (extra sound/haptics ok).
+Future<void> _handleIncomingAlert(RemoteMessage message, {required bool inApp}) async {
+  final d = message.data;
+  final symbol = d['symbol'] ?? '';
+  final priceStr = d['price'] ?? '';
+  final alertId = d['alert_id'] ?? '';
+  final title = d['title'] ?? message.notification?.title ?? '';
+  final body = d['body'] ?? message.notification?.body ?? '';
+  final note = d['note'] ?? '';
 
-  debugPrint('⚡ [FCM Background] Received push message: ${message.messageId}');
-  final symbol = message.data['symbol'] ?? '';
-  final priceStr = message.data['price'] ?? '';
-  final alertId = message.data['alert_id'] ?? '';
-  final title = message.data['title'] ?? message.notification?.title ?? '';
-  final body = message.data['body'] ?? message.notification?.body ?? '';
-  final note = message.data['note'] ?? '';
-
-  // Reject ghost / empty notifications that have no real alert data or title
+  // Reject ghost / empty pushes without real alert data.
   if (title.isEmpty && symbol.isEmpty && alertId.isEmpty) {
-    debugPrint('ℹ️ [FCM Background] Suppressed ghost push notification without alert payload.');
+    debugPrint('ℹ️ [FCM] Suppressed ghost push without alert payload.');
     return;
   }
 
-  // Load Master Settings to honor Global Sound / Vibration / TTS toggles
-  final masterSettings = await _loadMasterSettings();
-  final masterSound = masterSettings['soundEnabled'] as bool? ?? true;
-  final masterVibration = masterSettings['vibrationEnabled'] as bool? ?? true;
-  final masterTts = masterSettings['ttsEnabled'] as bool? ?? true;
-  final masterVolume = (masterSettings['alarmVolume'] as num?)?.toDouble() ?? 1.0;
-  final masterSoundName = masterSettings['soundName'] as String? ?? 'alarm_siren';
+  final speechText = TtsService.buildAlertSpeech(
+    symbol: symbol.isNotEmpty ? symbol : 'Price Alert',
+    price: double.tryParse(priceStr) ?? 0.0,
+    customNote: note.isNotEmpty ? note : null,
+  );
 
-  final alertSoundEnabled = message.data['sound_enabled'] != 'false';
-  final alertVibrationEnabled = message.data['vibration_enabled'] != 'false';
-  final alertTtsEnabled = message.data['tts_enabled'] != 'false';
-  final customSound = message.data['sound'] ?? masterSoundName;
+  final ns = NotificationService();
+  // Banner first. Master toggles / volume / sound name are resolved once,
+  // inside enqueueCriticalAlert, from settings.json.
+  await ns.enqueueCriticalAlert(
+    id: _notificationIdFor(message, alertId),
+    title: title.isNotEmpty ? title : '🚨 Price Alert',
+    body: body,
+    payload: alertId.isNotEmpty ? alertId : null,
+    soundName: d['sound'],
+    soundEnabled: d['sound_enabled'] != 'false',
+    vibrationEnabled: d['vibration_enabled'] != 'false',
+    ttsEnabled: d['tts_enabled'] != 'false',
+    speechText: speechText,
+    inAppFeedback: inApp,
+    waitForSpeech: !inApp, // keep the background isolate alive while speaking
+  );
+}
 
-  final effectiveSound = masterSound && alertSoundEnabled;
-  final effectiveVibration = masterVibration && alertVibrationEnabled;
-  final effectiveTts = masterTts && alertTtsEnabled;
-
-  final parsedPrice = double.tryParse(priceStr) ?? 0.0;
-  final speechText = effectiveTts
-      ? TtsService.buildAlertSpeech(
-          symbol: symbol.isNotEmpty ? symbol : 'Price Alert',
-          price: parsedPrice,
-          customNote: note.isNotEmpty ? note : null,
-        )
-      : null;
-
-  // Show local notification with max priority alarm channel sequentially
+/// Top-level FCM background handler (runs in its own short-lived isolate).
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  debugPrint('⚡ [FCM Background] ${message.messageId}');
   try {
-    final notificationService = NotificationService();
-    notificationService.enqueueCriticalAlert(
-      id: message.messageId.hashCode,
-      title: title.isNotEmpty ? title : '🚨 Price Alert',
-      body: body,
-      soundName: customSound,
-      volume: masterVolume,
-      soundEnabled: effectiveSound,
-      vibrationEnabled: effectiveVibration,
-      ttsEnabled: effectiveTts,
-      speechText: speechText,
-    );
+    await Firebase.initializeApp();
+  } catch (_) {}
+  try {
+    // Plugin + channels only. NO permissions, NO persistent notification 777.
+    await NotificationService().initializeLight();
+    await _handleIncomingAlert(message, inApp: false);
   } catch (e) {
-    debugPrint('⚠️ [FCM Background] Local notification error: $e');
+    debugPrint('⚠️ [FCM Background] handler error: $e');
   }
 }
 
-/// FCMNotificationService handles Firebase Cloud Messaging (FCM) & Device Token management
+/// FCMNotificationService handles Firebase Cloud Messaging & device token.
 class FCMNotificationService {
   static String? _cachedToken;
   static String? _storageDir;
   static bool _firebaseInitialized = false;
   static bool _handlersRegistered = false;
-  static final Map<String, int> _recentTriggerCache = {};
 
-  /// Initialize Firebase Core & Firebase Messaging to fetch real Google FCM Token
-  static Future<void> initialize({String? storageDirectoryPath}) async {
+  /// Called whenever Google rotates the token. Wire this to your alert sync so
+  /// the server never keeps pushing to a dead token.
+  static void Function(String token)? onTokenChanged;
+
+  /// [requestPermission] must be false in the foreground-service isolate
+  /// (no Activity there).
+  static Future<void> initialize({
+    String? storageDirectoryPath,
+    bool requestPermission = true,
+  }) async {
     _storageDir = storageDirectoryPath;
     if (_storageDir == null) {
       try {
-        final dir = await getApplicationDocumentsDirectory();
-        _storageDir = dir.path;
+        _storageDir = (await getApplicationDocumentsDirectory()).path;
       } catch (_) {}
     }
 
-    // 1. Try initializing Firebase Core (from google-services.json)
     try {
       await Firebase.initializeApp();
       _firebaseInitialized = true;
-      debugPrint('🔥 Firebase Core initialized successfully on Android.');
     } catch (e) {
+      // "already initialized" lands here too; treat as initialized.
+      _firebaseInitialized = Firebase.apps.isNotEmpty;
       debugPrint('ℹ️ Firebase Core init note: $e');
     }
 
-    // 2. Register Background & Foreground Listeners if Firebase is active
     if (_firebaseInitialized && !_handlersRegistered) {
       _handlersRegistered = true;
+      final fcm = FirebaseMessaging.instance;
+
+      // 1. Listeners FIRST: a pending permission dialog must never delay them.
       try {
         FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
-
-        final fcm = FirebaseMessaging.instance;
-        // Request high-priority permissions
-        await fcm.requestPermission(
-          alert: true,
-          badge: true,
-          sound: true,
-          announcement: true,
-          criticalAlert: true,
-          provisional: false,
-        );
-
-        // Foreground push message listener
-        FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
-          debugPrint('📩 [FCM Foreground] Push received: ${message.notification?.title ?? message.data['title']}');
-          final alertId = message.data['alert_id'] ?? '';
-          final symbol = message.data['symbol'] ?? '';
-          final priceStr = message.data['price'] ?? '';
-          final note = message.data['note'] ?? '';
-          final title = message.data['title'] ?? message.notification?.title ?? '';
-          final body = message.data['body'] ?? message.notification?.body ?? '';
-
-          // Reject ghost / empty notifications that have no real alert data or title
-          if (title.isEmpty && symbol.isEmpty && alertId.isEmpty) {
-            debugPrint('ℹ️ [FCM Foreground] Suppressed ghost push notification without alert payload.');
-            return;
+        FirebaseMessaging.onMessage.listen((m) async {
+          try {
+            await _handleIncomingAlert(m, inApp: true);
+          } catch (e) {
+            debugPrint('⚠️ [FCM Foreground] handler error: $e');
           }
-
-          final dedupKey = alertId.isNotEmpty ? alertId : '$symbol-$priceStr';
-          final nowMs = DateTime.now().millisecondsSinceEpoch;
-          final lastTrigger = _recentTriggerCache[dedupKey] ?? 0;
-          if (nowMs - lastTrigger < 8000) {
-            debugPrint('ℹ️ [FCM Foreground] Suppressing duplicate push trigger for $dedupKey');
-            return;
-          }
-          _recentTriggerCache[dedupKey] = nowMs;
-
-          // Load Master Settings to honor Global Sound / Vibration / TTS toggles
-          final masterSettings = await _loadMasterSettings();
-          final masterSound = masterSettings['soundEnabled'] as bool? ?? true;
-          final masterVibration = masterSettings['vibrationEnabled'] as bool? ?? true;
-          final masterTts = masterSettings['ttsEnabled'] as bool? ?? true;
-          final masterVolume = (masterSettings['alarmVolume'] as num?)?.toDouble() ?? 1.0;
-          final masterSoundName = masterSettings['soundName'] as String? ?? 'alarm_siren';
-
-          final alertSoundEnabled = message.data['sound_enabled'] != 'false';
-          final alertVibrationEnabled = message.data['vibration_enabled'] != 'false';
-          final alertTtsEnabled = message.data['tts_enabled'] != 'false';
-          final customSound = message.data['sound'] ?? masterSoundName;
-
-          final effectiveSound = masterSound && alertSoundEnabled;
-          final effectiveVibration = masterVibration && alertVibrationEnabled;
-          final effectiveTts = masterTts && alertTtsEnabled;
-
-          final parsedPrice = double.tryParse(priceStr) ?? 0.0;
-          final speechText = effectiveTts
-              ? TtsService.buildAlertSpeech(
-                  symbol: symbol.isNotEmpty ? symbol : 'Price Alert',
-                  price: parsedPrice,
-                  customNote: note.isNotEmpty ? note : null,
-                )
-              : null;
-
-          // Enqueue critical alert so sound, vibration, banner, and voice run sequentially
-          NotificationService().enqueueCriticalAlert(
-            id: message.messageId.hashCode,
-            title: title.isNotEmpty ? title : '🚨 Price Alert',
-            body: body,
-            soundName: customSound,
-            volume: masterVolume,
-            soundEnabled: effectiveSound,
-            vibrationEnabled: effectiveVibration,
-            ttsEnabled: effectiveTts,
-            speechText: speechText,
-          );
         });
+        fcm.onTokenRefresh.listen((t) {
+          _cachedToken = t;
+          _saveTokenToDisk(t);
+          onTokenChanged?.call(t);
+          debugPrint('🔄 FCM token refreshed');
+        });
+      } catch (e) {
+        debugPrint('⚠️ FCM listener registration error: $e');
+      }
 
-        final token = await fcm.getToken();
+      // 2. Permission (UI isolate only), isolated from token retrieval.
+      if (requestPermission) {
+        try {
+          await fcm.requestPermission(alert: true, badge: true, sound: true);
+        } catch (e) {
+          debugPrint('⚠️ FCM requestPermission error: $e');
+        }
+      }
+
+      // 3. Token.
+      try {
+        final token = await fcm.getToken().timeout(const Duration(seconds: 10));
         if (token != null && token.isNotEmpty) {
           _cachedToken = token;
-          debugPrint('🔑 Real Google FCM Token received: $_cachedToken');
           await _saveTokenToDisk(token);
-
-          // Listen for token updates
-          fcm.onTokenRefresh.listen((newToken) {
-            _cachedToken = newToken;
-            _saveTokenToDisk(newToken);
-            debugPrint('🔄 FCM Token refreshed: $newToken');
-          });
-
           return;
         }
       } catch (e) {
-        debugPrint('⚠️ Error retrieving real FCM Token from Google: $e');
+        debugPrint('⚠️ Error retrieving FCM token: $e');
       }
     }
 
-    // 3. Fallback to cached token or persistent device ID
+    // Fallback: cached token or persistent device id.
     if (_cachedToken == null) {
       final saved = await _loadTokenFromDisk();
       if (saved != null && saved.isNotEmpty) {
@@ -235,8 +169,7 @@ class FCMNotificationService {
   static Future<void> _saveTokenToDisk(String token) async {
     try {
       if (_storageDir != null) {
-        final file = File('$_storageDir/device_token.txt');
-        await file.writeAsString(token);
+        await File('$_storageDir/device_token.txt').writeAsString(token, flush: true);
       }
     } catch (_) {}
   }
@@ -254,41 +187,33 @@ class FCMNotificationService {
     return null;
   }
 
-  /// Set or update real device FCM Token manually
+  /// Set or update real device FCM token manually.
   static Future<void> setCustomToken(String token) async {
     if (token.isNotEmpty) {
       _cachedToken = token.trim();
       await _saveTokenToDisk(_cachedToken!);
-      debugPrint('🔑 Custom Token updated to: $_cachedToken');
     }
   }
 
-  /// Get current Device / FCM Token (attempts upgrade to real Google FCM token if currently on dev fallback)
+  /// Current token (upgrades from `dev_` fallback to the real Google token).
   static Future<String> getFCMToken() async {
     if (_cachedToken != null && _cachedToken!.isNotEmpty && !_cachedToken!.startsWith('dev_')) {
       return _cachedToken!;
     }
-
     try {
       if (_firebaseInitialized) {
         final token = await FirebaseMessaging.instance.getToken().timeout(const Duration(seconds: 4));
         if (token != null && token.isNotEmpty) {
           _cachedToken = token;
           await _saveTokenToDisk(token);
-          debugPrint('🔑 Upgraded to Real Google FCM Token: $_cachedToken');
           return token;
         }
       }
     } catch (_) {}
 
-    if (_cachedToken != null && _cachedToken!.isNotEmpty) {
-      return _cachedToken!;
-    }
+    if (_cachedToken != null && _cachedToken!.isNotEmpty) return _cachedToken!;
 
     await initialize();
     return _cachedToken ?? 'dev_${DateTime.now().millisecondsSinceEpoch}';
   }
 }
-
-
-

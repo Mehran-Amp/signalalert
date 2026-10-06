@@ -98,8 +98,10 @@ class BackgroundServiceManager {
     }
 
     try {
+      // Light init only: this isolate has no Activity, and notification 777 is
+      // owned by flutter_background_service (initialize() used to overwrite it).
       final notificationService = NotificationService();
-      await notificationService.initialize();
+      await notificationService.initializeLight();
 
       final dir = await getApplicationDocumentsDirectory();
       final alertRuleRepository = JsonAlertRuleRepository(dir.path);
@@ -112,7 +114,10 @@ class BackgroundServiceManager {
       await settingsService.load();
 
       // Initialize FCM in background isolate so FCM listener and tokens are active from boot!
-      await FCMNotificationService.initialize(storageDirectoryPath: dir.path);
+      await FCMNotificationService.initialize(
+        storageDirectoryPath: dir.path,
+        requestPermission: false,
+      );
 
       final exchangeRegistry = ExchangeRegistry();
       for (final ex in ExchangeCatalog.buildAllExchanges()) {
@@ -143,4 +148,3 @@ class BackgroundServiceManager {
     });
   }
 }
-
