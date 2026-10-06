@@ -115,6 +115,28 @@ class ServerAlertService {
     return 'خطای پاسخ سرور (کد ${response.statusCode})';
   }
 
+  /// Returns the effective user identifier (e.g. userEmail from settings or Google auth)
+  static Future<String> getEffectiveUserId() async {
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final sFile = File('${dir.path}/settings.json');
+      if (await sFile.exists()) {
+        final sData = jsonDecode(await sFile.readAsString());
+        final savedEmail = sData['userEmail'] as String?;
+        if (savedEmail != null && savedEmail.trim().isNotEmpty) {
+          return savedEmail.trim().toLowerCase();
+        }
+        final deviceId = sData['deviceId'] as String?;
+        if (deviceId != null && deviceId.trim().isNotEmpty) {
+          return deviceId.trim();
+        }
+      }
+    } catch (e) {
+      debugPrint('Error getting effective user id: $e');
+    }
+    return 'Mehran.Aminpoor@gmail.com';
+  }
+
   /// Bulk sync all local alert rules to Python server with real FCM Token
   static Future<bool> syncAllRulesToServer(List<AlertRule> rules, {String? userId}) async {
     if (!isServerAvailable) return false;

@@ -27,6 +27,18 @@ class MarketTicker extends Equatable {
   /// Timestamp when the tick was emitted
   final DateTime timestamp;
 
+  /// True source timestamp when the price was produced at source exchange/feed
+  final DateTime? asOf;
+
+  /// Market state: 'live', 'delayed', 'closed', 'stale'
+  final String? state;
+
+  /// Explicit quote/currency unit: e.g. 'USD', '%', 'pts', 'EUR', 'CNY'
+  final String? quoteUnit;
+
+  /// Originating price provider or upstream exchange: e.g. 'YahooFinance', 'Stooq', 'CoinGecko'
+  final String? source;
+
   const MarketTicker({
     this.exchangeId,
     this.pair,
@@ -37,6 +49,10 @@ class MarketTicker extends Equatable {
     this.bid,
     this.ask,
     required this.timestamp,
+    this.asOf,
+    this.state,
+    this.quoteUnit,
+    this.source,
   })  : high24h = high24h ?? lastPrice,
         low24h = low24h ?? lastPrice;
 
@@ -51,6 +67,10 @@ class MarketTicker extends Equatable {
     bid,
     ask,
     timestamp,
+    asOf,
+    state,
+    quoteUnit,
+    source,
   ];
 
   Map<String, dynamic> toJson() => {
@@ -62,6 +82,10 @@ class MarketTicker extends Equatable {
     'bid': bid,
     'ask': ask,
     'timestamp': timestamp.toIso8601String(),
+    if (asOf != null) 'asOf': asOf!.toIso8601String(),
+    if (state != null) 'state': state,
+    if (quoteUnit != null) 'quoteUnit': quoteUnit,
+    if (source != null) 'source': source,
   };
 
   factory MarketTicker.fromJson(Map<String, dynamic> json) => MarketTicker(
@@ -73,5 +97,9 @@ class MarketTicker extends Equatable {
     bid: (json['bid'] as num?)?.toDouble(),
     ask: (json['ask'] as num?)?.toDouble(),
     timestamp: DateTime.parse(json['timestamp'] as String),
+    asOf: json['asOf'] != null ? DateTime.parse(json['asOf'] as String) : null,
+    state: json['state'] as String?,
+    quoteUnit: json['quoteUnit'] as String?,
+    source: json['source'] as String?,
   );
 }

@@ -75,6 +75,7 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
   String _macroCategoryFilter = 'all';
   String _macroSearchQuery = '';
   Map<String, dynamic>? _selectedMacroAsset;
+  final Map<String, double> _macroLivePrices = {};
 
   // Snapshot
   double? _currentPrice;
@@ -275,6 +276,22 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
       return '£$numStr';
     } else if (quoteCurrency == 'BTC') {
       return '₿${price.toStringAsFixed(8)}';
+    } else if (quoteCurrency == '%') {
+      return '$numStr%';
+    } else if (quoteCurrency == 'pts') {
+      return '$numStr pts';
+    } else if (quoteCurrency == 'Billion USD') {
+      return '\$$numStr B';
+    } else if (quoteCurrency == 'JPY' || quoteCurrency == 'CNY') {
+      return '¥$numStr';
+    } else if (quoteCurrency == 'CHF') {
+      return '$numStr CHF';
+    } else if (quoteCurrency == 'CAD') {
+      return 'C\$$numStr';
+    } else if (quoteCurrency == 'TRY') {
+      return '₺$numStr';
+    } else if (quoteCurrency == 'AED') {
+      return '$numStr AED';
     } else {
       return '\$$numStr';
     }
@@ -360,23 +377,58 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
     });
 
     final sym = asset['symbol'] as String;
-    final pair = CurrencyPair(baseCurrency: sym, counterCurrency: 'USD', marketSymbol: '$sym/USD');
+    final unit = (asset['unit'] as String?) ?? 'USD';
+    final pair = CurrencyPair(baseCurrency: sym, counterCurrency: unit, marketSymbol: '$sym/USD');
+
+    // 1. Try local direct fetch first
     try {
-      final snapshot = await widget.registry.fetchSnapshotFrom('global_stocks', pair);
+      final snapshot = await widget.registry.fetchSnapshotFrom('global_stocks', pair).timeout(const Duration(seconds: 5));
       if (snapshot != null && snapshot.price > 0 && mounted) {
         setState(() {
+          _macroLivePrices[sym] = snapshot.price;
           _currentPrice = snapshot.price;
-          _targetPriceController.text = snapshot.price.toStringAsFixed(2);
+          _targetPriceController.text = _formatSmartNumber(snapshot.price);
+          _preferServerProxy = false;
           _isLoadingPrice = false;
         });
         return;
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Local stock price fetch failed for $sym: $e');
+    }
+
+    // 2. Server Fallback for Stocks & Macro
+    try {
+      final serverPrice = await ServerAlertService.fetchPriceViaServer('global_stocks', sym);
+      if (serverPrice != null && serverPrice > 0 && mounted) {
+        setState(() {
+          _macroLivePrices[sym] = serverPrice;
+          _currentPrice = serverPrice;
+          _targetPriceController.text = _formatSmartNumber(serverPrice);
+          _preferServerProxy = true;
+          _isLoadingPrice = false;
+        });
+        return;
+      }
+    } catch (e) {
+      debugPrint('Server fallback price fetch failed for $sym: $e');
+    }
 
     if (mounted) {
       setState(() {
         _isLoadingPrice = false;
       });
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      final lang = widget.initialRule?.language ?? 'fa';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(lang == 'fa'
+              ? 'دریافت قیمت زنده $sym از منابع محلی و سرور امکان‌پذیر نبود. می‌توانید قیمت هدف را به صورت دستی وارد نمایید.'
+              : 'Could not fetch live price for $sym from providers or server. You may enter target price manually.'),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 4),
+        ),
+      );
     }
   }
 
@@ -411,9 +463,10 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
       if (_selectedMacroAsset == null) return;
       exchangeId = 'global_stocks';
       final sym = _selectedMacroAsset!['symbol'] as String;
+      final unit = (_selectedMacroAsset!['unit'] as String?) ?? 'USD';
       pair = CurrencyPair(
         baseCurrency: sym,
-        counterCurrency: 'USD',
+        counterCurrency: unit,
         marketSymbol: '$sym/USD',
       );
     }
@@ -472,8 +525,21 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
     // Calculate real effective target price for server (never send 0.0 or 1.0 fallback for percent change rules)
     double effectiveTargetPrice;
     if (_conditionType == AlertConditionType.percentChange) {
+      if (liveBasePrice == null || liveBasePrice <= 0) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(lang == 'fa'
+                ? 'دریافت قیمت زنده برای محاسبه هشدار درصدی الزامی است. بدون قیمت زنده، ذخیره مجاز نیست.'
+                : 'Live market price is required to calculate percentage change alert. Saving is not allowed without live price.'),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+        return;
+      }
       final p = percent ?? 2.5;
-      final baseP = (liveBasePrice != null && liveBasePrice > 0) ? liveBasePrice : 1.0;
+      final baseP = liveBasePrice;
       if (_direction == AlertDirection.below) {
         effectiveTargetPrice = baseP * (1.0 - (p / 100.0));
       } else {
@@ -482,6 +548,8 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
     } else {
       effectiveTargetPrice = targetPrice ?? upperTargetPrice ?? lowerTargetPrice ?? liveBasePrice ?? 0.0;
     }
+
+    final realUserId = await ServerAlertService.getEffectiveUserId();
 
     if (widget.initialRule != null) {
       final updatedRule = widget.initialRule!.copyWith(
@@ -516,7 +584,7 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
       // Sync to Python Alert Engine
       ServerAlertService.createAlertOnServer(
         ruleId: updatedRule.uuid,
-        userId: 'user_default',
+        userId: realUserId,
         exchange: exchangeId,
         symbol: pair.marketSymbol,
         targetPrice: effectiveTargetPrice,
@@ -556,7 +624,7 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
       // Sync to Python Alert Engine
       ServerAlertService.createAlertOnServer(
         ruleId: newRule.uuid,
-        userId: 'user_default',
+        userId: realUserId,
         exchange: exchangeId,
         symbol: pair.marketSymbol,
         targetPrice: effectiveTargetPrice,
@@ -1161,7 +1229,7 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
             children: [
               _buildMacroChip(isFa ? '🌐 همه نمادها' : 'All', 'all', theme),
               _buildMacroChip(isFa ? '🚀 هوافضا، استارلینک و فضا' : 'SpaceX & Space', 'Aerospace', theme),
-              _buildMacroChip(isFa ? '🧠 هوش مصنوعی و Pre-IPO' : 'Pre-IPO & AI', 'PreIPO', theme),
+              _buildMacroChip(isFa ? '💻 تراشه‌ها و فناوری' : 'Semiconductors & Tech', 'Tech', theme),
               _buildMacroChip(isFa ? '⛏️ ماینینگ و فین‌تک' : 'Mining & Fintech', 'FintechMining', theme),
               _buildMacroChip(isFa ? '🪙 شاخص‌های کلان کریپتو و دامیننس' : 'Crypto Macro & Dominance', 'CryptoMacro', theme),
               _buildMacroChip(isFa ? '🇨🇳 بازارهای چین و آسیا' : 'China & Asia', 'China', theme),
@@ -1181,7 +1249,9 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
             separatorBuilder: (_, __) => const SizedBox(height: 8),
             itemBuilder: (context, index) {
               final asset = filtered[index];
-              final price = (asset['price'] as num).toDouble();
+              final sym = asset['symbol'] as String;
+              final unit = (asset['unit'] as String?) ?? 'USD';
+              final livePrice = _macroLivePrices[sym];
               final displayName = isFa ? (asset['nameFa'] as String) : (asset['name'] as String);
               final iconStr = asset['icon']?.toString() ?? '📊';
 
@@ -1232,12 +1302,14 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
                           Text(
-                            '\$${price.toStringAsFixed(price < 5 ? 4 : 2)}',
+                            livePrice != null ? _formatSmartPrice(livePrice, unit) : '—',
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 13,
                               fontFamily: 'monospace',
-                              color: theme.colorScheme.onSurface,
+                              color: livePrice != null
+                                  ? theme.colorScheme.onSurface
+                                  : theme.colorScheme.onSurface.withValues(alpha: 0.45),
                             ),
                           ),
                           Text(
@@ -1293,7 +1365,7 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
 
     final quoteCurrency = _flowType == MarketFlowType.crypto
         ? (_selectedPair?.counterCurrency ?? 'USDT')
-        : 'USD';
+        : (_selectedMacroAsset?['unit'] as String? ?? 'USD');
 
     return ListView(
       padding: const EdgeInsets.all(20),

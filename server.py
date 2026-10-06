@@ -63,10 +63,10 @@ async def require_api_key(x_api_key: Optional[str] = Header(None)):
     if not (_key_matches(x_api_key, API_KEY) or _key_matches(x_api_key, ADMIN_KEY)):
         raise HTTPException(status_code=401, detail="Invalid or missing API key.")
 
-async def require_admin(x_admin_key: Optional[str] = Header(None), admin_key: Optional[str] = None):
+async def require_admin(x_admin_key: Optional[str] = Header(None)):
     if not ADMIN_KEY:
         raise HTTPException(status_code=503, detail="Admin key is not configured on the server.")
-    if not (_key_matches(x_admin_key, ADMIN_KEY) or _key_matches(admin_key, ADMIN_KEY)):
+    if not _key_matches(x_admin_key, ADMIN_KEY):
         raise HTTPException(status_code=401, detail="Invalid or missing admin key.")
 
 API_DEP = [Depends(require_api_key)]
@@ -205,6 +205,9 @@ class Alert(AlertCreate):
     created_at: str
     last_checked_at: float = 0.0
     last_triggered_at: float = 0.0
+    last_eval_asof: Optional[int] = None
+    last_eval_price: Optional[float] = None
+    waiting_for_cross: bool = False
 
 class AlertPublic(BaseModel):
     # Same as Alert but WITHOUT fcm_token (never returned to API clients)
@@ -228,6 +231,9 @@ class AlertPublic(BaseModel):
     created_at: str
     last_checked_at: float = 0.0
     last_triggered_at: float = 0.0
+    last_eval_asof: Optional[int] = None
+    last_eval_price: Optional[float] = None
+    waiting_for_cross: bool = False
 
 DB_FILE = "alerts_data.json"
 
@@ -357,6 +363,129 @@ BULK_MARKET_RESPONSE_CACHE: Dict[str, Tuple[Any, float]] = {}
 def normalize_symbol(symbol: str) -> str:
     return (symbol or '').upper().replace('/', '').replace(' ', '').replace('-', '').replace('_', '')
 
+# Exact mappings for Yahoo Finance to eliminate substring collisions (e.g. XAUT != GC=F)
+EXACT_YF_MAP: Dict[str, str] = {
+    'DXY': 'DX-Y.NYB',
+    'DX-Y.NYB': 'DX-Y.NYB',
+    'USDX': 'DX-Y.NYB',
+    'US10Y': '^TNX',
+    '^TNX': '^TNX',
+    'TNX': '^TNX',
+    'US02Y': '^IRX',
+    'US2Y': '^IRX',
+    '^2YY': '^IRX',
+    '^IRX': '^IRX',
+    'VIX': '^VIX',
+    '^VIX': '^VIX',
+    'SPX': '^GSPC',
+    'SP500': '^GSPC',
+    '^GSPC': '^GSPC',
+    'NDX': '^NDX',
+    'NASDAQ': '^NDX',
+    '^NDX': '^NDX',
+    'DJI': '^DJI',
+    'DOW': '^DJI',
+    '^DJI': '^DJI',
+    'RUT': '^RUT',
+    '^RUT': '^RUT',
+    'DAX': '^GDAXI',
+    '^GDAXI': '^GDAXI',
+    'FTSE': '^FTSE',
+    '^FTSE': '^FTSE',
+    'CAC40': '^FCHI',
+    '^FCHI': '^FCHI',
+    'NIKKEI': '^N225',
+    '^N225': '^N225',
+    'NIFTY': '^NSEI',
+    'NIFTY50': '^NSEI',
+    '^NSEI': '^NSEI',
+    'KOSPI': '^KS11',
+    '^KS11': '^KS11',
+    'GOLD': 'GC=F',
+    'XAU': 'GC=F',
+    'XAUUSD': 'GC=F',
+    'GC=F': 'GC=F',
+    'SILVER': 'SI=F',
+    'XAG': 'SI=F',
+    'XAGUSD': 'SI=F',
+    'SI=F': 'SI=F',
+    'BRENT': 'BZ=F',
+    'OILBRENT': 'BZ=F',
+    'BZ=F': 'BZ=F',
+    'WTI': 'CL=F',
+    'OILWTI': 'CL=F',
+    'CL=F': 'CL=F',
+    'NATGAS': 'NG=F',
+    'NG=F': 'NG=F',
+    'COPPER': 'HG=F',
+    'HG=F': 'HG=F',
+    'PLATINUM': 'PL=F',
+    'PL=F': 'PL=F',
+    'BTC.D': 'BTC.D',
+    'USDT.D': 'USDT.D',
+    'ETH.D': 'ETH.D',
+    'TOTAL': 'TOTAL',
+    'TOTAL2': 'TOTAL2',
+    'TOTAL3': 'TOTAL3',
+    'CRYPTO_FGI': 'CRYPTO_FGI',
+}
+
+FOREX_PAIRS = {
+    'EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'USDCAD', 'USDCHF', 'NZDUSD',
+    'EURGBP', 'EURJPY', 'GBPJPY', 'EURCHF', 'AUDJPY', 'GBPAUD', 'USDCNY',
+    'USDTRY', 'USDMXN', 'USDZAR', 'EURCAD', 'EURAUD'
+}
+
+def resolve_yf_symbol(symbol: str) -> str:
+    """
+    Standardizes user/UI symbols into clean Yahoo Finance query symbols:
+    - Strips /USD, -USD, USD quote suffixes from stock pairs (AAPL/USD -> AAPL)
+    - Preserves share classes with dash (BRK-B) and foreign exchanges with dot (7203.T)
+    - Maps major Forex pairs to {PAIR}=X (EUR/USD -> EURUSD=X)
+    - Resolves Macro, Yields & Commodities to exact futures tickers
+    """
+    s = (symbol or '').upper().strip()
+
+    # 0. Already standard Yahoo format with =X
+    if s.endswith('=X'):
+        return s
+
+    s_clean = s.replace('/', '').replace(' ', '')
+
+    # 1. Exact map check (handles XAUUSD -> GC=F, DXY -> DX-Y.NYB, etc.)
+    if s in EXACT_YF_MAP:
+        return EXACT_YF_MAP[s]
+    if s_clean in EXACT_YF_MAP:
+        return EXACT_YF_MAP[s_clean]
+
+    # 2. Forex pair check (BEFORE any quote stripping so EURUSD is never stripped to EUR!)
+    if s_clean in FOREX_PAIRS:
+        return f'{s_clean}=X'
+
+    # 3. Explicit pair with slash (e.g. AAPL/USD -> AAPL, EUR/USD -> handled in forex or base)
+    if '/' in s:
+        base, quote = s.split('/', 1)
+        base = base.strip()
+        quote = quote.strip()
+        pair_candidate = f'{base}{quote}'
+        if pair_candidate in EXACT_YF_MAP:
+            return EXACT_YF_MAP[pair_candidate]
+        if pair_candidate in FOREX_PAIRS:
+            return f'{pair_candidate}=X'
+        return EXACT_YF_MAP.get(base, base)
+
+    # 4. Trailing USD or USDT on equities (e.g. TSLAUSD -> TSLA, AAPLUSDT -> AAPL)
+    # Notice: Do NOT strip if starts with ^ or contains dot (7203.T) or dash (BRK-B)
+    if not s.startswith('^') and '.' not in s and '-' not in s:
+        for q in ['USDT', 'USD']:
+            if s.endswith(q) and len(s) > len(q):
+                candidate = s[:-len(q)]
+                if candidate in EXACT_YF_MAP:
+                    return EXACT_YF_MAP[candidate]
+                return candidate
+
+    return s
+
 async def fetch_price_with_trace(
     client: httpx.AsyncClient,
     exchange: str,
@@ -372,10 +501,11 @@ async def fetch_price_with_trace(
     sym_clean = normalize_symbol(symbol)
     traces: List[Dict[str, Any]] = []
     final_price: Optional[float] = None
+    final_meta: Dict[str, Any] = {}
 
-    # Helper function for tracing with Bulk Response Caching
+    # Helper function for tracing with Bulk Response Caching and metadata extraction
     async def _try_fetch(source_name: str, url: str, extractor_func, headers=None) -> Optional[float]:
-        nonlocal final_price
+        nonlocal final_price, final_meta
         t0 = time.time()
         now = time.time()
 
@@ -383,13 +513,32 @@ async def fetch_price_with_trace(
         cached_bulk = BULK_MARKET_RESPONSE_CACHE.get(url)
         if cached_bulk and (now - cached_bulk[1]) < 3.0:
             try:
-                price = extractor_func(cached_bulk[0])
-                if price and float(price) > 0:
-                    val = float(price)
-                    traces.append({'source': source_name, 'url': url, 'status_code': 200, 'latency_ms': 0.1, 'parsed_price': val, 'success': True, 'cached_bulk': True})
-                    if final_price is None:
-                        final_price = val
-                    return val
+                raw_extracted = extractor_func(cached_bulk[0])
+                if raw_extracted is not None:
+                    if isinstance(raw_extracted, dict):
+                        val = float(raw_extracted.get('price', 0))
+                        item_meta = {k: v for k, v in raw_extracted.items() if k != 'price'}
+                    else:
+                        val = float(raw_extracted)
+                        item_meta = {}
+                    if val > 0:
+                        item_meta['source'] = source_name
+                        traces.append({
+                            'source': source_name,
+                            'url': url,
+                            'status_code': 200,
+                            'latency_ms': 0.1,
+                            'parsed_price': val,
+                            'asOf': item_meta.get('asOf', int(now)),
+                            'state': item_meta.get('state', 'LIVE'),
+                            'currency': item_meta.get('currency', 'USD'),
+                            'success': True,
+                            'cached_bulk': True
+                        })
+                        if final_price is None:
+                            final_price = val
+                            final_meta = item_meta
+                        return val
             except Exception:
                 pass
 
@@ -402,15 +551,38 @@ async def fetch_price_with_trace(
             if res.status_code == 200:
                 data = res.json()
                 BULK_MARKET_RESPONSE_CACHE[url] = (data, now)
-                price = extractor_func(data)
-                if price and float(price) > 0:
-                    val = float(price)
-                    traces.append({'source': source_name, 'url': url, 'status_code': 200, 'latency_ms': latency, 'parsed_price': val, 'success': True})
-                    if final_price is None:
-                        final_price = val
-                    return val
+                raw_extracted = extractor_func(data)
+                if raw_extracted is not None:
+                    if isinstance(raw_extracted, dict):
+                        val = float(raw_extracted.get('price', 0))
+                        item_meta = {k: v for k, v in raw_extracted.items() if k != 'price'}
+                    else:
+                        val = float(raw_extracted)
+                        item_meta = {}
+                    if val > 0:
+                        item_meta['source'] = source_name
+                        traces.append({
+                            'source': source_name,
+                            'url': url,
+                            'status_code': 200,
+                            'latency_ms': latency,
+                            'parsed_price': val,
+                            'asOf': item_meta.get('asOf', int(now)),
+                            'state': item_meta.get('state', 'LIVE'),
+                            'currency': item_meta.get('currency', 'USD'),
+                            'success': True
+                        })
+                        if final_price is None:
+                            final_price = val
+                            final_meta = item_meta
+                        return val
+                    else:
+                        traces.append({'source': source_name, 'url': url, 'status_code': 200, 'latency_ms': latency, 'error': 'Symbol not found or 0 price', 'success': False})
                 else:
-                    traces.append({'source': source_name, 'url': url, 'status_code': 200, 'latency_ms': latency, 'error': 'Symbol not found or 0 price', 'success': False})
+                    traces.append({'source': source_name, 'url': url, 'status_code': 200, 'latency_ms': latency, 'error': 'Extractor returned null', 'success': False})
+            elif res.status_code == 429:
+                traces.append({'source': source_name, 'url': url, 'status_code': 429, 'latency_ms': latency, 'error': 'Rate limited (HTTP 429)', 'success': False})
+                await asyncio.sleep(0.15)
             else:
                 traces.append({'source': source_name, 'url': url, 'status_code': res.status_code, 'latency_ms': latency, 'error': f'HTTP {res.status_code}', 'success': False})
         except Exception as e:
@@ -429,61 +601,114 @@ async def fetch_price_with_trace(
         if sym_clean in ['USDT', 'USDTTMN', 'USDTIRT']:
             matching_keys.extend(['USDTTMN', 'USDTIRT', 'USDT_IRT', 'USDT_TMN'])
 
-        # 1a. Tabdeal
-        def _extract_tabdeal(data):
+        # 1a. Nobitex Market Stats API (Official aggregated prices for all markets)
+        def _extract_nobitex_stats(data):
             if isinstance(data, dict):
-                for k, v in data.items():
-                    if normalize_symbol(k) in matching_keys:
-                        if isinstance(v, dict):
-                            p = v.get('price') or v.get('last_price')
-                            if p and float(p) > 0:
-                                val = float(p)
-                                return val / 10.0 if (val > 500000 and 'USDT' in sym_clean) else val
+                stats = data.get('stats', {})
+                # Look for matching pair (e.g. usdt-rls, btc-rls, btc-usdt)
+                search_targets = [
+                    sym_clean.lower(),
+                    nobitex_sym.lower(),
+                    f"{sym_clean.replace('IRT', '').replace('TMN', '').lower()}-rls",
+                    f"{sym_clean.replace('IRT', '').replace('TMN', '').lower()}-irt",
+                    f"{sym_clean.replace('IRT', '').replace('TMN', '').lower()}-usdt"
+                ]
+                if sym_clean in ['USDT', 'USDTTMN', 'USDTIRT']:
+                    search_targets = ['usdt-rls', 'usdt-irt']
+
+                for tgt in search_targets:
+                    if tgt in stats:
+                        item = stats[tgt]
+                        latest_raw = item.get('latest')
+                        if latest_raw and float(latest_raw) > 0:
+                            raw_val = float(latest_raw)
+                            # Convert RLS to TMN if quote is Rials
+                            is_rls = tgt.endswith('-rls') or tgt.endswith('rls')
+                            final_val = (raw_val / 10.0) if is_rls else raw_val
+                            return {
+                                'price': final_val,
+                                'state': 'LIVE',
+                                'currency': 'TMN' if (is_rls or tgt.endswith('-irt')) else 'USDT'
+                            }
             return None
 
-        p = await _try_fetch('Tabdeal Spot API', 'https://api.tabdeal.org/r/plots/market/information', _extract_tabdeal)
+        p = await _try_fetch('Nobitex Stats API', 'https://apiv2.nobitex.ir/market/stats', _extract_nobitex_stats)
         if p and not collect_all_traces: return p, traces
 
-        # 1b. Nobitex Orderbook (.net then .ir)
-        for domain, label in [('api.nobitex.net', 'Nobitex Global Net'), ('api.nobitex.ir', 'Nobitex Local IR')]:
+        # 1b. Nobitex Orderbook (Using lastTradePrice, with bids fallback)
+        # Empirical fact: Nobitex orderbooks for both IRT and RLS pairs quote in RIALS (divide by 10 for Tomans)
+        for domain, label in [('apiv2.nobitex.ir', 'Nobitex Global Net'), ('api.nobitex.ir', 'Nobitex Local IR')]:
             def _extract_nobitex_ob(data):
-                if isinstance(data, dict) and 'bids' in data and len(data['bids']) > 0:
-                    val = float(data['bids'][0][0])
-                    return val / 10.0 if (val > 500000 and 'USDT' in sym_clean) else val
+                if isinstance(data, dict):
+                    # Prefer real executed last trade price over raw orderbook bids[0]
+                    p_val = data.get('lastTradePrice')
+                    if not p_val and 'bids' in data and len(data['bids']) > 0:
+                        p_val = data['bids'][0][0]
+                    if p_val and float(p_val) > 0:
+                        raw_val = float(p_val)
+                        is_domestic_rial = nobitex_sym.upper().endswith('RLS') or nobitex_sym.upper().endswith('IRT')
+                        final_val = (raw_val / 10.0) if is_domestic_rial else raw_val
+                        return {
+                            'price': final_val,
+                            'state': 'LIVE',
+                            'currency': 'TMN' if is_domestic_rial else 'USDT'
+                        }
                 return None
             p = await _try_fetch(f'{label} Orderbook', f'https://{domain}/v2/orderbook/{nobitex_sym}', _extract_nobitex_ob)
             if p and not collect_all_traces: return p, traces
 
-        # 1c. Bitpin
+        # 1c. Tabdeal
+        tabdeal_sym = 'USDTIRT' if sym_clean in ['USDTTMN', 'USDTIRT', 'USDT'] else (sym_clean[:-3] + 'IRT' if sym_clean.endswith('TMN') else sym_clean)
+        def _extract_tabdeal(data):
+            if isinstance(data, dict):
+                bids = data.get('bids', [])
+                if bids and len(bids) > 0:
+                    val = float(bids[0][0])
+                    if val > 0:
+                        return {'price': val, 'state': 'LIVE', 'currency': 'TMN'}
+            return None
+
+        p = await _try_fetch('Tabdeal Depth API', f'https://api1.tabdeal.org/r/api/v1/depth?symbol={tabdeal_sym}', _extract_tabdeal)
+        if p and not collect_all_traces: return p, traces
+
+        # 1d. Bitpin
         def _extract_bitpin(data):
             if isinstance(data, dict):
                 for m in data.get('results', []):
-                    if normalize_symbol(m.get('code', '')) in matching_keys:
-                        val = float(m.get('price', 0))
-                        return val / 10.0 if (val > 500000 and 'USDT' in sym_clean) else val
+                    code = m.get('code', '')
+                    if normalize_symbol(code) in matching_keys:
+                        raw_val = float(m.get('price', 0))
+                        if raw_val > 0:
+                            is_rls = code.upper().endswith('RLS') or code.upper().endswith('IRR')
+                            final_val = (raw_val / 10.0) if is_rls else raw_val
+                            return {'price': final_val, 'state': 'LIVE', 'currency': 'TMN'}
             return None
 
         p = await _try_fetch('Bitpin Markets API', 'https://api.bitpin.org/v1/mkt/markets/', _extract_bitpin)
         if p and not collect_all_traces: return p, traces
 
-        # 1d. Wallex
+        # 1e. Wallex
         def _extract_wallex(data):
             if isinstance(data, dict):
                 symbols = data.get('result', {}).get('symbols', {})
                 for k, v in symbols.items():
                     if normalize_symbol(k) == sym_clean:
-                        return v.get('stats', {}).get('lastPrice')
+                        p = v.get('stats', {}).get('lastPrice')
+                        if p and float(p) > 0:
+                            return {'price': float(p), 'state': 'LIVE', 'currency': 'TMN' if 'TMN' in k else 'USDT'}
             return None
 
         p = await _try_fetch('Wallex Markets API', 'https://api.wallex.ir/v1/markets', _extract_wallex)
         if p and not collect_all_traces: return p, traces
 
-        # 1e. Tetherland (For USDT/TMN direct)
+        # 1f. Tetherland (For USDT/TMN direct)
         if sym_clean in ['USDTTMN', 'USDTIRT', 'USDT']:
             def _extract_tetherland(data):
                 if isinstance(data, dict):
                     usdt_info = data.get('data', {}).get('currencies', {}).get('USDT', {})
-                    return usdt_info.get('price') or usdt_info.get('last_price')
+                    p = usdt_info.get('price') or usdt_info.get('last_price')
+                    if p and float(p) > 0:
+                        return {'price': float(p), 'state': 'LIVE', 'currency': 'TMN'}
                 return None
 
             p = await _try_fetch('Tetherland API', 'https://api.tetherland.com/currencies', _extract_tetherland)
@@ -492,24 +717,78 @@ async def fetch_price_with_trace(
     # -------------------------------------------------------------
     # 2. GLOBAL MACRO / FOREX / US BONDS / STOCKS (Yahoo Finance)
     # -------------------------------------------------------------
-    elif ex in ['global_stocks', 'stocks', 'macro', 'forex', 'bonds', 'wallstreet'] or any(k in sym_clean for k in ['DXY', 'US10Y', 'TNX', 'EURUSD', 'GBPUSD', 'USDJPY', 'GOLD', 'XAU', 'NYB']):
-        yf_symbol = symbol.upper().replace(' ', '')
-        if 'DX-Y' in yf_symbol or 'DXY' in yf_symbol: yf_symbol = 'DX-Y.NYB'
-        elif 'US10Y' in yf_symbol or '10Y' in yf_symbol or 'TNX' in yf_symbol: yf_symbol = '^TNX'
-        elif 'EURUSD' in sym_clean: yf_symbol = 'EURUSD=X'
-        elif 'GBPUSD' in sym_clean: yf_symbol = 'GBPUSD=X'
-        elif 'USDJPY' in sym_clean: yf_symbol = 'USDJPY=X'
-        elif 'GOLD' in sym_clean or 'XAU' in sym_clean: yf_symbol = 'GC=F'
+    elif ex in ['global_stocks', 'stocks', 'macro', 'forex', 'bonds', 'wallstreet']:
+        yf_symbol = resolve_yf_symbol(symbol)
 
         def _extract_yf(data):
             if isinstance(data, dict):
                 chart = data.get('chart', {}).get('result', [])
                 if chart and isinstance(chart, list) and len(chart) > 0:
-                    return chart[0].get('meta', {}).get('regularMarketPrice')
+                    meta = chart[0].get('meta', {})
+                    p = meta.get('regularMarketPrice')
+                    if p is not None and float(p) > 0:
+                        as_of = meta.get('regularMarketTime')
+                        market_state = meta.get('marketState', 'REGULAR')
+                        currency = meta.get('currency', 'USD')
+                        return {
+                            'price': float(p),
+                            'asOf': as_of,
+                            'state': market_state,
+                            'currency': currency
+                        }
             return None
 
-        p = await _try_fetch('Yahoo Finance API', f'https://query1.finance.yahoo.com/v8/finance/chart/{yf_symbol}?interval=1m&range=1d', _extract_yf)
+        # 2a. Primary: query1
+        p = await _try_fetch(
+            'Yahoo Finance API (query1)',
+            f'https://query1.finance.yahoo.com/v8/finance/chart/{yf_symbol}?interval=1m&range=1d',
+            _extract_yf
+        )
         if p and not collect_all_traces: return p, traces
+
+        # 2b. Secondary Fallback: query2 (only retry on 429, 5xx, or network failure, NEVER on 404)
+        last_status = traces[-1].get('status_code', 0) if traces else 0
+        if last_status != 404:
+            p = await _try_fetch(
+                'Yahoo Finance API (query2)',
+                f'https://query2.finance.yahoo.com/v8/finance/chart/{yf_symbol}?interval=1m&range=1d',
+                _extract_yf
+            )
+            if p and not collect_all_traces: return p, traces
+
+    # -------------------------------------------------------------
+    # 2c. DEX (DexScreener & GeckoTerminal On-Chain Tokens)
+    # -------------------------------------------------------------
+    elif ex in ['dex', 'dexscreener', 'geckoterminal']:
+        def _extract_dexscreener(data):
+            if isinstance(data, dict):
+                pairs = data.get('pairs', [])
+                if pairs and len(pairs) > 0:
+                    p = pairs[0].get('priceUsd')
+                    if p and float(p) > 0:
+                        return {'price': float(p), 'state': 'LIVE', 'currency': 'USD'}
+            return None
+
+        clean_dex_sym = sym_clean.lower()
+        if clean_dex_sym.startswith('0x') or len(clean_dex_sym) >= 32:
+            p = await _try_fetch('DexScreener Tokens API', f'https://api.dexscreener.com/latest/dex/tokens/{clean_dex_sym}', _extract_dexscreener)
+        else:
+            p = await _try_fetch('DexScreener Search API', f'https://api.dexscreener.com/latest/dex/search?q={sym_clean}', _extract_dexscreener)
+        if p and not collect_all_traces: return p, traces
+
+        def _extract_geckoterminal(data):
+            if isinstance(data, dict):
+                attrs = data.get('data', {}).get('attributes', {})
+                prices = attrs.get('token_prices', {})
+                if prices:
+                    first_p = next(iter(prices.values()), None)
+                    if first_p and float(first_p) > 0:
+                        return {'price': float(first_p), 'state': 'LIVE', 'currency': 'USD'}
+            return None
+
+        if clean_dex_sym.startswith('0x'):
+            p = await _try_fetch('GeckoTerminal Token API', f'https://api.geckoterminal.com/api/v2/simple/networks/eth/token_price/{clean_dex_sym}', _extract_geckoterminal)
+            if p and not collect_all_traces: return p, traces
 
     # -------------------------------------------------------------
     # 3. GLOBAL CRYPTO (Binance, MEXC, KuCoin, Gate.io, CoinEx)
@@ -519,27 +798,69 @@ async def fetch_price_with_trace(
         if not any(crypto_sym.endswith(q) for q in ['USDT', 'BUSD', 'USDC', 'BTC', 'ETH', 'EUR', 'USD']):
             crypto_sym = crypto_sym + 'USDT'
 
-        # 3a. Binance
-        p = await _try_fetch('Binance Spot API', f'https://api.binance.com/api/v3/ticker/price?symbol={crypto_sym}', lambda d: d.get('price') if isinstance(d, dict) else None)
-        if p and not collect_all_traces: return p, traces
-
-        # 3b. MEXC
-        p = await _try_fetch('MEXC Spot API', f'https://api.mexc.com/api/v3/ticker/price?symbol={crypto_sym}', lambda d: d.get('price') if isinstance(d, dict) else None)
-        if p and not collect_all_traces: return p, traces
-
-        # 3c. KuCoin
         kucoin_sym = f"{crypto_sym[:-4]}-USDT" if crypto_sym.endswith('USDT') else crypto_sym
-        p = await _try_fetch('KuCoin Spot API', f'https://api.kucoin.com/api/v1/market/orderbook/level1?symbol={kucoin_sym}', lambda d: d.get('data', {}).get('price') if isinstance(d, dict) else None)
-        if p and not collect_all_traces: return p, traces
-
-        # 3d. Gate.io
         gate_sym = f"{crypto_sym[:-4]}_USDT" if crypto_sym.endswith('USDT') else crypto_sym
-        p = await _try_fetch('Gate.io Spot API', f'https://api.gateio.ws/api/v4/spot/tickers?currency_pair={gate_sym}', lambda d: d[0].get('last') if isinstance(d, list) and len(d) > 0 else None)
-        if p and not collect_all_traces: return p, traces
 
-        # 3e. CoinEx
-        p = await _try_fetch('CoinEx Spot API', f'https://api.coinex.com/v1/market/ticker?market={crypto_sym}', lambda d: d.get('data', {}).get('ticker', {}).get('last') if isinstance(d, dict) else None)
-        if p and not collect_all_traces: return p, traces
+        # Providers definitions
+        async def _fetch_binance():
+            return await _try_fetch(
+                'Binance Spot API',
+                f'https://api.binance.com/api/v3/ticker/price?symbol={crypto_sym}',
+                lambda d: {'price': float(d.get('price')), 'state': 'LIVE', 'currency': 'USDT'} if isinstance(d, dict) and d.get('price') else None
+            )
+
+        async def _fetch_mexc():
+            return await _try_fetch(
+                'MEXC Spot API',
+                f'https://api.mexc.com/api/v3/ticker/price?symbol={crypto_sym}',
+                lambda d: {'price': float(d.get('price')), 'state': 'LIVE', 'currency': 'USDT'} if isinstance(d, dict) and d.get('price') else None
+            )
+
+        async def _fetch_kucoin():
+            return await _try_fetch(
+                'KuCoin Spot API',
+                f'https://api.kucoin.com/api/v1/market/orderbook/level1?symbol={kucoin_sym}',
+                lambda d: {'price': float(d.get('data', {}).get('price')), 'state': 'LIVE', 'currency': 'USDT'} if isinstance(d, dict) and d.get('data', {}).get('price') else None
+            )
+
+        async def _fetch_gateio():
+            return await _try_fetch(
+                'Gate.io Spot API',
+                f'https://api.gateio.ws/api/v4/spot/tickers?currency_pair={gate_sym}',
+                lambda d: {'price': float(d[0].get('last')), 'state': 'LIVE', 'currency': 'USDT'} if isinstance(d, list) and len(d) > 0 and d[0].get('last') else None
+            )
+
+        async def _fetch_coinex():
+            return await _try_fetch(
+                'CoinEx Spot API',
+                f'https://api.coinex.com/v1/market/ticker?market={crypto_sym}',
+                lambda d: {'price': float(d.get('data', {}).get('ticker', {}).get('last')), 'state': 'LIVE', 'currency': 'USDT'} if isinstance(d, dict) and d.get('data', {}).get('ticker', {}).get('last') else None
+            )
+
+        providers = [
+            ('binance', _fetch_binance),
+            ('mexc', _fetch_mexc),
+            ('kucoin', _fetch_kucoin),
+            ('gateio', _fetch_gateio),
+            ('coinex', _fetch_coinex),
+        ]
+
+        # Prioritize selected exchange if specified
+        if ex in ['mexc']:
+            providers.sort(key=lambda x: 0 if x[0] == 'mexc' else 1)
+        elif ex in ['kucoin']:
+            providers.sort(key=lambda x: 0 if x[0] == 'kucoin' else 1)
+        elif ex in ['gateio', 'gate']:
+            providers.sort(key=lambda x: 0 if x[0] == 'gateio' else 1)
+        elif ex in ['coinex']:
+            providers.sort(key=lambda x: 0 if x[0] == 'coinex' else 1)
+        elif ex in ['binance']:
+            providers.sort(key=lambda x: 0 if x[0] == 'binance' else 1)
+
+        for _, fetch_func in providers:
+            p = await fetch_func()
+            if p and not collect_all_traces:
+                return p, traces
 
     return final_price, traces
 
@@ -556,7 +877,7 @@ async def get_cached_price(client: httpx.AsyncClient, exchange: str, symbol: str
         return cached[0]
 
     METRICS["cache_misses"] += 1
-    price, _ = await fetch_price_with_trace(client, exchange, symbol, collect_all_traces=False)
+    price, traces = await fetch_price_with_trace(client, exchange, symbol, collect_all_traces=False)
     if price is not None and price > 0:
         # Outlier Protection: suspicious 50%+ jumps must be confirmed 3 times in a row before acceptance
         if cached and cached[0] > 0 and (now - cached[1]) < 300:
@@ -570,7 +891,18 @@ async def get_cached_price(client: httpx.AsyncClient, exchange: str, symbol: str
                     return cached[0]
 
         OUTLIER_STREAK.pop(cache_key, None)
-        PRICE_CACHE[cache_key] = (price, now)
+        # Store price, timestamp, and rich trace metadata
+        meta = {}
+        for tr in traces:
+            if tr.get('success') and tr.get('parsed_price') == price:
+                meta = {
+                    'source': tr.get('source'),
+                    'asOf': tr.get('asOf'),
+                    'state': tr.get('state'),
+                    'currency': tr.get('currency'),
+                }
+                break
+        PRICE_CACHE[cache_key] = (price, now, meta)
         return price
     return None
 
@@ -1061,6 +1393,51 @@ async def check_alerts_job():
             alert.last_checked_at = current_time - max(0, alert.check_interval_seconds - 5)
             return
 
+        cached_entry = PRICE_CACHE.get(key)
+        cached_meta = cached_entry[2] if (cached_entry and len(cached_entry) > 2 and isinstance(cached_entry[2], dict)) else {}
+
+        # 1. Closed-Market Policy (Option B):
+        # Applied ONLY when asOf is provided by the market source (stocks/macro/forex).
+        # Crypto and Iranian markets do not have asOf and are continuously evaluated.
+        as_of = cached_meta.get('asOf')
+        if as_of is not None:
+            state = cached_meta.get('state')
+            if state == 'REGULAR' and (time.time() - as_of) > 900:
+                cached_meta['is_delayed'] = True
+
+            last_asof = getattr(alert, 'last_eval_asof', None)
+            if last_asof is not None and last_asof == as_of:
+                # Market has not generated a new timestamp tick (e.g. weekend/closed)
+                return
+            alert.last_eval_asof = as_of
+
+        # 2. Level-Crossing Guard (Edge-Trigger Hysteresis across ALL markets):
+        # If an alert is evaluated for the very first time (last_eval_price is None):
+        if getattr(alert, 'last_eval_price', None) is None:
+            alert.last_eval_price = current_price
+            # If current price is ALREADY on the triggered side at creation/startup:
+            is_initially_triggered = (
+                (alert.condition == 'ABOVE' and current_price >= alert.target_price) or
+                (alert.condition == 'BELOW' and current_price <= alert.target_price)
+            )
+            if is_initially_triggered:
+                alert.waiting_for_cross = True
+                print(f"🛡️ [Edge Guard] {alert.symbol} ({alert.exchange}): initial price {current_price} already meets {alert.condition} {alert.target_price}. Armed for crossing.")
+                return
+
+        # If waiting for price to cross to the non-triggered side first:
+        if getattr(alert, 'waiting_for_cross', False):
+            if alert.condition == 'ABOVE' and current_price < alert.target_price:
+                alert.waiting_for_cross = False
+                print(f"🎯 [Edge Armed] {alert.symbol} dipped below {alert.target_price} ({current_price}). Ready to trigger on upward crossing.")
+            elif alert.condition == 'BELOW' and current_price > alert.target_price:
+                alert.waiting_for_cross = False
+                print(f"🎯 [Edge Armed] {alert.symbol} rose above {alert.target_price} ({current_price}). Ready to trigger on downward crossing.")
+            alert.last_eval_price = current_price
+            return
+
+        alert.last_eval_price = current_price
+
         triggered = False
         if alert.condition == 'ABOVE' and current_price >= alert.target_price:
             triggered = True
@@ -1108,7 +1485,9 @@ async def check_alerts_job():
 
             title = f"{emoji} {display_symbol} {pct_str} {price_formatted} {arrow}".replace('  ', ' ')
             exchange_name = get_exchange_display_name(alert.exchange)
-            body_lines = [f"🏛️ {exchange_name}"]
+            resolved_source = cached_meta.get('source')
+            source_badge = f" [via {resolved_source}]" if (resolved_source and alert.exchange.lower() not in resolved_source.lower()) else ""
+            body_lines = [f"🏛️ {exchange_name}{source_badge}"]
             if alert.note and alert.note.strip():
                 clean_note = alert.note.strip()
                 if not clean_note.startswith('📝'):
@@ -1374,7 +1753,10 @@ async def create_alert(alert_in: AlertCreate):
                 is_active=True,
                 created_at=datetime.now(timezone.utc).isoformat(),
                 last_checked_at=0.0,
-                last_triggered_at=0.0
+                last_triggered_at=0.0,
+                last_eval_asof=None,
+                last_eval_price=None,
+                waiting_for_cross=False
             )
             ALERTS_DB.append(new_alert)
 
@@ -1451,7 +1833,10 @@ async def sync_user_alerts(payload: dict):
                 is_active=is_act,
                 created_at=item.get('created_at') or datetime.now(timezone.utc).isoformat(),
                 last_checked_at=last_chk,
-                last_triggered_at=last_trig
+                last_triggered_at=last_trig,
+                last_eval_asof=None,
+                last_eval_price=None,
+                waiting_for_cross=False
             )
             new_alerts.append(alert_obj)
             added_count += 1
@@ -1600,11 +1985,18 @@ async def get_live_price(exchange: str, symbol: str):
     _validate_market_args(exchange, symbol)
     price = await get_cached_price(http_client, exchange, symbol)
     if price is not None and price > 0:
+        cache_key = f"{exchange.lower()}:{normalize_symbol(symbol)}"
+        cached_entry = PRICE_CACHE.get(cache_key)
+        meta = cached_entry[2] if (cached_entry and len(cached_entry) > 2 and isinstance(cached_entry[2], dict)) else {}
         return {
             "status": "ok",
             "exchange": exchange,
             "symbol": symbol,
             "price": price,
+            "source": meta.get("source", "Market API"),
+            "asOf": meta.get("asOf", int(time.time())),
+            "state": meta.get("state", "LIVE"),
+            "currency": meta.get("currency", "USD"),
             "timestamp": time.time()
         }
     raise HTTPException(status_code=502, detail="Unable to fetch live price from market sources.")
@@ -1643,6 +2035,244 @@ async def inspect_market_source(exchange: str, symbol: str):
 @app.get("/debug/logs", dependencies=ADMIN_DEP)
 def get_debug_logs():
     return {"count": len(RECENT_DIAGNOSTICS), "logs": RECENT_DIAGNOSTICS}
+
+PROBE_TARGETS = [
+    # Iran Markets
+    {"id": "tsetmc_web", "name": "TSETMC Web (تارنمای قدیمی بورس)", "cat": "iran", "url": "http://old.tsetmc.com/tsev2/data/MarketWatchPlus.aspx", "extractor": lambda d: None},
+    {"id": "tsetmc_main", "name": "TSETMC Main (درگاه اصلی بورس تهران)", "cat": "iran", "url": "https://tsetmc.com", "extractor": lambda d: None},
+    {"id": "tgju", "name": "TGJU (طلا، سکه و ارز)", "cat": "iran", "url": "https://www.tgju.org", "extractor": lambda d: None},
+    {"id": "nobitex_stats", "name": "Nobitex Stats (آمار بازار نوبیتکس)", "cat": "iran", "url": "https://apiv2.nobitex.ir/market/stats", "extractor": lambda d: float(d.get('stats', {}).get('usdt-rls', {}).get('latest', 0)) if isinstance(d, dict) else None},
+    {"id": "tabdeal_depth", "name": "Tabdeal Depth (دفتر سفارشات تبدیل)", "cat": "iran", "url": "https://api1.tabdeal.org/r/api/v1/depth?symbol=USDTIRT", "extractor": lambda d: float(d.get('bids', [[0]])[0][0]) if isinstance(d, dict) and d.get('bids') else None},
+    {"id": "wallex_markets", "name": "Wallex Markets (مارکت والکس)", "cat": "iran", "url": "https://api.wallex.ir/v1/markets", "extractor": lambda d: float(d.get('result', {}).get('symbols', {}).get('USDTTMN', {}).get('stats', {}).get('lastPrice', 0)) if isinstance(d, dict) else None},
+    {"id": "bitpin_markets", "name": "Bitpin Markets (مارکت بیت‌پین)", "cat": "iran", "url": "https://api.bitpin.org/v1/mkt/markets/", "extractor": lambda d: float(d.get('results', [{}])[0].get('price', 0)) if isinstance(d, dict) and d.get('results') else None},
+    {"id": "tetherland", "name": "Tetherland (نرخ مستقیم تتر)", "cat": "iran", "url": "https://api.tetherland.com/currencies", "extractor": lambda d: float(d.get('data', {}).get('currencies', {}).get('USDT', {}).get('price', 0)) if isinstance(d, dict) else None},
+    {"id": "bonbast", "name": "Bonbast (دلار آزاد و سکه)", "cat": "iran", "url": "https://bonbast.com", "extractor": lambda d: None},
+
+    # DEX Providers
+    {"id": "dexscreener_token", "name": "DexScreener Tokens (توکن On-Chain)", "cat": "dex", "url": "https://api.dexscreener.com/latest/dex/tokens/0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c", "extractor": lambda d: float(d.get('pairs', [{}])[0].get('priceUsd', 0)) if isinstance(d, dict) and d.get('pairs') else None},
+    {"id": "dexscreener_search", "name": "DexScreener Search (جستجوی صرافی غیرمتمرکز)", "cat": "dex", "url": "https://api.dexscreener.com/latest/dex/search?q=WBNB", "extractor": lambda d: float(d.get('pairs', [{}])[0].get('priceUsd', 0)) if isinstance(d, dict) and d.get('pairs') else None},
+    {"id": "geckoterminal_simple", "name": "GeckoTerminal Simple (قیمت WETH)", "cat": "dex", "url": "https://api.geckoterminal.com/api/v2/simple/networks/eth/token_price/0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2", "extractor": lambda d: float(next(iter(d.get('data', {}).get('attributes', {}).get('token_prices', {}).values()), 0)) if isinstance(d, dict) else None},
+    {"id": "geckoterminal_networks", "name": "GeckoTerminal Networks (شبکه‌های فعال)", "cat": "dex", "url": "https://api.geckoterminal.com/api/v2/networks", "extractor": lambda d: None},
+
+    # Asian Indices & Global Macro
+    {"id": "nikkei225", "name": "Nikkei 225 (^N225 - ژاپن)", "cat": "macro", "url": "https://query1.finance.yahoo.com/v8/finance/chart/%5EN225?interval=1m&range=1d", "extractor": lambda d: float(d.get('chart', {}).get('result', [{}])[0].get('meta', {}).get('regularMarketPrice', 0)) if isinstance(d, dict) else None},
+    {"id": "nifty50", "name": "NIFTY 50 (^NSEI - هند)", "cat": "macro", "url": "https://query1.finance.yahoo.com/v8/finance/chart/%5ENSEI?interval=1m&range=1d", "extractor": lambda d: float(d.get('chart', {}).get('result', [{}])[0].get('meta', {}).get('regularMarketPrice', 0)) if isinstance(d, dict) else None},
+    {"id": "kospi", "name": "KOSPI (^KS11 - کره جنوبی)", "cat": "macro", "url": "https://query1.finance.yahoo.com/v8/finance/chart/%5EKS11?interval=1m&range=1d", "extractor": lambda d: float(d.get('chart', {}).get('result', [{}])[0].get('meta', {}).get('regularMarketPrice', 0)) if isinstance(d, dict) else None},
+    {"id": "sp500", "name": "S&P 500 (^GSPC - آمریکا)", "cat": "macro", "url": "https://query1.finance.yahoo.com/v8/finance/chart/%5EGSPC?interval=1m&range=1d", "extractor": lambda d: float(d.get('chart', {}).get('result', [{}])[0].get('meta', {}).get('regularMarketPrice', 0)) if isinstance(d, dict) else None},
+    {"id": "gold_spot", "name": "Gold Spot (GC=F - طلا و انس)", "cat": "macro", "url": "https://query1.finance.yahoo.com/v8/finance/chart/GC=F?interval=1m&range=1d", "extractor": lambda d: float(d.get('chart', {}).get('result', [{}])[0].get('meta', {}).get('regularMarketPrice', 0)) if isinstance(d, dict) else None},
+    {"id": "tbill_13w", "name": "US 13-Week T-Bill (^IRX - اوراق خزانه‌داری)", "cat": "macro", "url": "https://query1.finance.yahoo.com/v8/finance/chart/%5EIRX?interval=1m&range=1d", "extractor": lambda d: float(d.get('chart', {}).get('result', [{}])[0].get('meta', {}).get('regularMarketPrice', 0)) if isinstance(d, dict) else None},
+
+    # Global Crypto Exchanges
+    {"id": "binance", "name": "Binance Spot (BTC/USDT)", "cat": "crypto", "url": "https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT", "extractor": lambda d: float(d.get('price', 0)) if isinstance(d, dict) else None},
+    {"id": "mexc", "name": "MEXC Spot (BTC/USDT)", "cat": "crypto", "url": "https://api.mexc.com/api/v3/ticker/price?symbol=BTCUSDT", "extractor": lambda d: float(d.get('price', 0)) if isinstance(d, dict) else None},
+    {"id": "kucoin", "name": "KuCoin Spot (BTC/USDT)", "cat": "crypto", "url": "https://api.kucoin.com/api/v1/market/orderbook/level1?symbol=BTC-USDT", "extractor": lambda d: float(d.get('data', {}).get('price', 0)) if isinstance(d, dict) else None},
+    {"id": "gateio", "name": "Gate.io Spot (BTC/USDT)", "cat": "crypto", "url": "https://api.gateio.ws/api/v4/spot/tickers?currency_pair=BTC_USDT", "extractor": lambda d: float(d[0].get('last', 0)) if isinstance(d, list) and d else None},
+    {"id": "coinex", "name": "CoinEx Spot (BTC/USDT)", "cat": "crypto", "url": "https://api.coinex.com/v1/market/ticker?market=BTCUSDT", "extractor": lambda d: float(d.get('data', {}).get('ticker', {}).get('last', 0)) if isinstance(d, dict) else None},
+    {"id": "bitstamp", "name": "Bitstamp Spot (BTC/USD)", "cat": "crypto", "url": "https://www.bitstamp.net/api/v2/ticker/btcusd/", "extractor": lambda d: float(d.get('last', 0)) if isinstance(d, dict) else None},
+    {"id": "gemini", "name": "Gemini Spot (BTC/USD)", "cat": "crypto", "url": "https://api.gemini.com/v1/pubticker/btcusd", "extractor": lambda d: float(d.get('last', 0)) if isinstance(d, dict) else None},
+    {"id": "htx", "name": "HTX / Huobi Spot (BTC/USDT)", "cat": "crypto", "url": "https://api.huobi.pro/market/detail/merged?symbol=btcusdt", "extractor": lambda d: float(d.get('tick', {}).get('close', 0)) if isinstance(d, dict) else None},
+    {"id": "bitmex", "name": "BitMEX Instrument (XBTUSD)", "cat": "crypto", "url": "https://www.bitmex.com/api/v1/instrument?symbol=XBTUSD", "extractor": lambda d: float(d[0].get('lastPrice', 0)) if isinstance(d, list) and d else None},
+]
+
+@app.get("/api/admin/probe", dependencies=ADMIN_DEP)
+@app.get("/admin/probe", dependencies=ADMIN_DEP)
+async def admin_probe_market_sources(format: Optional[str] = None, accept: Optional[str] = Header(None)):
+    """
+    Comprehensive Admin Probe Endpoint (Phase 6):
+    Probes all market data sources (Iran Markets, DEX, Asian Indices, Crypto)
+    and returns a status matrix: HEALTHY, SLOW, BLOCKED_OR_ERROR, SUSPICIOUS_PRICE
+    """
+    global http_client
+    if http_client is None:
+        raise HTTPException(status_code=503, detail="Server initializing...")
+
+    req_headers = {'User-Agent': f'Mozilla/5.0 (Windows NT 10.0; Win64; x64) SignalAlertProbe/{APP_VERSION}'}
+
+    async def _probe_single(target):
+        t0 = time.time()
+        url = target['url']
+        try:
+            res = await http_client.get(url, headers=req_headers, timeout=3.5)
+            latency = round((time.time() - t0) * 1000, 1)
+            code = res.status_code
+
+            if code == 200:
+                sample_p = None
+                try:
+                    data = res.json()
+                    sample_p = target['extractor'](data)
+                except Exception:
+                    pass
+
+                status = 'HEALTHY'
+                status_fa = 'سالم'
+
+                if sample_p is not None and sample_p <= 0:
+                    status = 'SUSPICIOUS_PRICE'
+                    status_fa = 'قیمت مشکوک'
+                elif latency > 1200:
+                    status = 'SLOW'
+                    status_fa = 'کند'
+
+                return {
+                    'id': target['id'],
+                    'name': target['name'],
+                    'category': target['cat'],
+                    'url': url,
+                    'status': status,
+                    'status_fa': status_fa,
+                    'http_code': code,
+                    'latency_ms': latency,
+                    'sample_price': sample_p,
+                    'error': None
+                }
+            elif code in [403, 429]:
+                return {
+                    'id': target['id'],
+                    'name': target['name'],
+                    'category': target['cat'],
+                    'url': url,
+                    'status': 'BLOCKED_OR_ERROR',
+                    'status_fa': 'بلاک / محدود',
+                    'http_code': code,
+                    'latency_ms': round((time.time() - t0) * 1000, 1),
+                    'sample_price': None,
+                    'error': f'HTTP {code} Geo-blocked/Rate-limited'
+                }
+            else:
+                return {
+                    'id': target['id'],
+                    'name': target['name'],
+                    'category': target['cat'],
+                    'url': url,
+                    'status': 'BLOCKED_OR_ERROR',
+                    'status_fa': 'خطا',
+                    'http_code': code,
+                    'latency_ms': round((time.time() - t0) * 1000, 1),
+                    'sample_price': None,
+                    'error': f'HTTP {code}'
+                }
+        except Exception as e:
+            return {
+                'id': target['id'],
+                'name': target['name'],
+                'category': target['cat'],
+                'url': url,
+                'status': 'BLOCKED_OR_ERROR',
+                'status_fa': 'بلاک / تایم‌اوت',
+                'http_code': 0,
+                'latency_ms': round((time.time() - t0) * 1000, 1),
+                'sample_price': None,
+                'error': f'{type(e).__name__}: {str(e)[:60]}'
+            }
+
+    results = await asyncio.gather(*[_probe_single(t) for t in PROBE_TARGETS])
+
+    healthy_c = sum(1 for r in results if r['status'] == 'HEALTHY')
+    slow_c = sum(1 for r in results if r['status'] == 'SLOW')
+    blocked_c = sum(1 for r in results if r['status'] == 'BLOCKED_OR_ERROR')
+    suspicious_c = sum(1 for r in results if r['status'] == 'SUSPICIOUS_PRICE')
+
+    probe_report = {
+        'timestamp': datetime.utcnow().isoformat() + 'Z',
+        'server_location': 'Belgium (europe-west1 / Google Cloud)',
+        'summary': {
+            'total_sources': len(results),
+            'healthy': healthy_c,
+            'slow': slow_c,
+            'blocked_or_error': blocked_c,
+            'suspicious_price': suspicious_c
+        },
+        'results': results
+    }
+
+    # If requested HTML or Accept header indicates HTML
+    wants_html = (format == 'html') or (accept and 'text/html' in accept)
+    if wants_html:
+        rows_html = ""
+        for r in results:
+            st = r['status']
+            if st == 'HEALTHY':
+                badge = '<span style="background:#d1fae5;color:#065f46;padding:4px 8px;border-radius:6px;font-weight:bold;">✅ سالم (HEALTHY)</span>'
+            elif st == 'SLOW':
+                badge = '<span style="background:#fef3c7;color:#92400e;padding:4px 8px;border-radius:6px;font-weight:bold;">⏱ کند (SLOW)</span>'
+            elif st == 'SUSPICIOUS_PRICE':
+                badge = '<span style="background:#fee2e2;color:#991b1b;padding:4px 8px;border-radius:6px;font-weight:bold;">⚠️ قیمت مشکوک</span>'
+            else:
+                badge = '<span style="background:#f3f4f6;color:#1f2937;padding:4px 8px;border-radius:6px;font-weight:bold;">🚫 بلاک / خطا</span>'
+
+            price_str = f"{r['sample_price']:,.2f}" if r['sample_price'] else "—"
+            err_str = f"<small style='color:#ef4444;'>{html.escape(r['error'])}</small>" if r['error'] else "—"
+
+            rows_html += f"""
+            <tr>
+                <td><b>{html.escape(r['name'])}</b><br><small style="color:#6b7280;">{html.escape(r['category'].upper())}</small></td>
+                <td>{badge}</td>
+                <td>{r['latency_ms']} ms</td>
+                <td><b>{price_str}</b></td>
+                <td><small style="color:#4b5563;">{r['http_code']}</small></td>
+                <td>{err_str}</td>
+            </tr>
+            """
+
+        html_content = f"""
+        <!DOCTYPE html>
+        <html dir="rtl" lang="fa">
+        <head>
+            <meta charset="utf-8">
+            <title>ارزیابی پایش و مشاهده‌پذیری منابع بازار - SignalAlert Probe</title>
+            <style>
+                body {{ font-family: system-ui, -apple-system, sans-serif; background: #f8fafc; color: #0f172a; margin: 0; padding: 24px; }}
+                .container {{ max-width: 1200px; margin: 0 auto; background: white; border-radius: 12px; padding: 24px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }}
+                h1 {{ margin-top: 0; font-size: 24px; color: #1e293b; }}
+                .summary {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 24px; }}
+                .card {{ padding: 16px; border-radius: 8px; text-align: center; }}
+                .card-total {{ background: #eff6ff; color: #1e40af; }}
+                .card-healthy {{ background: #f0fdf4; color: #166534; }}
+                .card-slow {{ background: #fffbeb; color: #854d0e; }}
+                .card-blocked {{ background: #fef2f2; color: #991b1b; }}
+                .card-num {{ font-size: 28px; font-weight: bold; margin-top: 4px; }}
+                table {{ width: 100%; border-collapse: collapse; text-align: right; }}
+                th, td {{ padding: 12px 16px; border-bottom: 1px solid #e2e8f0; font-size: 14px; }}
+                th {{ background: #f1f5f9; color: #475569; font-weight: 600; }}
+                tr:hover {{ background: #f8fafc; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>📊 مانیتورینگ مشاهده‌پذیری منابع بازار (SignalAlert Admin Probe)</h1>
+                <p style="color:#64748b; margin-bottom: 20px;">
+                    سرور اصلی: <b>Belgium (europe-west1 / Google Cloud)</b> | زمان ثبت: <b>{probe_report['timestamp']}</b>
+                </p>
+                <div class="summary">
+                    <div class="card card-total">کل منابع<div class="card-num">{len(results)}</div></div>
+                    <div class="card card-healthy">سالم (HEALTHY)<div class="card-num">{healthy_c}</div></div>
+                    <div class="card card-slow">کند (SLOW)<div class="card-num">{slow_c}</div></div>
+                    <div class="card card-blocked">بلاک / خطا<div class="card-num">{blocked_c}</div></div>
+                    <div class="card card-blocked" style="background:#fef2f2; color:#991b1b;">قیمت مشکوک<div class="card-num">{suspicious_c}</div></div>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>منبع داده</th>
+                            <th>وضعیت</th>
+                            <th>زمان پاسخ (Latency)</th>
+                            <th>نمونه قیمت استخراجی</th>
+                            <th>کد HTTP</th>
+                            <th>جزئیات خطا / علت</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {rows_html}
+                    </tbody>
+                </table>
+            </div>
+        </body>
+        </html>
+        """
+        return HTMLResponse(content=html_content)
+
+    return probe_report
 
 @app.get("/api/test/push", dependencies=ADMIN_DEP)
 @app.post("/api/test/push", dependencies=ADMIN_DEP)

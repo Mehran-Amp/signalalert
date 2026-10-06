@@ -28,14 +28,18 @@ import '../toobit/toobit_exchange.dart';
 import '../wallex/wallex_exchange.dart';
 import '../xt/xt_exchange.dart';
 
-/// Exhaustive Catalog of all verified exchanges from BitcoinChecker MarketsConfig & Iranian Domestic Markets.
-/// Provides unrestricted access to all spot assets on each exchange with 100% price uptime.
+/// Standard Catalog of cryptocurrency and global markets adapters.
 class ExchangeCatalog {
-  static List<Exchange> buildAllExchanges() {
-    final exchanges = <Exchange>[
-      // --- GLOBAL STOCKS, METALS, FOREX & COMMODITIES (Wall Street) ---
-      GlobalStocksExchange(),
+  static const String globalStocksId = 'global_stocks';
 
+  /// Equities, indices, commodities, and macro market adapters
+  static List<Exchange> buildMarketsProviders() => [
+    GlobalStocksExchange(),
+  ];
+
+  /// Cryptocurrency and domestic market adapters
+  static List<Exchange> buildCryptoExchanges() {
+    return <Exchange>[
       // --- IRANIAN & MIDDLE EAST EXCHANGES (Full Tomans & Tether Catalog) ---
       NobitexExchange(),
       WallexExchange(),
@@ -83,6 +87,7 @@ class ExchangeCatalog {
         category: ExchangeCategory.tier1,
         countryBadge: '🌐 Global',
         defaultCounterCurrency: 'USDT',
+        pairsUrl: 'https://api.huobi.pro/v1/common/symbols',
         tickerUrlTemplate: 'https://api.huobi.pro/market/detail/merged?symbol={BASE}{QUOTE}',
         fallbackPairs: CryptoCatalogData.buildPairs(quoteCurrencies: ['USDT', 'BTC', 'ETH']),
       ),
@@ -101,6 +106,7 @@ class ExchangeCatalog {
         category: ExchangeCategory.tier1,
         countryBadge: '🇪🇺 Europe',
         defaultCounterCurrency: 'USD',
+        pairsUrl: 'https://www.bitstamp.net/api/v2/trading-pairs-info/',
         tickerUrlTemplate: 'https://www.bitstamp.net/api/v2/ticker/{BASE}{QUOTE}/',
         fallbackPairs: CryptoCatalogData.buildPairs(quoteCurrencies: ['USD', 'EUR', 'BTC']),
       ),
@@ -110,6 +116,7 @@ class ExchangeCatalog {
         category: ExchangeCategory.tier1,
         countryBadge: '🇺🇸 US',
         defaultCounterCurrency: 'USD',
+        pairsUrl: 'https://api.gemini.com/v1/symbols',
         tickerUrlTemplate: 'https://api.gemini.com/v1/pubticker/{BASE}{QUOTE}',
         fallbackPairs: CryptoCatalogData.buildPairs(quoteCurrencies: ['USD', 'BTC', 'ETH']),
       ),
@@ -144,9 +151,9 @@ class ExchangeCatalog {
         name: 'Upbit',
         category: ExchangeCategory.asia,
         countryBadge: '🇰🇷 South Korea',
-        defaultCounterCurrency: 'USDT',
-        tickerUrlTemplate: 'https://api.upbit.com/v1/ticker?markets=USDT-{BASE_UPPER}',
-        fallbackPairs: CryptoCatalogData.buildPairs(quoteCurrencies: ['USDT', 'BTC']),
+        defaultCounterCurrency: 'KRW',
+        tickerUrlTemplate: 'https://api.upbit.com/v1/ticker?markets={QUOTE_UPPER}-{BASE_UPPER}',
+        fallbackPairs: CryptoCatalogData.buildPairs(quoteCurrencies: ['KRW', 'USDT', 'BTC']),
       ),
       StandardRestExchange(
         id: 'bithumb',
@@ -195,7 +202,8 @@ class ExchangeCatalog {
         category: ExchangeCategory.tier1,
         countryBadge: '🌐 Global',
         defaultCounterCurrency: 'USDT',
-        tickerUrlTemplate: 'https://www.bitmex.com/api/v1/instrument?symbol={BASE_UPPER}_{QUOTE_UPPER}',
+        pairsUrl: 'https://www.bitmex.com/api/v1/instrument?filter=%7B%22typ%22%3A%22FFWCSX%22%7D',
+        tickerUrlTemplate: 'https://www.bitmex.com/api/v1/instrument?symbol={BITMEX_SYMBOL}',
         fallbackPairs: CryptoCatalogData.buildPairs(quoteCurrencies: ['USDT', 'USD']),
       ),
       StandardRestExchange(
@@ -269,7 +277,7 @@ class ExchangeCatalog {
         category: ExchangeCategory.europe,
         countryBadge: '🇳🇱 Europe',
         defaultCounterCurrency: 'EUR',
-        tickerUrlTemplate: 'https://api.bitvavo.com/v2/ticker/price?market={BASE_UPPER}-EUR',
+        tickerUrlTemplate: 'https://api.bitvavo.com/v2/ticker/price?market={BASE_UPPER}-{QUOTE_UPPER}',
         fallbackPairs: CryptoCatalogData.buildPairs(quoteCurrencies: ['EUR', 'USDT']),
       ),
 
@@ -277,11 +285,19 @@ class ExchangeCatalog {
       CoinMarketCapExchange(),
       CoinGeckoExchange(),
     ];
+  }
 
-    // Strictly sort all exchanges alphabetically A-Z by English name
+  /// Combined catalog containing all market providers and crypto exchanges
+  static List<Exchange> buildAllExchanges() {
+    final exchanges = <Exchange>[
+      ...buildMarketsProviders(),
+      ...buildCryptoExchanges(),
+    ];
+
+    // Strictly sort all exchanges alphabetically A-Z by English name with global stocks prioritized
     exchanges.sort((a, b) {
-      if (a.id == 'global_stocks') return -1;
-      if (b.id == 'global_stocks') return 1;
+      if (a.id == globalStocksId) return -1;
+      if (b.id == globalStocksId) return 1;
       return a.name.toLowerCase().compareTo(b.name.toLowerCase());
     });
 
