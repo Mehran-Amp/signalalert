@@ -142,6 +142,18 @@ class GoogleAuthService {
         await ServerAlertService.syncAllRulesToServer(repo.allRules, userId: userEmail);
       } catch (_) {}
 
+      // 3. Restore persisted Telegram connection status from cloud
+      try {
+        final tgStatus = await ServerAlertService.fetchUserTelegramStatus(userEmail);
+        if (tgStatus != null && tgStatus['is_connected'] == true && tgStatus['telegram_chat_id'] != null) {
+          final savedChatId = tgStatus['telegram_chat_id'] as String;
+          if (savedChatId.isNotEmpty) {
+            await settingsService.setTelegramChatId(savedChatId);
+            debugPrint('📱 [Cloud Sync] Restored Telegram Chat ID: $savedChatId');
+          }
+        }
+      } catch (_) {}
+
       if (context.mounted) {
         try {
           context.read<AlertRulesBloc>().add(const LoadAlertRules());

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import '../../../core/services/native_widget_sync_service.dart';
+import '../../../core/services/server_alert_service.dart';
 import '../models/app_settings.dart';
 
 /// Local-First Persistent Settings Service.
@@ -94,6 +95,16 @@ class SettingsService extends ChangeNotifier {
       telegramChatId: cleanId,
       telegramAlertsEnabled: cleanId != null,
     ));
+
+    // Automatically sync Telegram connection state to cloud for logged in user
+    final email = _settings.userEmail;
+    if (email != null && email.isNotEmpty) {
+      ServerAlertService.saveUserTelegramStatus(
+        userId: email,
+        chatId: cleanId,
+        isConnected: cleanId != null,
+      );
+    }
   }
 
   Future<void> toggleTelegramAlerts(bool enabled) async {
@@ -125,6 +136,8 @@ class SettingsService extends ChangeNotifier {
       userDisplayName: null,
       userPhotoUrl: null,
       isPremium: false,
+      telegramChatId: null,
+      telegramAlertsEnabled: false,
     ));
   }
 }

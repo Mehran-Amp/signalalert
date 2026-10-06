@@ -263,6 +263,37 @@ async def save_alerts_to_disk_async(alerts: List[Alert]):
 
 ALERTS_DB: List[Alert] = load_alerts_from_disk()
 
+PROFILES_FILE = "user_profiles.json"
+
+def load_user_profiles_from_disk() -> Dict[str, Dict[str, Any]]:
+    if os.path.exists(PROFILES_FILE):
+        try:
+            with open(PROFILES_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"⚠️ Error loading user profiles disk DB: {e}")
+    return {}
+
+async def save_user_profiles_to_disk_async(profiles: Dict[str, Dict[str, Any]]):
+    async with _db_lock:
+        try:
+            loop = asyncio.get_running_loop()
+            json_str = json.dumps(profiles, ensure_ascii=False, indent=2)
+
+            def _write():
+                tmp_file = f"{PROFILES_FILE}.tmp"
+                with open(tmp_file, "w", encoding="utf-8") as f:
+                    f.write(json_str)
+                    f.flush()
+                    os.fsync(f.fileno())
+                os.replace(tmp_file, PROFILES_FILE)
+
+            await loop.run_in_executor(None, _write)
+        except Exception as e:
+            print(f"⚠️ Error saving user profiles disk DB: {e}")
+
+USER_PROFILES_DB: Dict[str, Dict[str, Any]] = load_user_profiles_from_disk()
+
 # -------------------------------------------------------------------
 # 4. FastAPI Lifespan Context Manager (Modern Startup & Shutdown)
 # -------------------------------------------------------------------
@@ -1193,6 +1224,15 @@ async def create_alert(alert_in: AlertCreate):
                 last_triggered_at=0.0
             )
             ALERTS_DB.append(new_alert)
+
+        if alert_in.telegram_chat_id and alert_in.user_id.lower() != 'user_default':
+            USER_PROFILES_DB[alert_in.user_id.lower()] = {
+                "user_id": alert_in.user_id.lower(),
+                "telegram_chat_id": alert_in.telegram_chat_id,
+                "is_connected": True,
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }
+            await save_user_profiles_to_disk_async(USER_PROFILES_DB)
     await save_alerts_to_disk_async(ALERTS_DB)
     print(f"📩 [API] New Alert Created/Updated: {new_alert.symbol} ({new_alert.exchange}) | ID: {new_alert.id} | Target: {new_alert.target_price} | Interval: {new_alert.check_interval_seconds}s")
     return new_alert
@@ -1271,6 +1311,17 @@ async def sync_user_alerts(payload: dict):
             ALERTS_DB = [a for a in ALERTS_DB if a.user_id != user_id]
         ALERTS_DB.extend(new_alerts)
 
+        if user_id.lower() != 'user_default':
+            first_chat = next((i.get('telegram_chat_id') for i in alerts_data if i.get('telegram_chat_id')), None)
+            if first_chat:
+                USER_PROFILES_DB[user_id.lower()] = {
+                    "user_id": user_id.lower(),
+                    "telegram_chat_id": str(first_chat).strip(),
+                    "is_connected": True,
+                    "updated_at": datetime.now(timezone.utc).isoformat()
+                }
+                await save_user_profiles_to_disk_async(USER_PROFILES_DB)
+
     await save_alerts_to_disk_async(ALERTS_DB)
     active_remaining = len([a for a in ALERTS_DB if a.is_active])
     print(f"🔄 [API] Bulk Synced {added_count} alert(s) for user {user_id} (Active remaining: {active_remaining})")
@@ -1321,6 +1372,71 @@ async def delete_alert(alert_id: str):
         ALERTS_DB = [a for a in ALERTS_DB if a.id != clean_id]
     await save_alerts_to_disk_async(ALERTS_DB)
     return {"status": "deleted", "id": clean_id}
+
+class UserTelegramUpdateRequest(BaseModel):
+    chat_id: Optional[str] = None
+    is_connected: bool = True
+
+@app.get("/api/user/{user_id}/telegram", dependencies=API_DEP)
+@app.get("/user/{user_id}/telegram", dependencies=API_DEP)
+async def get_user_telegram_status(user_id: str):
+    clean_uid = (user_id or "").strip().lower()
+    async with _db_lock:
+        profile = USER_PROFILES_DB.get(clean_uid)
+        if not profile:
+            # Fallback: check if any existing alert has telegram_chat_id for this user
+            user_alert = next((a for a in ALERTS_DB if a.user_id.lower() == clean_uid and a.telegram_chat_id), None)
+            if user_alert and user_alert.telegram_chat_id:
+                profile = {
+                    "user_id": clean_uid,
+                    "telegram_chat_id": user_alert.telegram_chat_id,
+                    "is_connected": True,
+                    "updated_at": datetime.now(timezone.utc).isoformat()
+                }
+                USER_PROFILES_DB[clean_uid] = profile
+        if profile:
+            return profile
+    return {
+        "user_id": clean_uid,
+        "telegram_chat_id": None,
+        "is_connected": False,
+        "updated_at": None
+    }
+
+@app.post("/api/user/{user_id}/telegram", dependencies=API_DEP)
+@app.post("/user/{user_id}/telegram", dependencies=API_DEP)
+async def update_user_telegram_status(user_id: str, req: UserTelegramUpdateRequest):
+    clean_uid = (user_id or "").strip().lower()
+    if not clean_uid:
+        raise HTTPException(status_code=400, detail="Invalid user_id.")
+
+    clean_chat = req.chat_id.strip() if req.chat_id else None
+    if clean_chat and not CHAT_ID_RE.match(clean_chat):
+        raise HTTPException(status_code=400, detail="Invalid telegram_chat_id.")
+
+    async with _db_lock:
+        profile = {
+            "user_id": clean_uid,
+            "telegram_chat_id": clean_chat if req.is_connected else None,
+            "is_connected": req.is_connected and bool(clean_chat),
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }
+        USER_PROFILES_DB[clean_uid] = profile
+
+        # Synchronize active user alerts with their latest Telegram state
+        if clean_chat and req.is_connected:
+            for a in ALERTS_DB:
+                if a.user_id.lower() == clean_uid:
+                    a.telegram_chat_id = clean_chat
+        elif not req.is_connected:
+            for a in ALERTS_DB:
+                if a.user_id.lower() == clean_uid:
+                    a.telegram_chat_id = None
+
+    await save_user_profiles_to_disk_async(USER_PROFILES_DB)
+    await save_alerts_to_disk_async(ALERTS_DB)
+    print(f"📱 [User Profile] Telegram updated for {clean_uid}: chat_id={clean_chat}, connected={profile['is_connected']}")
+    return profile
 
 @app.get("/api/price/{exchange}/{symbol}", dependencies=API_DEP)
 @app.get("/price/{exchange}/{symbol}", dependencies=API_DEP)

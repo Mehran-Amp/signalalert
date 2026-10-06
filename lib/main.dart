@@ -39,10 +39,23 @@ void main() async {
   final settingsService = SettingsService(dir.path);
   await settingsService.load();
   await ServerAlertService.initialize();
+
+  // Wire token rotation callback BEFORE initialization so any new token is synced immediately to server
+  FCMNotificationService.onTokenChanged = (newToken) {
+    debugPrint('🔄 [FCM] Token rotated: ...${newToken.length > 6 ? newToken.substring(newToken.length - 6) : newToken}. Syncing rules to server...');
+    ServerAlertService.syncAllRulesToServer(
+      alertRuleRepository.allRules,
+      userId: settingsService.settings.userEmail,
+    );
+  };
+
   await FCMNotificationService.initialize(storageDirectoryPath: dir.path);
 
   // Sync all active alert rules to Python server for 24/7 background FCM monitoring
-  ServerAlertService.syncAllRulesToServer(alertRuleRepository.allRules);
+  ServerAlertService.syncAllRulesToServer(
+    alertRuleRepository.allRules,
+    userId: settingsService.settings.userEmail,
+  );
 
   // Sync initial widget state with loaded alerts and active theme
   await NativeWidgetSyncService.syncAlerts(

@@ -6,6 +6,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../../core/services/fcm_notification_service.dart';
+import '../../../core/services/server_alert_service.dart';
 import '../../alert_engine/repositories/json_alert_rule_repository.dart';
 import '../../alert_engine/scheduler/scheduler_service.dart';
 import '../../exchanges/registry/exchange_catalog.dart';
@@ -112,6 +113,15 @@ class BackgroundServiceManager {
 
       final settingsService = SettingsService(dir.path);
       await settingsService.load();
+      await ServerAlertService.initialize();
+
+      // Wire FCM token rotation in background isolate as well
+      FCMNotificationService.onTokenChanged = (newToken) {
+        ServerAlertService.syncAllRulesToServer(
+          alertRuleRepository.allRules,
+          userId: settingsService.settings.userEmail,
+        );
+      };
 
       // Initialize FCM in background isolate so FCM listener and tokens are active from boot!
       await FCMNotificationService.initialize(

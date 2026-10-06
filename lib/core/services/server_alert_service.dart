@@ -566,4 +566,48 @@ class ServerAlertService {
       return {'success': false, 'error': e.toString()};
     }
   }
+
+  /// Persist user's Telegram Chat ID and connection state on the server
+  static Future<bool> saveUserTelegramStatus({
+    required String userId,
+    required String? chatId,
+    bool isConnected = true,
+  }) async {
+    if (!isServerAvailable || userId.trim().isEmpty) return false;
+    try {
+      final cleanUser = userId.trim().toLowerCase();
+      final url = Uri.parse('$_baseUrl/api/user/$cleanUser/telegram');
+      final response = await http.post(
+        url,
+        headers: _buildHeaders(),
+        body: jsonEncode({
+          'chat_id': chatId,
+          'is_connected': isConnected && chatId != null && chatId.trim().isNotEmpty,
+        }),
+      ).timeout(const Duration(seconds: 6));
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('⚠️ Error saving user Telegram status: $e');
+      return false;
+    }
+  }
+
+  /// Retrieve user's saved Telegram Chat ID and connection state from the server
+  static Future<Map<String, dynamic>?> fetchUserTelegramStatus(String userId) async {
+    if (!isServerAvailable || userId.trim().isEmpty) return null;
+    try {
+      final cleanUser = userId.trim().toLowerCase();
+      final url = Uri.parse('$_baseUrl/api/user/$cleanUser/telegram');
+      final response = await http.get(url, headers: _buildHeaders()).timeout(const Duration(seconds: 6));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data is Map<String, dynamic>) {
+          return data;
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ Error fetching user Telegram status: $e');
+    }
+    return null;
+  }
 }
