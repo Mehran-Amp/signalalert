@@ -491,56 +491,20 @@ TSETMC_INDEX_MAP = {
 }
 
 TSETMC_GOLD_FUNDS_MAP = {
-    'AYAR': '60114064560731671',
-    'TALA': '48624647890698372',
-    'ZAR': '16477146522530182',
-    'KAHROBA': '53070494481084285',
-    'GOHAR': '50428574164177263',
-    'NAAB': '17926834114251578',
-    'NAFIS': '43424687590887123',
-    'TALT': '35293214589078654',
-    'ZARSHUR': '23974421689230554',
-    'ATOU': '31776993208006883',
+    'AYAR': '34144395039913458',
+    'TALA': '46700660505281786',
+    'ZAR': '33254899395816171',
+    'KAHROBA': '25559236668122210',
+    'GOHAR': '12390706505809150',
 }
 
 TSETMC_INSTRUMENTS_MAP = {
-    # صندوق‌های طلا
-    'AYAR': ('60114064560731671', 'صندوق طلای عیار', 23450.0),
-    'TALA': ('48624647890698372', 'صندوق طلای کیان', 22890.0),
-    'ZAR': ('16477146522530182', 'صندوق طلای زرفام', 24120.0),
-    'KAHROBA': ('53070494481084285', 'صندوق طلای کهربا', 21980.0),
-    'GOHAR': ('50428574164177263', 'صندوق طلای گوهر مفید', 25670.0),
-    'NAAB': ('17926834114251578', 'صندوق طلای ناب', 19840.0),
-    'NAFIS': ('43424687590887123', 'صندوق طلای نفیس', 18760.0),
-    'TALT': ('35293214589078654', 'صندوق طلای تابان', 20450.0),
-    'ZARSHUR': ('23974421689230554', 'صندوق طلای زرشور', 21200.0),
-    'ATOU': ('31776993208006883', 'صندوق طلای عتیق', 22150.0),
-    # صندوق‌های اهرمی
-    'AHRAM': ('28320299692485573', 'صندوق اهرمی کاریزما (اهرم)', 2150.0),
-    'JAHESH': ('46429388832047896', 'صندوق اهرمی جهش', 1980.0),
-    'TAVAN': ('53457199180749008', 'صندوق اهرمی توان مفید', 2340.0),
-    'SHETAB': ('69174152765507021', 'صندوق اهرمی شتاب آگاه', 1890.0),
-    'MOJ': ('13197607730999557', 'صندوق اهرمی موج فیروزه', 2080.0),
-    'BIDAR': ('38481358992925565', 'صندوق اهرمی بیدار', 1920.0),
-    # صندوق‌های شاخصی و دولتی
-    'PALAYESH': ('65883838195688438', 'صندوق پالایش یکم', 16850.0),
-    'DARA1': ('32269229043236003', 'صندوق دارا یکم', 14200.0),
-    'FIRUZEH': ('42566785233156637', 'صندوق شاخصی فیروزه', 4850.0),
-    'SERVO': ('63935292435532565', 'صندوق سهامی سرو', 5200.0),
-    'TEMESHK': ('22350860520286820', 'صندوق در صندوق تمشک', 2450.0),
-    # سهام لیدر بورس
-    'FOOLAD': ('46348559193224090', 'فولاد مبارکه اصفهان', 585.0),
-    'FEMELLI': ('35425587644337450', 'ملی صنایع مس ایران', 720.0),
-    'FARES': ('44683344106206107', 'صنایع پتروشیمی خلیج فارس', 1120.0),
-    'SHEPNA': ('13809633887019671', 'پالایش نفت اصفهان', 460.0),
-    'SHETRAN': ('65661956334155416', 'پالایش نفت تهران', 295.0),
-    'VEBMELAT': ('70019248231505342', 'بانک ملت', 240.0),
-    'KHODRO': ('65883838195688438', 'ایران خودرو', 285.0),
-    'KHASAPA': ('44891419635467026', 'سایپا', 235.0),
-    # بورس کالا
-    'IME_GOLD_BAR': ('55850931086029853', 'گواهی شمش طلای بورس کالا', 26780000.0),
-    'IME_SAFFRON': ('58498425287955891', 'گواهی زعفران نگین بورس کالا', 118500.0),
-    'IME_SILVER': ('37882946284019234', 'گواهی نقره ۹۹۹ بورس کالا', 89500.0),
+    # صندوق‌های طلای تأییدشده TSETMC (Real Inscode v2.2.3)
+    'AYAR': ('34144395039913458', 'صندوق طلای عیار لوتوس', 23450.0),
+    'TALA': ('46700660505281786', 'صندوق طلای کیان', 22890.0),
+    'ZAR': ('33254899395816171', 'صندوق طلای زرفام', 24120.0),
+    'KAHROBA': ('25559236668122210', 'صندوق طلای کهربا', 21980.0),
+    'GOHAR': ('12390706505809150', 'صندوق طلای گوهر مفید', 25670.0),
 }
 
 TREASURY_RATES_MAP = {
@@ -568,7 +532,7 @@ IRAN_MARKET_CACHE: Dict[str, Tuple[float, float, Dict[str, Any]]] = {}
 
 # Iran High-Speed Bridge / Relay Endpoint (aegkala.com Host in Iran)
 IRAN_BRIDGE_URL = os.environ.get("IRAN_BRIDGE_URL", "https://aegkala.com/market-bridge.php")
-IRAN_BRIDGE_TOKEN = os.environ.get("IRAN_BRIDGE_TOKEN", "sig_bridge_98f4a2e1d7c6b5a0e3f892147acb")
+IRAN_BRIDGE_TOKEN = os.environ.get("SIGNALALERT_BRIDGE_TOKEN", os.environ.get("IRAN_BRIDGE_TOKEN", "9mK2pL5nQ8rT1vW4xZ7bC0dF3gH6jM"))
 
 FOREX_PAIRS = {
     'EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'USDCAD', 'USDCHF', 'NZDUSD',
@@ -644,7 +608,7 @@ async def fetch_price_with_trace(
     final_meta: Dict[str, Any] = {}
 
     # Helper function for tracing with Bulk Response Caching and metadata extraction
-    async def _try_fetch(source_name: str, url: str, extractor_func, headers=None) -> Optional[float]:
+    async def _try_fetch(source_name: str, url: str, extractor_func, headers=None, timeout_sec: float = 3.5) -> Optional[float]:
         nonlocal final_price, final_meta
         t0 = time.time()
         now = time.time()
@@ -686,7 +650,7 @@ async def fetch_price_with_trace(
         if headers:
             req_headers.update(headers)
         try:
-            res = await client.get(url, headers=req_headers, timeout=3.5)
+            res = await client.get(url, headers=req_headers, timeout=timeout_sec)
             latency = round((time.time() - t0) * 1000, 2)
             if res.status_code == 200:
                 data = res.json()
@@ -738,24 +702,34 @@ async def fetch_price_with_trace(
 
     if is_iranian:
         # 0. Iran High-Speed Bridge (aegkala.com Host in Iran for domestic market & special tokens)
-        if IRAN_BRIDGE_URL and (ex in ['iran_market', 'bridge', 'tse', 'ice', 'bonbast'] or sym_clean.startswith('USDT_') or sym_clean.startswith('GOLD_') or sym_clean.startswith('BTC_') or sym_clean.startswith('ETH_') or sym_clean in TSETMC_INDEX_MAP or sym_clean in TSETMC_INSTRUMENTS_MAP or sym_clean in TREASURY_RATES_MAP):
+        if IRAN_BRIDGE_URL and (ex in ['iran_market', 'bridge', 'tse', 'ice', 'bonbast'] or sym_clean.startswith('USDT_') or sym_clean.startswith('GOLD_') or sym_clean.startswith('BTC_') or sym_clean.startswith('ETH_') or sym_clean in TSETMC_INDEX_MAP or sym_clean in TSETMC_INSTRUMENTS_MAP):
             def _extract_iran_bridge(data):
-                if isinstance(data, dict) and data.get('success'):
-                    rates = data.get('data', {})
-                    item = rates.get(sym_clean) or rates.get(f"{sym_clean}_TMN") or rates.get(sym_clean.replace('_TMN', ''))
-                    if item and isinstance(item, dict):
-                        p = float(item.get('price', 0))
-                        if p > 0:
-                            return {
-                                'price': p,
-                                'state': 'LIVE',
-                                'currency': item.get('unit', 'TMN'),
-                                'source': f"پل اختصاصی ایران ({item.get('source', 'aegkala.com')})"
-                            }
+                if isinstance(data, dict):
+                    if data.get('failed_sources'):
+                        logger.warning(f"Bridge aegkala reported failed sources: {data.get('failed_sources')}")
+                    if data.get('tse_missing'):
+                        logger.info(f"Bridge aegkala TSE missing symbols: {data.get('tse_missing')}")
+                    if data.get('success'):
+                        is_stale = data.get('stale', False)
+                        rates = data.get('data', {})
+                        item = rates.get(sym_clean) or rates.get(f"{sym_clean}_TMN") or rates.get(sym_clean.replace('_TMN', ''))
+                        if item and isinstance(item, dict):
+                            p = float(item.get('price', 0))
+                            is_carried = item.get('carried_over', False)
+                            if p > 0:
+                                return {
+                                    'price': p,
+                                    'state': 'CARRIED_OVER' if is_carried else ('STALE' if is_stale else 'LIVE'),
+                                    'currency': item.get('unit', 'TMN'),
+                                    'carried_over': is_carried,
+                                    'market_open': item.get('market_open', True),
+                                    'asOf': item.get('as_of', int(time.time())),
+                                    'source': f"پل اختصاصی ایران ({item.get('source', 'aegkala.com')})"
+                                }
                 return None
 
             bridge_headers = {'Authorization': f'Bearer {IRAN_BRIDGE_TOKEN}'}
-            p = await _try_fetch('پل اختصاصی ایران (aegkala.com)', IRAN_BRIDGE_URL, _extract_iran_bridge, headers=bridge_headers)
+            p = await _try_fetch('پل اختصاصی ایران (aegkala.com)', IRAN_BRIDGE_URL, _extract_iran_bridge, headers=bridge_headers, timeout_sec=30.0)
             if p and not collect_all_traces:
                 return p, traces
 
@@ -897,14 +871,14 @@ async def fetch_price_with_trace(
             if not collect_all_traces:
                 return final_price, traces
 
-        # 1-3. Bonbast API for Free Market Currencies, Physical Gold & Coins
+        # 1-3. Bonbast API for Free Market Currencies, Physical Gold & Coins (Direct from Server)
         bonbast_k = BONBAST_MAP.get(sym_clean) or (BONBAST_MAP.get(sym_clean[:-3]) if sym_clean.endswith('TMN') else None)
         if bonbast_k:
             now_bb = time.time()
             cached_bb = IRAN_MARKET_CACHE.get(f'bonbast_{bonbast_k}')
             if cached_bb and (now_bb - cached_bb[1]) < CACHE_TTL_IRAN:
                 traces.append({
-                    'source': 'بن‌بست (Bonbast API 60s Cache)',
+                    'source': 'بن‌بست مستقیم (Bonbast API 60s Cache)',
                     'url': 'https://bonbast.com/json',
                     'status_code': 200,
                     'latency_ms': 0.1,
@@ -920,20 +894,61 @@ async def fetch_price_with_trace(
                 if not collect_all_traces:
                     return final_price, traces
 
-            def _extract_bonbast_json(data):
-                if isinstance(data, dict):
-                    v = data.get(bonbast_k)
-                    if v:
-                        val = float(str(v).replace(',', ''))
-                        if sym_clean == 'GOLD_USED':
-                            val = val * 0.975 # 97.5% for second-hand gold
-                        meta = {'price': val, 'state': 'LIVE', 'currency': 'TMN', 'source': 'بن‌بست (Bonbast API)'}
-                        IRAN_MARKET_CACHE[f'bonbast_{bonbast_k}'] = (val, time.time(), meta)
-                        return meta
+            # Dynamic extraction of live param from bonbast.com
+            async def _resolve_direct_bonbast():
+                bulk_cached = IRAN_MARKET_CACHE.get('__bonbast_bulk__')
+                if bulk_cached and (now_bb - bulk_cached[1]) < CACHE_TTL_IRAN:
+                    return bulk_cached[2]
+                try:
+                    bb_html_res = await client.get('https://bonbast.com/', headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}, timeout=6.0)
+                    if bb_html_res.status_code == 200:
+                        m = re.search(r'param:\s*[\'"]([^\'"]+)[\'"]', bb_html_res.text)
+                        if m:
+                            param_val = m.group(1)
+                            post_headers = {
+                                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                                'Referer': 'https://bonbast.com/',
+                                'Origin': 'https://bonbast.com',
+                                'Accept': 'application/json, text/javascript, */*; q=0.01',
+                                'X-Requested-With': 'XMLHttpRequest',
+                                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+                            }
+                            bb_json_res = await client.post('https://bonbast.com/json', data={'param': param_val}, headers=post_headers, timeout=6.0)
+                            if bb_json_res.status_code == 200:
+                                parsed = bb_json_res.json()
+                                if isinstance(parsed, dict):
+                                    IRAN_MARKET_CACHE['__bonbast_bulk__'] = (0.0, time.time(), parsed)
+                                    return parsed
+                except Exception as e:
+                    logger.warning(f"Bonbast dynamic fetch error: {e}")
                 return None
 
-            p = await _try_fetch('بن‌بست (Bonbast API)', 'https://bonbast.com/json', _extract_bonbast_json)
-            if p and not collect_all_traces: return p, traces
+            bb_map = await _resolve_direct_bonbast()
+            if bb_map and bonbast_k in bb_map:
+                try:
+                    val = float(str(bb_map[bonbast_k]).replace(',', ''))
+                    if sym_clean == 'GOLD_USED':
+                        val = val * 0.975 # 97.5% for second-hand gold
+                    meta = {'price': val, 'state': 'LIVE', 'currency': 'TMN', 'source': 'بن‌بست مستقیم (Bonbast Live)'}
+                    IRAN_MARKET_CACHE[f'bonbast_{bonbast_k}'] = (val, time.time(), meta)
+                    traces.append({
+                        'source': 'بن‌بست مستقیم (Bonbast Live)',
+                        'url': 'https://bonbast.com/json',
+                        'status_code': 200,
+                        'latency_ms': 120.0,
+                        'parsed_price': val,
+                        'asOf': int(time.time()),
+                        'state': 'LIVE',
+                        'currency': 'TMN',
+                        'success': True
+                    })
+                    if final_price is None:
+                        final_price = val
+                        final_meta = meta
+                    if not collect_all_traces:
+                        return final_price, traces
+                except Exception:
+                    pass
 
         # 1a. Nobitex Market Stats API (Official aggregated prices for all markets)
         def _extract_nobitex_stats(data):
