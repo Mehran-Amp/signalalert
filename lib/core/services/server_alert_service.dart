@@ -713,26 +713,40 @@ class ServerAlertService {
     const defaultBotToken = '8597547058:AAFNRkiAnCU3NLdTgRs_Oz4p8GKkV-fR7jg';
     final cleanId = chatId.trim();
     if (cleanId.isEmpty) {
-      return {'success': false, 'error': 'Chat ID is empty'};
+      debugPrint('⚠️ [Telegram Test] Chat ID is empty, aborted.');
+      return {'success': false, 'error': 'شناسه چت آیدی خالی است (Chat ID is empty)'};
     }
 
-    // 1. If custom server is configured, try server endpoint first
+    debugPrint('🚀 [Telegram Test] Initiating test alert for Chat ID: $cleanId');
+
+    // 1. If server is available, try server endpoint first
     if (isServerAvailable) {
       try {
-        final url = Uri.parse('$effectiveBaseUrl/api/telegram/test-message');
+        final serverEndpoint = '$effectiveBaseUrl/api/telegram/test-message';
+        debugPrint('🌐 [Telegram Test] Attempting via Python Server: $serverEndpoint');
         final response = await http.post(
-          url,
+          Uri.parse(serverEndpoint),
           headers: _buildHeaders(),
           body: jsonEncode({'chat_id': cleanId}),
-        ).timeout(const Duration(seconds: 6));
+        ).timeout(const Duration(seconds: 8));
+
+        debugPrint('📥 [Telegram Test] Server response status: ${response.statusCode}, body: ${response.body}');
         if (response.statusCode == 200) {
-          return {'success': true, 'message': 'پیام تست به تلگرام ارسال شد.'};
+          debugPrint('✅ [Telegram Test] Server successfully dispatched Telegram test message.');
+          return {'success': true, 'message': 'پیام تست با موفقیت توسط سرور به تلگرام ارسال شد.'};
+        } else {
+          debugPrint('⚠️ [Telegram Test] Server returned error ${response.statusCode}: ${response.body}');
         }
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('⚠️ [Telegram Test] Python Server dispatch failed/timeout: $e');
+      }
+    } else {
+      debugPrint('ℹ️ [Telegram Test] Server unavailable or circuit breaker active, using direct Telegram API.');
     }
 
     // 2. Direct Telegram Bot API fallback
     try {
+      debugPrint('📡 [Telegram Test] Attempting direct Telegram Bot API fallback...');
       final nowUtc = DateTime.now().toUtc();
       final timeStr = '${nowUtc.year}-${nowUtc.month.toString().padLeft(2, '0')}-${nowUtc.day.toString().padLeft(2, '0')} ${nowUtc.hour.toString().padLeft(2, '0')}:${nowUtc.minute.toString().padLeft(2, '0')}:${nowUtc.second.toString().padLeft(2, '0')} UTC';
       final url = Uri.parse('https://api.telegram.org/bot$defaultBotToken/sendMessage');
@@ -742,6 +756,7 @@ class ServerAlertService {
           '🏛️ Global Stocks\n'
           '🕒 <b>زمان:</b> <code>$timeStr</code>\n'
           '⚡ <i>ارسال شده توسط ربات هوشمند SignalAlert Enterprise</i>';
+
       final response = await http.post(
         url,
         headers: {'Content-Type': 'application/json'},
@@ -751,15 +766,25 @@ class ServerAlertService {
           'parse_mode': 'HTML',
           'disable_web_page_preview': true,
         }),
-      ).timeout(const Duration(seconds: 8));
+      ).timeout(const Duration(seconds: 10));
+
+      debugPrint('📥 [Telegram Test] Direct API response status: ${response.statusCode}, body: ${response.body}');
 
       if (response.statusCode == 200) {
-        return {'success': true, 'message': 'پیام تست به تلگرام ارسال شد.'};
+        debugPrint('✅ [Telegram Test] Direct Telegram API call succeeded!');
+        return {'success': true, 'message': 'پیام تست مستقیماً به تلگرام شما ارسال شد.'};
       } else {
-        return {'success': false, 'error': 'کد چت آیدی نامعتبر است یا هنوز دکمه Start را در ربات نزده‌اید.'};
+        final errText = 'کد وضعیت: ${response.statusCode} - چت آیدی نامعتبر است یا ربات استارت نشده است.';
+        debugPrint('❌ [Telegram Test] Direct API failed: $errText');
+        return {'success': false, 'error': errText};
       }
     } catch (e) {
-      return {'success': false, 'error': e.toString()};
+      final isTimeout = e.toString().contains('TimeoutException');
+      final errDetail = isTimeout
+          ? 'تایم‌اوت ارتباط با تلگرام و سرور (لطفاً اتصال اینترنت، فیلترشکن یا سرور را بررسی فرمایید).'
+          : 'خطای ارتباطی: $e';
+      debugPrint('❌ [Telegram Test] Direct API exception: $e');
+      return {'success': false, 'error': errDetail};
     }
   }
 
