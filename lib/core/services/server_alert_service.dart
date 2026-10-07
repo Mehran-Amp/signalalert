@@ -528,6 +528,25 @@ class ServerAlertService {
         body: jsonEncode(payload),
       ).timeout(const Duration(seconds: 10));
 
+      // Immediate direct Telegram confirmation dispatch when Telegram Chat ID is available
+      if (telegramChatId != null && telegramChatId.isNotEmpty) {
+        _dispatchDirectTelegramConfirmation(
+          chatId: telegramChatId,
+          symbol: symbol,
+          exchange: exchange,
+          targetPrice: targetPrice,
+          condition: condition,
+          conditionType: conditionType,
+          percent: percent,
+          checkIntervalSeconds: checkIntervalSeconds,
+          soundEnabled: soundEnabled,
+          vibrationEnabled: vibrationEnabled,
+          ttsEnabled: ttsEnabled,
+          triggerMode: triggerMode,
+          note: note ?? upperNote ?? lowerNote,
+        ).ignore();
+      }
+
       if (response.statusCode == 200 || response.statusCode == 201) {
         debugPrint('✅ Alert successfully created on Python server: ${response.body}');
         return true;
@@ -538,6 +557,76 @@ class ServerAlertService {
       debugPrint('❌ Error connecting to Python Alert Server: $e');
     }
     return false;
+  }
+
+  /// Direct fallback to send sleek Telegram registration confirmation
+  static Future<void> _dispatchDirectTelegramConfirmation({
+    required String chatId,
+    required String symbol,
+    required String exchange,
+    required double targetPrice,
+    required String condition,
+    String? conditionType,
+    double? percent,
+    required int checkIntervalSeconds,
+    required bool soundEnabled,
+    required bool vibrationEnabled,
+    required bool ttsEnabled,
+    required String triggerMode,
+    String? note,
+  }) async {
+    const defaultBotToken = '8597547058:AAFNRkiAnCU3NLdTgRs_Oz4p8GKkV-fR7jg';
+    try {
+      var displaySymbol = symbol;
+      if (!displaySymbol.contains('/') && displaySymbol.length > 3) {
+        for (final q in ['USDT', 'USDC', 'BUSD', 'FDUSD', 'EUR', 'USD', 'TMN', 'IRT', 'BTC', 'ETH']) {
+          if (displaySymbol.endsWith(q) && displaySymbol.length > q.length) {
+            displaySymbol = '${displaySymbol.substring(0, displaySymbol.length - q.length)}/$q';
+            break;
+          }
+        }
+      }
+
+      final condArrow = condition.toUpperCase() == 'ABOVE' ? '▲' : (condition.toUpperCase() == 'BOTHSIDES' ? '⇅' : '▼');
+      final targetRepr = (conditionType == 'percentChange' && percent != null)
+          ? '${percent.toStringAsFixed(percent.truncateToDouble() == percent ? 0 : 2)}%'
+          : (targetPrice < 1 ? targetPrice.toString() : targetPrice.toStringAsFixed(2));
+
+      final intMins = checkIntervalSeconds ~/ 60;
+      final intervalStr = checkIntervalSeconds % 60 == 0 ? '⏱️ ${intMins}m' : '⏱️ ${checkIntervalSeconds}s';
+
+      final features = <String>[intervalStr];
+      if (soundEnabled) features.add('🔊');
+      if (vibrationEnabled) features.add('📳');
+      if (ttsEnabled) features.add('🗣️');
+      if (triggerMode == 'recurring') features.add('🔄');
+
+      final lines = [
+        '✅ <b>$displaySymbol</b> <code>$targetRepr</code> $condArrow',
+        '🏛️ $exchange | ${features.join(" ")}',
+      ];
+      if (note != null && note.trim().isNotEmpty) {
+        var cleanNote = note.trim();
+        if (cleanNote.startsWith('📝')) cleanNote = cleanNote.substring(1).trim();
+        if (cleanNote.isNotEmpty) lines.add('📝 $cleanNote');
+      }
+
+      final msg = lines.join('\n');
+      final url = Uri.parse('https://api.telegram.org/bot$defaultBotToken/sendMessage');
+      await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'chat_id': chatId.trim(),
+          'text': msg,
+          'parse_mode': 'HTML',
+          'disable_web_page_preview': true,
+        }),
+      ).timeout(const Duration(seconds: 6));
+      debugPrint('🤖 [Telegram Direct Confirmation] Sent for $symbol to chat $chatId');
+    } catch (e) {
+      debugPrint('⚠️ [Telegram Direct Confirmation Error] $e');
+    }
   }
 
   /// Fetch all active alerts for a user from the Python server
