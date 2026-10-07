@@ -121,6 +121,13 @@ class JsonAlertRuleRepository {
     await _persist();
   }
 
+  /// Clear all rules in local storage only (used when switching accounts/sign out without deleting from cloud server)
+  Future<void> clearLocalOnly() async {
+    _rules.clear();
+    _notify(syncToServer: false);
+    await _persist();
+  }
+
   /// Deletes an alert rule by UUID and persists to disk
   Future<bool> deleteRule(String uuid) async {
     if (!_isLoaded) await load();

@@ -1612,14 +1612,20 @@ class _SettingsPageState extends State<SettingsPage> {
                     await settingsService.signOut();
                     if (context.mounted) {
                       try {
-                        context.read<AlertRulesBloc>().add(const LoadAlertRules());
+                        final repo = context.read<JsonAlertRuleRepository>();
+                        await repo.clearLocalOnly();
+                        if (context.mounted) {
+                          context.read<AlertRulesBloc>().add(const LoadAlertRules());
+                        }
                       } catch (_) {}
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(isFa ? 'از حساب گوگل خارج شدید.' : 'Signed out of Google account.'),
-                          behavior: SnackBarBehavior.floating,
-                        ),
-                      );
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(isFa ? 'از حساب گوگل خارج شدید.' : 'Signed out of Google account.'),
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                      }
                     }
                   },
                   icon: const Icon(Icons.logout_rounded, size: 14),

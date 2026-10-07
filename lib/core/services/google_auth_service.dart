@@ -130,19 +130,7 @@ class GoogleAuthService {
         photoUrl: 'https://lh3.googleusercontent.com/a/default-user',
       );
 
-      // 1. Restore any existing cloud alerts from previous installs
-      final restoredCount = await ServerAlertService.restoreUserAlertsFromCloud(
-        context: context,
-        userEmail: userEmail,
-      );
-
-      // 2. Sync any current local alerts to the user cloud account
-      try {
-        final repo = context.read<JsonAlertRuleRepository>();
-        await ServerAlertService.syncAllRulesToServer(repo.allRules, userId: userEmail);
-      } catch (_) {}
-
-      // 3. Restore persisted Telegram connection status from cloud
+      // 1. Restore persisted Telegram connection status from cloud first
       try {
         final tgStatus = await ServerAlertService.fetchUserTelegramStatus(userEmail);
         if (tgStatus != null) {
@@ -159,6 +147,20 @@ class GoogleAuthService {
       } catch (e) {
         debugPrint('⚠️ Error fetching Telegram status on sign in: $e');
       }
+
+      // 2. Restore any existing cloud alerts from user's account
+      final restoredCount = await ServerAlertService.restoreUserAlertsFromCloud(
+        context: context,
+        userEmail: userEmail,
+      );
+
+      // 3. If there were local guest alerts before sign-in, merge them with the cloud account
+      try {
+        final repo = context.read<JsonAlertRuleRepository>();
+        if (repo.allRules.isNotEmpty) {
+          await ServerAlertService.syncAllRulesToServer(repo.allRules, userId: userEmail);
+        }
+      } catch (_) {}
 
       if (context.mounted) {
         try {
