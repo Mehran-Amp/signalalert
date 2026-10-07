@@ -1,290 +1,698 @@
 <?php
 /**
- * SignalAlert - Iran High-Speed Market Data Bridge & Proxy (v2.2.3)
- * Secure, token-isolated, and production hardened.
+ * SignalAlert - Iran Market Data Bridge & Proxy (v2.3.2)
  * Host: https://aegkala.com/market-bridge.php
+ *
+ * Config: env SIGNALALERT_BRIDGE_TOKEN, or market-bridge.config.php (one folder above, or next to this file):
+ *   <?php return [
+ *     'token'         => '...',                       // required, >= 16 chars
+ *     'cache_dir'     => '/private/path',             // optional
+ *     'tse_days'      => [6, 0, 1, 2, 3],             // optional, PHP "w": Sat=6 ... Wed=3
+ *     'tse_open'      => '09:00',                     // optional, Tehran time
+ *     'tse_close'     => '12:30',                     // optional
+ *     'tse_holidays'  => ['2026-10-12'],              // optional, Gregorian Y-m-d, edit by hand
+ *   ];
  */
 
+const BRIDGE_VERSION     = '2.3.2';
+const CACHE_TTL          = 60;        // seconds
+const REFRESH_MIN_AGE    = 10;        // ?refresh=1 ignored if cache is younger
+const HTTP_TIMEOUT       = 3;         // exchanges
+const TSE_TIMEOUT        = 8;         // TSETMC market watch is a big response
+const TOTAL_BUDGET       = 14;        // seconds, only used when curl_multi is unavailable
+const LAST_KNOWN_MAX_AGE = 1209600;   // 14 days
+
+define('REQ_START', microtime(true));
+
 @ini_set('display_errors', '0');
-@error_reporting(0);
-@set_time_limit(15);
+error_reporting(E_ALL);
+@ini_set('log_errors', '1');
+@set_time_limit(30);
 
-// 1. Load Secret Token from Environment or Config File
-$token = getenv('SIGNALALERT_BRIDGE_TOKEN');
-
-if (empty($token)) {
-    $configPaths = [
-        dirname(__DIR__) . '/market-bridge.config.php', // Parent directory (above public_html)
-        __DIR__ . '/market-bridge.config.php',          // Same directory
-    ];
-    foreach ($configPaths as $path) {
-        if (file_exists($path)) {
-            $conf = @include $path;
-            if (is_array($conf) && !empty($conf['token'])) {
-                $token = trim($conf['token']);
-                break;
-            }
-        }
-    }
-}
-
-// Token must be at least 16 characters for security
-if (empty($token) || strlen($token) < 16) {
-    http_response_code(500);
-    header('Content-Type: application/json; charset=utf-8');
-    echo json_encode([
-        'success' => false,
-        'message' => 'Server configuration error: Bridge token not set or invalid.'
-    ], JSON_UNESCAPED_UNICODE);
-    exit;
-}
-
-define('SECRET_TOKEN', $token);
-define('CACHE_TTL', 60); // 60 seconds RAM/Disk cache
-define('CACHE_FILE', sys_get_temp_dir() . '/sig_market_bridge_cache_v22.json');
-
-// 2. Set JSON Response Headers & Security
 header('Content-Type: application/json; charset=utf-8');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Headers: Authorization, Content-Type');
-header('X-Bridge-Version: 2.2.3');
+header('Cache-Control: no-store');
+header('X-Bridge-Version: ' . BRIDGE_VERSION);
 
-// Enforce GET Method Only
-if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
-    http_response_code(405);
-    echo json_encode([
-        'success' => false,
-        'message' => 'Method Not Allowed. Only GET requests are accepted.'
-    ], JSON_UNESCAPED_UNICODE);
+function respond(array $payload, int $code = 200): void {
+    http_response_code($code);
+    echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
     exit;
 }
 
-// 3. Strict Header-Only Authentication (Bearer Token)
-$authHeader = isset($_SERVER['HTTP_AUTHORIZATION']) ? $_SERVER['HTTP_AUTHORIZATION'] : (isset($_SERVER['REDIRECT_HTTP_AUTHORIZATION']) ? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] : '');
+// ---------------------------------------------------------------- config ---
+$cfg = [];
+foreach ([dirname(__DIR__), __DIR__] as $dir) {
+    $cfgFile = $dir . '/market-bridge.config.php';
+    if (is_file($cfgFile)) {
+        $loaded = @include $cfgFile;
+        if (is_array($loaded)) { $cfg = $loaded; break; }
+    }
+}
+$secret = getenv('SIGNALALERT_BRIDGE_TOKEN') ?: ($cfg['token'] ?? '');
+$secret = is_string($secret) ? trim($secret) : '';
+if (strlen($secret) < 16) {
+    error_log('[market-bridge] secret token not configured');
+    respond(['success' => false, 'message' => 'Server configuration error: Bridge token not set or invalid.'], 500);
+}
+$cacheDir = $cfg['cache_dir'] ?? (sys_get_temp_dir() . '/sigbridge_' . substr(hash('sha256', __FILE__), 0, 12));
+if (!is_dir($cacheDir) && !@mkdir($cacheDir, 0700, true) && !is_dir($cacheDir)) {
+    error_log('[market-bridge] cannot create cache dir: ' . $cacheDir);
+    respond(['success' => false, 'message' => 'Server configuration error: cache directory.'], 500);
+}
+$cacheFile     = $cacheDir . '/market_cache_v7.json';
+$lastKnownFile = $cacheDir . '/tse_last_known_v1.json';
+$lockFile      = $cacheDir . '/market_cache.lock';
 
-$providedToken = '';
-if (preg_match('/Bearer\s+(.*)$/i', $authHeader, $matches)) {
-    $providedToken = trim($matches[1]);
+$tseDays     = is_array($cfg['tse_days'] ?? null) ? array_map('intval', $cfg['tse_days']) : [6, 0, 1, 2, 3];
+$tseOpen     = is_string($cfg['tse_open'] ?? null) ? $cfg['tse_open'] : '09:00';
+$tseClose    = is_string($cfg['tse_close'] ?? null) ? $cfg['tse_close'] : '12:30';
+$tseHolidays = is_array($cfg['tse_holidays'] ?? null) ? $cfg['tse_holidays'] : [];
+
+// ------------------------------------------------------------------ auth ---
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') {
+    header('Allow: GET');
+    respond(['success' => false, 'message' => 'Method Not Allowed. Only GET requests are accepted.'], 405);
+}
+$authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? ($_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '');
+$provided = preg_match('/^Bearer\s+(\S+)\s*$/i', $authHeader, $m) ? $m[1] : '';
+if ($provided === '' || !hash_equals($secret, $provided)) {
+    respond(['success' => false, 'message' => 'Unauthorized'], 401);
 }
 
-if (empty($providedToken) || !hash_equals(SECRET_TOKEN, $providedToken)) {
-    http_response_code(401);
-    echo json_encode([
-        'success' => false,
-        'message' => 'Unauthorized'
-    ], JSON_UNESCAPED_UNICODE);
-    exit;
+// ----------------------------------------------------------------- cache ---
+function readJsonFile(string $file): ?array {
+    $raw = @file_get_contents($file);
+    if (!$raw) return null;
+    $d = json_decode($raw, true);
+    return is_array($d) ? $d : null;
+}
+function readCache(string $file): ?array {
+    $d = readJsonFile($file);
+    return ($d && isset($d['timestamp'], $d['data'])) ? $d : null;
+}
+function writeJsonAtomic(string $file, array $data): bool {
+    $tmp = $file . '.' . getmypid() . '.tmp';
+    if (@file_put_contents($tmp, json_encode($data, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE)) === false) return false;
+    return @rename($tmp, $file);
+}
+function serveCache(array $c, int $now, bool $stale = false): void {
+    $c['cached'] = true;
+    $c['stale'] = $stale;
+    $c['age_seconds'] = $now - $c['timestamp'];
+    respond($c);
 }
 
-// 4. Check Local Cache (Sub-millisecond response)
 $now = time();
-$forceRefresh = isset($_GET['refresh']) && $_GET['refresh'] === '1';
+$debug = ($_GET['debug'] ?? '') === '1';
+$forceRefresh = ($_GET['refresh'] ?? '') === '1';
+$cached = readCache($cacheFile);
 
-if (!$forceRefresh && file_exists(CACHE_FILE)) {
-    $cacheContent = @file_get_contents(CACHE_FILE);
-    if ($cacheContent) {
-        $cachedData = @json_decode($cacheContent, true);
-        if (is_array($cachedData) && isset($cachedData['timestamp']) && ($now - $cachedData['timestamp']) < CACHE_TTL) {
-            $cachedData['cached'] = true;
-            $cachedData['age_seconds'] = $now - $cachedData['timestamp'];
-            echo json_encode($cachedData, JSON_UNESCAPED_UNICODE);
-            exit;
+if (!$debug && $cached) {
+    $age = $now - $cached['timestamp'];
+    if ($age < CACHE_TTL && !($forceRefresh && $age >= REFRESH_MIN_AGE)) {
+        serveCache($cached, $now);
+    }
+}
+
+// Single refresher: other requests get the (stale) cache instead of stampeding upstreams.
+$lock = @fopen($lockFile, 'c');
+if ($lock && !flock($lock, LOCK_EX | LOCK_NB)) {
+    if ($cached) serveCache($cached, $now, true);
+    flock($lock, LOCK_EX);
+    $cached = readCache($cacheFile);
+    if (!$debug && $cached && ($now - $cached['timestamp']) < CACHE_TTL) serveCache($cached, $now);
+}
+
+// ------------------------------------------------------------------ HTTP ---
+function makeHandle(array $r) {
+    $ch = curl_init($r['url']);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => $r['timeout'] ?? HTTP_TIMEOUT,
+        CURLOPT_CONNECTTIMEOUT => 2,
+        CURLOPT_SSL_VERIFYPEER => true,
+        CURLOPT_SSL_VERIFYHOST => 2,
+        CURLOPT_FOLLOWLOCATION => false,
+        CURLOPT_ENCODING       => '',
+        CURLOPT_USERAGENT      => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        CURLOPT_HTTPHEADER     => array_merge(
+            ['Accept: application/json, text/plain, */*', 'Accept-Language: fa,en-US;q=0.9'],
+            $r['headers'] ?? []
+        ),
+    ]);
+    return $ch;
+}
+
+function finishResult(string $id, $body, $ch): array {
+    $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $err = curl_error($ch);
+    $ok = ($code === 200 && is_string($body) && $body !== '');
+    if (!$ok) error_log("[market-bridge] upstream '$id' failed: http=$code err=$err");
+    return ['body' => $ok ? $body : null, 'code' => $code, 'bytes' => is_string($body) ? strlen($body) : 0, 'err' => $err];
+}
+
+/** @return array<string,array{body:?string,code:int,bytes:int,err:string}> */
+function fetchMulti(array $requests): array {
+    $out = [];
+    if (!function_exists('curl_init')) {
+        error_log('[market-bridge] curl extension missing');
+        foreach ($requests as $id => $_) $out[$id] = ['body' => null, 'code' => 0, 'bytes' => 0, 'err' => 'no curl'];
+        return $out;
+    }
+
+    // Hosts without curl_multi: sequential, with a total time budget.
+    if (!function_exists('curl_multi_init')) {
+        foreach ($requests as $id => $r) {
+            if (microtime(true) - REQ_START > TOTAL_BUDGET) {
+                error_log("[market-bridge] upstream '$id' skipped: time budget exceeded");
+                $out[$id] = ['body' => null, 'code' => 0, 'bytes' => 0, 'err' => 'budget'];
+                continue;
+            }
+            $ch = makeHandle($r);
+            $body = curl_exec($ch);
+            $out[$id] = finishResult($id, $body, $ch);
+            curl_close($ch);
+        }
+        return $out;
+    }
+
+    $mh = curl_multi_init();
+    $handles = [];
+    foreach ($requests as $id => $r) {
+        $ch = makeHandle($r);
+        curl_multi_add_handle($mh, $ch);
+        $handles[$id] = $ch;
+    }
+    do {
+        $st = curl_multi_exec($mh, $running);
+        if ($running && curl_multi_select($mh, 0.5) === -1) usleep(10000);
+    } while ($running && $st === CURLM_OK);
+
+    foreach ($handles as $id => $ch) {
+        $out[$id] = finishResult($id, curl_multi_getcontent($ch), $ch);
+        curl_multi_remove_handle($mh, $ch);
+        curl_close($ch);
+    }
+    curl_multi_close($mh);
+    return $out;
+}
+
+// --------------------------------------------------------------- helpers ---
+function jsonOf(?string $raw): array {
+    $d = $raw ? json_decode($raw, true) : null;
+    return is_array($d) ? $d : [];
+}
+function numPos($v): ?float {
+    if (is_string($v)) $v = str_replace(',', '', $v);
+    return (is_numeric($v) && (float)$v > 0) ? (float)$v : null;
+}
+function firstPos(array $arr, array $keys): ?float {
+    foreach ($keys as $k) {
+        if (isset($arr[$k]) && ($p = numPos($arr[$k])) !== null) return $p;
+    }
+    return null;
+}
+/** Normalize Persian/Arabic text so tickers match regardless of ي/ی, ك/ک, spaces, ZWNJ, digits. */
+function normFa(string $s): string {
+    $s = strtr($s, [
+        'ي' => 'ی', 'ى' => 'ی', 'ك' => 'ک', 'ة' => 'ه', 'ۀ' => 'ه',
+        'أ' => 'ا', 'إ' => 'ا', 'آ' => 'ا', 'ٱ' => 'ا',
+        "\u{200C}" => '', "\u{200F}" => '', "\u{200E}" => '', ' ' => '', "\u{00A0}" => '',
+        '۰' => '0', '۱' => '1', '۲' => '2', '۳' => '3', '۴' => '4', '۵' => '5', '۶' => '6', '۷' => '7', '۸' => '8', '۹' => '9',
+        '٠' => '0', '١' => '1', '٢' => '2', '٣' => '3', '٤' => '4', '٥' => '5', '٦' => '6', '٧' => '7', '٨' => '8', '٩' => '9',
+    ]);
+    return (string)preg_replace('/[\x{064B}-\x{065F}\x{0670}]/u', '', $s);
+}
+function displayFa(string $s): string {
+    $s = strtr($s, ['ي' => 'ی', 'ى' => 'ی', 'ك' => 'ک', "\u{200F}" => '', "\u{200E}" => '']);
+    return trim((string)preg_replace('/^[\s\x{200C}]+|[\s\x{200C}]+$/u', '', $s));
+}
+function faDigits(string $s): string {
+    return strtr($s, ['0' => '۰', '1' => '۱', '2' => '۲', '3' => '۳', '4' => '۴', '5' => '۵', '6' => '۶', '7' => '۷', '8' => '۸', '9' => '۹']);
+}
+
+/** Market schedule (no official holiday calendar: use 'tse_holidays' in the config file). */
+function tseStatus(DateTimeImmutable $t, array $days, string $open, string $close, array $holidays): array {
+    $isOpenDay = function (DateTimeImmutable $d) use ($days, $holidays): bool {
+        return in_array((int)$d->format('w'), $days, true) && !in_array($d->format('Y-m-d'), $holidays, true);
+    };
+    $hm = $t->format('H:i');
+    $status = 'closed';
+    $reason = null;
+    if (!$isOpenDay($t)) {
+        $reason = in_array($t->format('Y-m-d'), $holidays, true) ? 'holiday' : 'weekend';
+    } elseif ($hm < $open) {
+        $reason = 'before_open';
+    } elseif ($hm >= $close) {
+        $reason = 'after_close';
+    } else {
+        $status = 'open';
+    }
+    $next = null;
+    if ($status === 'closed') {
+        for ($i = 0; $i < 21; $i++) {
+            $d = $t->modify("+$i day");
+            if (!$isOpenDay($d)) continue;
+            $cand = new DateTimeImmutable($d->format('Y-m-d') . " $open:00", $t->getTimezone());
+            if ($cand > $t) { $next = $cand; break; }
         }
     }
+    return [
+        'name_fa'      => 'بورس و فرابورس',
+        'status'       => $status,
+        'reason'       => $reason,
+        'schedule_fa'  => 'شنبه تا چهارشنبه، ' . faDigits($open) . ' تا ' . faDigits($close) . ' (وقت تهران)',
+        'next_open'    => $next ? $next->format('c') : null,
+        'holiday_aware' => !empty($holidays),
+    ];
 }
 
-// 5. Safe cURL Helper with strict timeout
-function fetchApi($url, $headers = [], $timeout = 3) {
-    if (!function_exists('curl_init')) return null;
-    $ch = @curl_init();
-    if (!$ch) return null;
-    
-    @curl_setopt($ch, CURLOPT_URL, $url);
-    @curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    @curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
-    @curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 2);
-    @curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
-    @curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
-    @curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
-    
-    $reqHeaders = [
-        'Accept: application/json, text/plain, */*',
-        'Accept-Language: fa,en-US;q=0.9',
-    ];
-    if (!empty($headers)) {
-        $reqHeaders = array_merge($reqHeaders, $headers);
-    }
-    @curl_setopt($ch, CURLOPT_HTTPHEADER, $reqHeaders);
+$tz = new DateTimeZone('+03:30'); // Iran has no DST since 2022
+$tehranNow = (new DateTimeImmutable('@' . $now))->setTimezone($tz);
+$tse = tseStatus($tehranNow, $tseDays, $tseOpen, $tseClose, $tseHolidays);
+$tseOpenNow = $tse['status'] === 'open';
 
-    $response = @curl_exec($ch);
-    $httpCode = @curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    @curl_close($ch);
-    
-    if ($httpCode === 200 && $response) {
-        return $response;
+// ------------------------------------------------------------- catalogue ---
+// [Persian ticker, output key, category]. Tickers that don't exist on TSETMC are simply skipped.
+$catalog = [
+    // Gold funds
+    ['عیار', 'AYAR', 'gold_fund'], ['طلا', 'TALA', 'gold_fund'], ['زر', 'ZAR', 'gold_fund'],
+    ['کهربا', 'KAHROBA', 'gold_fund'], ['گوهر', 'GOHAR', 'gold_fund'], ['ناب', 'NAAB', 'gold_fund'],
+    ['نفیس', 'NAFIS', 'gold_fund'], ['آلتون', 'ALTUN', 'gold_fund'], ['مثقال', 'MESGHAL_ETF', 'gold_fund'],
+    ['جواهر', 'JAVAHER', 'gold_fund'], ['زرفام', 'ZARFAM', 'gold_fund'], ['اطلس', 'ATLAS', 'equity_fund'],
+    ['لوتوس', 'LOTUS', 'stock'],
+    // Leveraged funds
+    ['اهرم', 'AHRAM', 'leveraged_fund'], ['توان', 'TAVAN', 'leveraged_fund'], ['جهش', 'JAHESH', 'leveraged_fund'],
+    ['شتاب', 'SHETAB', 'leveraged_fund'], ['موج', 'MOJ', 'leveraged_fund'], ['بیدار', 'BIDAR', 'leveraged_fund'],
+    // Equity / index / fixed-income funds
+    ['پالایش', 'PALAYESH', 'equity_fund'], ['دارا', 'DARA1', 'equity_fund'], ['فیروزه', 'FIRUZEH', 'equity_fund'],
+    ['سرو', 'SERVO', 'equity_fund'], ['تمشک', 'TEMESHK', 'equity_fund'], ['کارآمد', 'KARAMAD', 'fixed_income_fund'],
+    // Leading stocks
+    ['فولاد', 'FOOLAD', 'stock'], ['فملی', 'FEMELLI', 'stock'], ['فارس', 'FARES', 'stock'],
+    ['شپنا', 'SHEPNA', 'stock'], ['شتران', 'SHETRAN', 'stock'], ['وبملت', 'VEBMELAT', 'stock'],
+    ['خودرو', 'KHODRO', 'stock'], ['خساپا', 'KHASAPA', 'stock'], ['وبصادر', 'VEBSADER', 'stock'],
+    ['وتجارت', 'VETEJARAT', 'stock'], ['شبندر', 'SHABANDAR', 'stock'], ['شپدیس', 'SHEPDIS', 'stock'],
+    ['کگل', 'KEGOL', 'stock'], ['کچاد', 'KECHAD', 'stock'], ['فخوز', 'FAKHOOZ', 'stock'],
+    ['ومعادن', 'VEMAADEN', 'stock'], ['حتوکا', 'HATOKA', 'stock'], ['اخابر', 'AKHABER', 'stock'],
+    ['همراه', 'HAMRAH', 'stock'], ['شستا', 'SHASTA', 'stock'], ['وغدیر', 'VEGHADIR', 'stock'],
+    ['وپاسار', 'VEPASAR', 'stock'], ['خگستر', 'KHEGOSTAR', 'stock'], ['فاسمین', 'FASMIN', 'stock'],
+    ['زاگرس', 'ZAGROS', 'stock'], ['تاپیکو', 'TAPICO', 'stock'], ['وسپه', 'VESEPAH', 'stock'],
+    ['وبانک', 'VEBANK', 'stock'], ['ختور', 'KHATOUR', 'stock'], ['خاور', 'KHAVAR', 'stock'],
+    ['شسپا', 'SHESEPA', 'stock'], ['فایرا', 'FAYRA', 'stock'], ['کرمان', 'KERMAN', 'stock'],
+    ['شبریز', 'SHABRIZ', 'stock'], ['پارسان', 'PARSAN', 'stock'], ['نوری', 'NOURI', 'stock'],
+];
+$wanted = [];
+foreach ($catalog as [$fa, $key, $cat]) {
+    $wanted[normFa($fa)] = ['key' => $key, 'cat' => $cat, 'fa' => $fa];
+}
+
+// symbol => [insCode, Persian name]
+$indices = [
+    'TEDPIX'       => ['32097828799138116', 'شاخص کل بورس'],
+    'TEDPIX_EQUAL' => ['67130298613737946', 'شاخص هم‌وزن بورس'],
+    'IFX'          => ['43685683301327984', 'شاخص کل فرابورس'],
+];
+
+// Last-resort per-instrument codes (verified by search from the host)
+$goldFundCodes = [
+    'AYAR'    => ['34144395039913458', 'عیار',  'صندوق طلای عیار مفید'],
+    'TALA'    => ['46700660505281786', 'طلا',   'صندوق س. کالای پارسیان'],
+    'ZAR'     => ['33254899395816171', 'زر',    'صندوق س.کالای امید ثروت ایران'],
+    'KAHROBA' => ['25559236668122210', 'کهربا', 'صندوق س. کالای کهربا'],
+    'GOHAR'   => ['12390706505809150', 'گوهر',  'صندوق س.کالای کیان'],
+];
+
+// -------------------------------------------------------------- requests ---
+$tseHdr = ['Referer: https://main.tsetmc.com/', 'Origin: https://main.tsetmc.com'];
+$mwBase = 'https://cdn.tsetmc.com/api/ClosingPrice/GetMarketWatch?';
+$mwAll  = $mwBase . 'market=0&industrialGroup=&' . implode('&', array_map(
+    function ($i) { return 'paperTypes%5B' . $i . '%5D=' . ($i + 1); }, range(0, 8)
+)) . '&showTraded=false&withBestLimits=true&hEven=0&RefID=0';
+$mwAlt  = $mwBase . 'market=1&industrialGroup=&paperTypes%5B0%5D=8&showTraded=false&withBestLimits=true&hEven=0&RefID=0';
+
+$raw = fetchMulti([
+    'Nobitex'    => ['url' => 'https://apiv2.nobitex.ir/market/stats', 'headers' => ['Referer: https://nobitex.ir/']],
+    'Wallex'     => ['url' => 'https://api.wallex.ir/v1/markets'],
+    'Tetherland' => ['url' => 'https://api.tetherland.com/currencies'],
+    'Tabdeal'    => ['url' => 'https://api1.tabdeal.org/r/api/v1/depth?symbol=USDTIRT'],
+    'TSETMC MarketWatch' => ['url' => $mwAll, 'headers' => $tseHdr, 'timeout' => TSE_TIMEOUT],
+    'TSETMC Indices'     => ['url' => 'https://cdn.tsetmc.com/api/Index/GetIndexB1LastAll/All/0', 'headers' => $tseHdr, 'timeout' => TSE_TIMEOUT],
+]);
+
+// --------------------------------------------------------------- parsing ---
+$rates = [];
+$failedSources = [];
+$dbg = [];
+$add = function (string $sym, float $price, string $source, string $market) use (&$rates): void {
+    $rates[$sym] = ['price' => $price, 'unit' => 'تومان', 'source' => $source, 'market' => $market];
+};
+
+// --- Crypto exchanges
+$nobitex = jsonOf($raw['Nobitex']['body']);
+if (isset($nobitex['stats']) && is_array($nobitex['stats'])) {
+    $s = $nobitex['stats'];
+    $irtOrRls = function (string $base) use ($s): ?float {
+        $v = numPos($s["$base-irt"]['latest'] ?? null);
+        if ($v !== null) return $v;
+        $r = numPos($s["$base-rls"]['latest'] ?? null);
+        return $r !== null ? $r / 10.0 : null;
+    };
+    if (($v = $irtOrRls('usdt')) !== null) {
+        $add('USDT_NOBITEX', $v, 'Nobitex', 'crypto');
+        $add('USD_TMN', $v, 'Nobitex Tether', 'crypto');
+    }
+    if (($v = $irtOrRls('pm')) !== null) $add('GOLD_NOBITEX', $v, 'Nobitex Gold', 'crypto');
+    if (($v = $irtOrRls('btc')) !== null) $add('BTC_NOBITEX', $v, 'Nobitex', 'crypto');
+    if (($v = $irtOrRls('eth')) !== null) $add('ETH_NOBITEX', $v, 'Nobitex', 'crypto');
+} else {
+    $failedSources[] = $raw['Nobitex']['body'] === null ? 'Nobitex' : 'Nobitex (Invalid structure)';
+}
+
+$wallex = jsonOf($raw['Wallex']['body']);
+if ($raw['Wallex']['body'] === null) {
+    $failedSources[] = 'Wallex';
+} else {
+    $sy = $wallex['result']['symbols'] ?? [];
+    foreach (['USDT_WALLEX' => 'USDTTMN', 'GOLD_WALLEX' => 'PAXGTMN', 'BTC_WALLEX' => 'BTCTMN', 'ETH_WALLEX' => 'ETHTMN'] as $sym => $pair) {
+        if (($v = numPos($sy[$pair]['stats']['lastPrice'] ?? null)) !== null) $add($sym, $v, 'Wallex', 'crypto');
+    }
+}
+
+if ($raw['Tetherland']['body'] === null) {
+    $failedSources[] = 'Tetherland';
+} elseif (($v = numPos(jsonOf($raw['Tetherland']['body'])['data']['currencies']['USDT']['price'] ?? null)) !== null) {
+    $add('USDT_TETHERLAND', $v, 'Tetherland', 'crypto');
+}
+
+if ($raw['Tabdeal']['body'] === null) {
+    $failedSources[] = 'Tabdeal';
+} elseif (($v = numPos(jsonOf($raw['Tabdeal']['body'])['bids'][0][0] ?? null)) !== null) {
+    $add('USDT_TABDEAL', $v, 'Tabdeal', 'crypto');
+}
+
+// --- TSETMC market watch (one request for all stocks and funds)
+function mwRecords(array $j): array {
+    foreach (['marketwatch', 'marketWatch', 'data'] as $k) {
+        if (isset($j[$k]) && is_array($j[$k])) return $j[$k];
+    }
+    return (isset($j[0]) && is_array($j[0])) ? $j : [];
+}
+
+function sLen(string $s): int {
+    return function_exists('mb_strlen') ? mb_strlen($s) : strlen($s);
+}
+function sCut(string $s, int $n): string {
+    return function_exists('mb_substr') ? mb_substr($s, 0, $n) : substr($s, 0, $n);
+}
+
+/** Find the wanted ticker of a market-watch record; TSETMC uses different key names across API versions. */
+function recordTicker(array $r, array $wanted): ?string {
+    foreach (['lVal18AFC', 'lva'] as $k) {
+        if (isset($r[$k]) && is_string($r[$k])) {
+            $n = normFa($r[$k]);
+            if (isset($wanted[$n])) return $n;
+        }
+    }
+    foreach ($r as $v) {   // unknown layout: any short string field that equals a wanted ticker
+        if (is_string($v) && $v !== '' && sLen($v) <= 14) {
+            $n = normFa($v);
+            if (isset($wanted[$n])) return $n;
+        }
     }
     return null;
 }
 
-$rates = [];
-$failedSources = [];
-
-// =========================================================================
-// 1. Nobitex Exchange (USDT, Gold 18k, BTC, ETH)
-// =========================================================================
-$nobitexRaw = fetchApi("https://apiv2.nobitex.ir/market/stats", ['Referer: https://nobitex.ir/']);
-if ($nobitexRaw) {
-    $nobiJson = @json_decode($nobitexRaw, true);
-    if (isset($nobiJson['stats'])) {
-        $stats = $nobiJson['stats'];
-        // USDT
-        $usdt = isset($stats['usdt-irt']['latest']) ? $stats['usdt-irt']['latest'] : (isset($stats['usdt-rls']['latest']) ? floatval($stats['usdt-rls']['latest'])/10.0 : null);
-        if ($usdt && floatval($usdt) > 0) {
-            $rates['USDT_NOBITEX'] = ['price' => floatval($usdt), 'unit' => 'تومان', 'source' => 'Nobitex'];
-            $rates['USD_TMN'] = ['price' => floatval($usdt), 'unit' => 'تومان', 'source' => 'Nobitex Tether'];
-        }
-        // Gold 18k
-        $pm = isset($stats['pm-irt']['latest']) ? $stats['pm-irt']['latest'] : (isset($stats['pm-rls']['latest']) ? floatval($stats['pm-rls']['latest'])/10.0 : null);
-        if ($pm && floatval($pm) > 0) {
-            $rates['GOLD_NOBITEX'] = ['price' => floatval($pm), 'unit' => 'تومان', 'source' => 'Nobitex Gold'];
-        }
-        // BTC & ETH
-        if (isset($stats['btc-irt']['latest']) && floatval($stats['btc-irt']['latest']) > 0) {
-            $rates['BTC_NOBITEX'] = ['price' => floatval($stats['btc-irt']['latest']), 'unit' => 'تومان', 'source' => 'Nobitex'];
-        }
-        if (isset($stats['eth-irt']['latest']) && floatval($stats['eth-irt']['latest']) > 0) {
-            $rates['ETH_NOBITEX'] = ['price' => floatval($stats['eth-irt']['latest']), 'unit' => 'تومان', 'source' => 'Nobitex'];
-        }
-    } else {
-        $failedSources[] = 'Nobitex (Invalid structure)';
+function recordName(array $r): string {
+    $best = '';
+    foreach (['lVal30', 'lvc', 'lva'] as $k) {
+        if (isset($r[$k]) && is_string($r[$k]) && sLen($r[$k]) > sLen($best)) $best = $r[$k];
     }
-} else {
-    $failedSources[] = 'Nobitex';
+    return displayFa($best);
 }
 
-// =========================================================================
-// 2. Wallex Exchange (USDT, PAXG Gold, BTC, ETH)
-// =========================================================================
-$wallexRaw = fetchApi("https://api.wallex.ir/v1/markets");
-if ($wallexRaw) {
-    $wallexJson = @json_decode($wallexRaw, true);
-    $symbols = isset($wallexJson['result']['symbols']) ? $wallexJson['result']['symbols'] : [];
-    if (isset($symbols['USDTTMN']['stats']['lastPrice'])) {
-        $rates['USDT_WALLEX'] = ['price' => floatval($symbols['USDTTMN']['stats']['lastPrice']), 'unit' => 'تومان', 'source' => 'Wallex'];
-    }
-    if (isset($symbols['PAXGTMN']['stats']['lastPrice'])) {
-        $rates['GOLD_WALLEX'] = ['price' => floatval($symbols['PAXGTMN']['stats']['lastPrice']), 'unit' => 'تومان', 'source' => 'Wallex'];
-    }
-    if (isset($symbols['BTCTMN']['stats']['lastPrice'])) {
-        $rates['BTC_WALLEX'] = ['price' => floatval($symbols['BTCTMN']['stats']['lastPrice']), 'unit' => 'تومان', 'source' => 'Wallex'];
-    }
-    if (isset($symbols['ETHTMN']['stats']['lastPrice'])) {
-        $rates['ETH_WALLEX'] = ['price' => floatval($symbols['ETHTMN']['stats']['lastPrice']), 'unit' => 'تومان', 'source' => 'Wallex'];
-    }
-} else {
-    $failedSources[] = 'Wallex';
-}
-
-// =========================================================================
-// 3. Tetherland Exchange (USDT)
-// =========================================================================
-$tetherlandRaw = fetchApi("https://api.tetherland.com/currencies");
-if ($tetherlandRaw) {
-    $tlandJson = @json_decode($tetherlandRaw, true);
-    $tlandPrice = isset($tlandJson['data']['currencies']['USDT']['price']) ? $tlandJson['data']['currencies']['USDT']['price'] : null;
-    if ($tlandPrice && floatval($tlandPrice) > 0) {
-        $rates['USDT_TETHERLAND'] = ['price' => floatval($tlandPrice), 'unit' => 'تومان', 'source' => 'Tetherland'];
-    }
-} else {
-    $failedSources[] = 'Tetherland';
-}
-
-// =========================================================================
-// 4. Tabdeal Exchange (USDT)
-// =========================================================================
-$tabdealRaw = fetchApi("https://api1.tabdeal.org/r/api/v1/depth?symbol=USDTIRT");
-if ($tabdealRaw) {
-    $tabJson = @json_decode($tabdealRaw, true);
-    if (isset($tabJson['bids'][0][0])) {
-        $p = floatval($tabJson['bids'][0][0]);
-        if ($p > 0) {
-            $rates['USDT_TABDEAL'] = ['price' => $p, 'unit' => 'تومان', 'source' => 'Tabdeal'];
+function parseMarketWatch(array $records, array $wanted, bool $marketOpen): array {
+    $found = [];
+    foreach ($records as $r) {
+        if (!is_array($r)) continue;
+        $norm = recordTicker($r, $wanted);
+        if ($norm === null || isset($found[$wanted[$norm]['key']])) continue;
+        $w = $wanted[$norm];
+        // This API returns the same data under short names (pdv, pcl, py, qtj, ztt, ...); long names may be 0.
+        $last  = firstPos($r, ['pDrCotVal', 'pdv']);     // last trade
+        $close = firstPos($r, ['pClosing', 'pcl']);      // closing (final) price
+        $prev  = firstPos($r, ['priceYesterday', 'py']); // yesterday's final price
+        $p = $last ?? $close ?? $prev;
+        if ($p === null) continue;
+        $e = [
+            'price'       => $p / 10.0,
+            'unit'        => 'تومان',
+            'source'      => 'TSETMC',
+            'market'      => 'tse',
+            'category'    => $w['cat'],
+            'ticker'      => $w['fa'],
+            'name'        => recordName($r),
+            'market_open' => $marketOpen,
+        ];
+        if ($close !== null) $e['close'] = $close / 10.0;
+        if ($prev !== null) {
+            $e['prev_close'] = $prev / 10.0;
+            $e['change_pct'] = round(($p / $prev - 1) * 100, 2);
         }
+        if (($hi = firstPos($r, ['pmx', 'priceMax'])) !== null) $e['high'] = $hi / 10.0;
+        if (($lo = firstPos($r, ['pmn', 'priceMin'])) !== null) $e['low'] = $lo / 10.0;
+        if (($vol = firstPos($r, ['qTotTran5J', 'qtj'])) !== null) $e['volume'] = $vol;
+        if (($trd = firstPos($r, ['zTotTran', 'ztt'])) !== null) $e['trades'] = (int)$trd;
+        if (($val = firstPos($r, ['qTotCap', 'qtc'])) !== null) $e['value'] = $val / 10.0;
+        $found[$w['key']] = $e;
     }
-} else {
-    $failedSources[] = 'Tabdeal';
+    return $found;
 }
 
-// =========================================================================
-// 5. TSETMC Verified Gold Funds (AYAR, TALA, ZAR, KAHROBA, GOHAR)
-// =========================================================================
-$verifiedGoldFunds = [
-    'AYAR' => ['inscode' => '34144395039913458', 'name' => 'صندوق طلای عیار'],
-    'TALA' => ['inscode' => '46700660505281786', 'name' => 'صندوق طلای کیان'],
-    'ZAR' => ['inscode' => '33254899395816171', 'name' => 'صندوق طلای زرفام'],
-    'KAHROBA' => ['inscode' => '25559236668122210', 'name' => 'صندوق طلای کهربا'],
-    'GOHAR' => ['inscode' => '12390706505809150', 'name' => 'صندوق طلای گوهر'],
+$tseFresh = [];
+$mwRecs = [];
+if ($raw['TSETMC MarketWatch']['body'] === null) {
+    $failedSources[] = 'TSETMC MarketWatch';
+} else {
+    $mwRecs = mwRecords(jsonOf($raw['TSETMC MarketWatch']['body']));
+    $tseFresh = parseMarketWatch($mwRecs, $wanted, $tseOpenNow);
+}
+$dbg['marketwatch_primary'] = [
+    'http' => $raw['TSETMC MarketWatch']['code'], 'bytes' => $raw['TSETMC MarketWatch']['bytes'],
+    'records' => count($mwRecs), 'matched' => count($tseFresh),
+    'sample_keys' => $mwRecs ? array_keys((array)reset($mwRecs)) : [],
 ];
+if ($debug && $mwRecs) {
+    $trim = function ($rec) {
+        return array_map(function ($v) { return is_string($v) ? sCut($v, 40) : $v; }, (array)$rec);
+    };
+    $dbg['marketwatch_primary']['sample_record'] = $trim(reset($mwRecs));
+    foreach ($mwRecs as $rec) {
+        if (is_array($rec) && recordTicker($rec, ['فولاد' => 1, normFa('فولاد') => 1]) !== null) {
+            $dbg['marketwatch_primary']['foolad_record'] = $trim($rec);
+            break;
+        }
+    }
+}
 
-foreach ($verifiedGoldFunds as $sym => $info) {
-    $raw = fetchApi("https://cdn.tsetmc.com/api/ClosingPrice/GetClosingPriceInfo/{$info['inscode']}", [
-        'Referer: https://tsetmc.com/',
-        'Origin: https://tsetmc.com'
-    ], 2);
-    if ($raw) {
-        $j = @json_decode($raw, true);
-        $closing = isset($j['closingPriceInfo']['pClosing']) ? $j['closingPriceInfo']['pClosing'] : (isset($j['closingPriceInfo']['pDrCotVal']) ? $j['closingPriceInfo']['pDrCotVal'] : null);
-        if ($closing && floatval($closing) > 0) {
-            $rates[$sym] = [
-                'price' => floatval($closing) / 10.0, // Rial to Toman
-                'unit' => 'تومان',
-                'source' => $info['name'] . ' (TSETMC)'
+// ?debug=1&find=<text>: search market-watch tickers/names (URL-encode Persian text).
+if ($debug && $mwRecs && isset($_GET['find']) && is_string($_GET['find']) && $_GET['find'] !== '') {
+    $needle = normFa($_GET['find']);
+    $hits = [];
+    foreach ($mwRecs as $rec) {
+        if (!is_array($rec)) continue;
+        $a = (string)($rec['lva'] ?? ($rec['lVal18AFC'] ?? ''));
+        $b = (string)($rec['lvc'] ?? ($rec['lVal30'] ?? ''));
+        if (strpos(normFa($a), $needle) !== false || strpos(normFa($b), $needle) !== false) {
+            $hits[] = [displayFa($a), displayFa($b), (string)($rec['insCode'] ?? ''), $rec['py'] ?? null, $rec['pdv'] ?? null];
+            if (count($hits) >= 40) break;
+        }
+    }
+    $dbg['find'] = $hits;
+}
+
+// Second chance: alternative market-watch query, then per-fund calls.
+if (!$tseFresh && !$mwRecs) {
+    $r2 = fetchMulti(['alt' => ['url' => $mwAlt, 'headers' => $tseHdr, 'timeout' => TSE_TIMEOUT]])['alt'];
+    $recs2 = $r2['body'] !== null ? mwRecords(jsonOf($r2['body'])) : [];
+    $tseFresh = parseMarketWatch($recs2, $wanted, $tseOpenNow);
+    $dbg['marketwatch_alt'] = ['http' => $r2['code'], 'bytes' => $r2['bytes'], 'records' => count($recs2), 'matched' => count($tseFresh)];
+}
+if (!$tseFresh) {
+    $req = [];
+    foreach ($goldFundCodes as $sym => [$code]) {
+        $req[$sym] = ['url' => "https://cdn.tsetmc.com/api/ClosingPrice/GetClosingPriceInfo/$code", 'headers' => $tseHdr, 'timeout' => 4];
+    }
+    $fund = fetchMulti($req);
+    foreach ($fund as $sym => $res) {
+        $info = jsonOf($res['body'])['closingPriceInfo'] ?? [];
+        $p = is_array($info) ? firstPos($info, ['pDrCotVal', 'pClosing']) : null;
+        if ($p !== null) {
+            $tseFresh[$sym] = [
+                'price' => $p / 10.0, 'unit' => 'تومان', 'source' => 'TSETMC', 'market' => 'tse',
+                'category' => 'gold_fund', 'ticker' => $goldFundCodes[$sym][1], 'name' => $goldFundCodes[$sym][2],
+                'market_open' => $tseOpenNow,
             ];
         }
     }
+    $dbg['gold_fund_fallback'] = ['matched' => count($tseFresh), 'http' => array_map(function ($x) { return $x['code']; }, $fund)];
 }
 
-// =========================================================================
-// 6. Response Compilation & Cache Management
-// =========================================================================
-if (!empty($rates)) {
-    $responsePayload = [
-        'success' => true,
-        'timestamp' => $now,
-        'datetime' => date('Y-m-d H:i:s'),
-        'cached' => false,
-        'stale' => false,
-        'failed_sources' => $failedSources,
-        'source' => 'aegkala_iran_bridge',
-        'symbols_count' => count($rates),
-        'data' => $rates,
-    ];
-
-    @file_put_contents(CACHE_FILE, json_encode($responsePayload, JSON_UNESCAPED_UNICODE));
-    echo json_encode($responsePayload, JSON_UNESCAPED_UNICODE);
-    exit;
+// --- TSETMC indices
+$idxBody = $raw['TSETMC Indices']['body'];
+if ($idxBody === null) {
+    $failedSources[] = 'TSETMC Indices';
 }
-
-// Fallback to Stale Cache if all upstreams failed
-if (file_exists(CACHE_FILE)) {
-    $staleContent = @file_get_contents(CACHE_FILE);
-    if ($staleContent) {
-        $staleData = @json_decode($staleContent, true);
-        if (is_array($staleData)) {
-            $staleData['cached'] = true;
-            $staleData['stale'] = true;
-            $staleData['age_seconds'] = $now - (isset($staleData['timestamp']) ? $staleData['timestamp'] : $now);
-            $staleData['failed_sources'] = $failedSources;
-            echo json_encode($staleData, JSON_UNESCAPED_UNICODE);
-            exit;
+$idxJson = jsonOf($idxBody);
+$idxRecords = [];
+foreach (['indexB1', 'indexB2', 'indexes', 'data'] as $k) {
+    if (isset($idxJson[$k]) && is_array($idxJson[$k])) { $idxRecords = $idxJson[$k]; break; }
+}
+$valueKeys  = ['xNivInuClMresIbs', 'xNivInuPbMresIbs', 'xNivInIdxPb', 'xNivInIdx', 'indexValue', 'lastValue'];
+$changeKeys = ['xVarIdxJIdxChg', 'indexChange', 'change'];
+foreach ($idxRecords as $r) {
+    if (!is_array($r)) continue;
+    $code = (string)($r['insCode'] ?? ($r['idxCode'] ?? ($r['indexCode'] ?? '')));
+    foreach ($indices as $sym => [$wantCode, $nameFa]) {
+        if ($code !== $wantCode || isset($tseFresh[$sym])) continue;
+        $v = firstPos($r, $valueKeys);
+        if ($v === null) continue;
+        $e = ['price' => $v, 'unit' => 'واحد', 'source' => 'TSETMC', 'market' => 'tse', 'category' => 'index',
+              'name' => $nameFa, 'market_open' => $tseOpenNow];
+        foreach ($changeKeys as $ck) {
+            if (isset($r[$ck]) && is_numeric($r[$ck])) { $e['change'] = (float)$r[$ck]; break; }
         }
+        $tseFresh[$sym] = $e;
     }
 }
+// Indices missing from the live list: fall back to the daily history (last close).
+if (array_diff(array_keys($indices), array_keys($tseFresh)) || $debug) {
+    $req = [];
+    foreach ($indices as $sym => [$code]) {
+        if (!isset($tseFresh[$sym])) {
+            $req["hist_$sym"] = ['url' => "https://cdn.tsetmc.com/api/Index/GetIndexB2History/$code", 'headers' => $tseHdr, 'timeout' => 5];
+        }
+    }
+    if ($debug) {
+        $req['probe_lastday'] = ['url' => 'https://cdn.tsetmc.com/api/Index/GetIndexB1LastDay/32097828799138116', 'headers' => $tseHdr, 'timeout' => 5];
+    }
+    $hist = $req ? fetchMulti($req) : [];
+    foreach ($indices as $sym => [$code, $nameFa]) {
+        $res = $hist["hist_$sym"] ?? null;
+        if ($res === null) continue;
+        $j = jsonOf($res['body']);
+        $recs = [];
+        foreach (['indexB2', 'indexB1', 'data'] as $k) {
+            if (isset($j[$k]) && is_array($j[$k])) { $recs = $j[$k]; break; }
+        }
+        $best = null;
+        $bestD = -1;
+        $second = null;
+        $secondD = -1;
+        foreach ($recs as $r) {
+            if (!is_array($r)) continue;
+            $d = (int)($r['dEven'] ?? 0);
+            if ($d >= $bestD) {
+                $second = $best; $secondD = $bestD;
+                $best = $r; $bestD = $d;
+            } elseif ($d >= $secondD) {
+                $second = $r; $secondD = $d;
+            }
+        }
+        if ($debug) {
+            $dbg['index_history'][$sym] = [
+                'http' => $res['code'], 'bytes' => $res['bytes'], 'records' => count($recs),
+                'sample_keys' => $best ? array_keys($best) : [],
+                'sample' => $res['body'] !== null ? sCut($res['body'], 300) : null,
+            ];
+        }
+        $v = $best ? firstPos($best, $valueKeys) : null;
+        if ($v === null) continue;
+        $e = ['price' => $v, 'unit' => 'واحد', 'source' => 'TSETMC (daily close)', 'market' => 'tse',
+              'category' => 'index', 'name' => $nameFa, 'market_open' => $tseOpenNow, 'daily_close' => true,
+              'data_date' => $bestD];
+        $pv = $second ? firstPos($second, $valueKeys) : null;
+        if ($pv !== null) {
+            $e['prev_close'] = $pv;
+            $e['change_pct'] = round(($v / $pv - 1) * 100, 2);
+        }
+        $tseFresh[$sym] = $e;
+    }
+    if ($debug && isset($hist['probe_lastday'])) {
+        $pl = $hist['probe_lastday'];
+        $dbg['index_probe_lastday'] = ['http' => $pl['code'], 'bytes' => $pl['bytes'],
+                                       'sample' => $pl['body'] !== null ? sCut($pl['body'], 300) : null];
+    }
+}
+$dbg['indices'] = [
+    'http' => $raw['TSETMC Indices']['code'], 'bytes' => $raw['TSETMC Indices']['bytes'], 'records' => count($idxRecords),
+    'sample_keys' => $idxRecords ? array_keys((array)reset($idxRecords)) : [],
+];
 
-// 503 If completely down and no cache exists
-http_response_code(503);
-echo json_encode([
-    'success' => false,
-    'message' => 'All upstream market sources are currently unavailable.',
-    'failed_sources' => $failedSources
-], JSON_UNESCAPED_UNICODE);
+// --- Carry over last known TSETMC values (market closed / source down)
+$lastKnown = readJsonFile($lastKnownFile) ?: [];
+$carried = 0;
+foreach ($lastKnown as $sym => $e) {
+    if (isset($tseFresh[$sym]) || !is_array($e) || !isset($e['as_of'], $e['price'])) continue;
+    if ($now - (int)$e['as_of'] > LAST_KNOWN_MAX_AGE) continue;
+    $e['market_open'] = $tseOpenNow;
+    $e['carried_over'] = true;   // do NOT fire alerts on carried_over values
+    $tseFresh[$sym] = $e;
+    $carried++;
+}
+
+// Persist fresh TSETMC values for the next closed-market run.
+$toStore = [];
+foreach ($tseFresh as $sym => $e) {
+    if (empty($e['carried_over'])) {
+        unset($e['market_open'], $e['carried_over']);
+        $e['as_of'] = $now;
+        $toStore[$sym] = $e;
+    }
+}
+if ($toStore && !$debug) {
+    $merged = array_merge(array_filter($lastKnown, 'is_array'), $toStore);
+    if (!writeJsonAtomic($lastKnownFile, $merged)) error_log('[market-bridge] last-known write failed');
+}
+
+foreach ($tseFresh as $sym => $e) {
+    $rates[$sym] = $e;
+}
+
+// Symbols we know about but have no value for (never fetched yet, e.g. first run while closed).
+$allTseKeys = array_merge(array_column($wanted, 'key'), array_keys($indices));
+$tseMissing = array_values(array_diff($allTseKeys, array_keys($tseFresh)));
+
+// ---------------------------------------------------------------- output ---
+if (!$rates) {
+    if ($cached && !$debug) serveCache($cached, $now, true);
+    respond(['success' => false, 'message' => 'All upstream market sources are currently unavailable.', 'failed_sources' => $failedSources], 503);
+}
+
+$payload = [
+    'success'        => true,
+    'timestamp'      => $now,
+    'datetime'       => date('Y-m-d H:i:s'),
+    'cached'         => false,
+    'stale'          => false,
+    'failed_sources' => $failedSources,
+    'source'         => 'aegkala_iran_bridge',
+    'symbols_count'  => count($rates),
+    'markets'        => [
+        'tse'    => $tse,
+        'crypto' => ['name_fa' => 'صرافی‌های ارز دیجیتال', 'status' => 'open', 'reason' => null, 'schedule_fa' => '۲۴ ساعته', 'next_open' => null],
+    ],
+    'tse_fresh_count'   => count($tseFresh) - $carried,
+    'tse_carried_count' => $carried,
+    'tse_missing'       => $tseMissing,
+    'data'           => $rates,
+];
+
+if ($debug) {
+    $payload['debug'] = $dbg;
+    respond($payload);
+}
+
+if (!writeJsonAtomic($cacheFile, $payload)) {
+    error_log('[market-bridge] cache write failed: ' . $cacheFile);
+}
+respond($payload);
