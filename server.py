@@ -1732,89 +1732,17 @@ async def telegram_bot_polling_loop():
                     chat_id_str = str(chat_id)
                     text_lower = text.lower()
 
-                    # 1. /clear or /stop - Stop all alerts for this chat_id
-                    if text_lower.startswith("/clear") or text_lower.startswith("/stop"):
-                        async with _db_lock:
-                            initial_len = len(ALERTS_DB)
-                            ALERTS_DB = [a for a in ALERTS_DB if (a.telegram_chat_id or "").strip() != chat_id_str]
-                            removed_count = initial_len - len(ALERTS_DB)
-
-                        if removed_count > 0:
-                            await save_alerts_to_disk_async(ALERTS_DB)
-                            resp_text = (
-                                f"🧹 <b>تمام هشدارهای متصل به این چت تلگرام ({removed_count} هشدار) با موفقیت متوقف و پاکسازی شدند.</b>\n\n"
-                                "⚡ دیگر هیچ پیامی از سرور برای این چت ارسال نخواهد شد مگر اینکه در اپلیکیشن مجدداً هشدار ثبت کنید."
-                            )
-                        else:
-                            resp_text = "ℹ️ هیچ هشدار فعالی روی سرور به این Chat ID متصل نیست."
-
-                        await http_client.post(reply_url, json={
-                            "chat_id": chat_id,
-                            "text": resp_text,
-                            "parse_mode": "HTML",
-                            "disable_web_page_preview": True
-                        }, timeout=5.0)
-
-                    # 2. /myalerts or /list - List all active alerts for this user
-                    elif text_lower.startswith("/myalerts") or text_lower.startswith("/list"):
-                        user_alerts = [a for a in ALERTS_DB if (a.telegram_chat_id or "").strip() == chat_id_str]
-                        if not user_alerts:
-                            resp_text = (
-                                "📭 <b>هیچ هشداری به این حساب تلگرام متصل نیست.</b>\n\n"
-                                f"🆔 Chat ID شما: <code>{chat_id}</code>\n"
-                                "برای ثبت هشدار وارد اپلیکیشن SignalAlert شده و این شناسه را در تنظیمات ثبت فرمایید."
-                            )
-                        else:
-                            lines = [f"📋 <b>لیست هشدارهای متصل به تلگرام شما ({len(user_alerts)} مورد):</b>\n"]
-                            for i, a in enumerate(user_alerts, 1):
-                                st = "🟢 فعال" if a.is_active else "⚪ تکمیل شده"
-                                lines.append(f"{i}. <b>{html.escape(a.symbol)}</b> ({get_exchange_display_name(a.exchange)}) - تارگت: <code>{a.target_price:,.2f}</code> | {st}")
-                            lines.append("\n💡 <i>برای لغو تمامی هشدارها دستور /clear را بفرستید.</i>")
-                            resp_text = "\n".join(lines)
-
-                        await http_client.post(reply_url, json={
-                            "chat_id": chat_id,
-                            "text": resp_text,
-                            "parse_mode": "HTML",
-                            "disable_web_page_preview": True
-                        }, timeout=5.0)
-
-                    # 3. /help - Help guide
-                    elif text_lower.startswith("/help"):
-                        help_text = (
-                            "🤖 <b>راهنمای دستورات ربات هوشمند SignalAlert:</b>\n\n"
-                            "🔹 <code>/start</code> - دریافت شناسه اختصاصی (Chat ID) و راهنمای اتصال\n"
-                            "🔹 <code>/myalerts</code> - مشاهده لیست هشدارهای فعال متصل به تلگرام شما\n"
-                            "🔹 <code>/clear</code> - توقف و پاکسازی فوری تمام هشدارهای متصل به این چت\n\n"
-                            f"🆔 <b>Chat ID شما:</b> <code>{chat_id}</code>"
-                        )
-                        await http_client.post(reply_url, json={
-                            "chat_id": chat_id,
-                            "text": help_text,
-                            "parse_mode": "HTML",
-                            "disable_web_page_preview": True
-                        }, timeout=5.0)
-
-                    # 4. /start or any greeting
-                    else:
-                        welcome_msg = (
-                            f"👋 <b>سلام {user_name} عزیز! به ربات رسمی SignalAlert خوش آمدید.</b>\n\n"
-                            f"🆔 <b>شناسه چت (Chat ID) شما:</b>\n"
-                            f"<code>{chat_id}</code>\n"
-                            f"<i>(روی عدد بالا لمس کنید تا کپی شود)</i>\n\n"
-                            f"📱 <b>نحوه اتصال به اپلیکیشن:</b>\n"
-                            f"۱. وارد تب <b>تنظیمات ⚙️</b> در اپلیکیشن SignalAlert شوید.\n"
-                            f"۲. گزینه <b>«اتصال به تلگرام 📱»</b> را انتخاب کنید.\n"
-                            f"۳. شناسه <code>{chat_id}</code> را وارد و دکمه ذخیره را بزنید.\n\n"
-                            f"⚡ پس از اتصال، تمامی آلارم‌های قیمت و تغییرات تارگت شما به صورت ۲۴/۷ و فوری به این چت ارسال خواهند شد.\n\n"
-                            "🔹 <i>دستورات موجود:</i> <code>/myalerts</code> (مشاهده هشدارها) | <code>/clear</code> (توقف هشدارها)"
-                        )
-                        await http_client.post(reply_url, json={
-                            "chat_id": chat_id,
-                            "text": welcome_msg,
-                            "parse_mode": "HTML",
-                            "disable_web_page_preview": True
-                        }, timeout=5.0)
+                    # /start or any message - returns Chat ID cleanly
+                    welcome_msg = (
+                        f"🆔 <code>{chat_id}</code>\n\n"
+                        f"این شناسه را در بخش تلگرام برنامه وارد کنید."
+                    )
+                    await http_client.post(reply_url, json={
+                        "chat_id": chat_id,
+                        "text": welcome_msg,
+                        "parse_mode": "HTML",
+                        "disable_web_page_preview": True
+                    }, timeout=5.0)
             else:
                 print(f"⚠️ [Telegram Polling] HTTP {res.status_code}: {res.text[:120]}")
                 await asyncio.sleep(15 if res.status_code in (401, 409, 429) else 5)
@@ -2067,48 +1995,28 @@ async def check_alerts_job():
                 }
             )
 
-            # 2. Dispatch Optional Telegram Message with HTML Escaping
-            if alert.telegram_chat_id:
-                is_tmn = alert.symbol.endswith('TMN') or alert.symbol.endswith('IRT')
-                target_formatted = f"{int(alert.target_price):,} TMN" if is_tmn else (f"${alert.target_price:,.4f}".rstrip('0').rstrip('.') if alert.target_price < 1 else f"${alert.target_price:,.2f}")
+            # 2. Dispatch Exact Telegram Notification (Matching Phone Notification, Zero Fluff)
+            effective_chat_id = (alert.telegram_chat_id or "").strip()
+            if not effective_chat_id:
+                user_prof = USER_PROFILES_DB.get(alert.user_id.lower(), {})
+                effective_chat_id = (user_prof.get('telegram_chat_id') or "").strip()
+            if not effective_chat_id and 'user_default' in USER_PROFILES_DB:
+                effective_chat_id = (USER_PROFILES_DB['user_default'].get('telegram_chat_id') or "").strip()
 
-                # Check if condition is percentage or standard price threshold
-                cond_upper = (alert.condition or '').upper()
-                if 'PERCENT' in cond_upper or '%' in cond_upper or cond_upper == 'BOTHSIDES':
-                    if 'ABOVE' in cond_upper or 'UP' in cond_upper:
-                        target_display = f"{abs(alert.target_price):g}% عبور به بالا"
-                    elif 'BELOW' in cond_upper or 'DOWN' in cond_upper:
-                        target_display = f"{abs(alert.target_price):g}% عبور به پایین"
-                    else:
-                        target_display = f"{abs(alert.target_price):g}% عبور از هر دو طرف"
-                else:
-                    target_display = target_formatted
-
-                pct_val = abs(((current_price - alert.target_price) / max(1e-8, alert.target_price)) * 100.0) if alert.target_price > 0 else 0.0
-                pct_display = f"{arrow}{pct_val:.2f}%" if pct_val > 0.001 else f"{arrow}"
-
-                safe_symbol = html.escape(display_symbol)
-                safe_exchange = html.escape(exchange_name)
-
+            if effective_chat_id:
                 tg_lines = [
-                    "🚨 <b>هشدار فعال شد:</b>",
-                    f"📊{emoji} <b>{safe_symbol} {price_formatted} {pct_display}</b>",
-                    f"🎯 <b>قیمت تارگت:</b> {target_display}",
+                    f"{emoji} <b>{html.escape(display_symbol)}</b> {pct_str} {price_formatted} {arrow}".replace('  ', ' '),
+                    f"🏛️ {html.escape(exchange_name)}"
                 ]
-                if alert.note and alert.note.strip():
-                    clean_note = alert.note.strip()
-                    if clean_note.startswith('📝'):
-                        clean_note = clean_note[1:].strip()
-                    safe_note = html.escape(clean_note)
-                    tg_lines.append(f"📝 <b>یادداشت:</b> <i>{safe_note}</i>")
-
-                tg_lines.append(f"🏛️ {safe_exchange}")
-                now_utc = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
-                tg_lines.append(f"🕒 <b>زمان:</b> <code>{now_utc}</code>")
-                tg_lines.append("⚡ <i>ارسال شده توسط ربات هوشمند SignalAlert Enterprise</i>")
+                if triggered_note and triggered_note.strip():
+                    clean_n = triggered_note.strip()
+                    if clean_n.startswith('📝'):
+                        clean_n = clean_n[1:].strip()
+                    if clean_n:
+                        tg_lines.append(f"📝 {html.escape(clean_n)}")
 
                 tg_msg = "\n".join(tg_lines)
-                _spawn(send_telegram_alert(http_client, alert.telegram_chat_id, tg_msg))
+                _spawn(send_telegram_alert(http_client, effective_chat_id, tg_msg))
 
             # 3. Dispatch Optional Webhook with SSRF Protection
             if alert.webhook_url:

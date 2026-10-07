@@ -8,12 +8,14 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
 
     <!-- Android 14+ Foreground Service with dataSync type -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
-    <!-- Doze Mode Exemption -->
+    <!-- Doze Mode & Battery Exemption -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <application
@@ -49,18 +51,26 @@
             android:exported="true"
             android:foregroundServiceType="dataSync" />
 
-        <!-- Flutter Local Notifications Receiver -->
+        <!-- Flutter Local Notifications Multi-Target Boot Receiver (Direct Boot + MIUI / Samsung Fix) -->
         <receiver
             android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
             android:exported="false" />
         <receiver
             android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver"
-            android:exported="true">
-            <intent-filter>
+            android:enabled="true"
+            android:exported="true"
+            android:directBootAware="true">
+            <intent-filter android:priority="999">
+                <!-- Standard Boot -->
                 <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <!-- Direct Boot Mode (Before user screen unlock) -->
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <!-- App Update -->
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+                <!-- MediaTek / HTC / Fast Boot -->
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
                 <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+                <!-- Generic Hardware Reboot & Unlock -->
                 <action android:name="android.intent.action.REBOOT" />
                 <action android:name="android.intent.action.USER_PRESENT" />
             </intent-filter>
