@@ -1683,6 +1683,65 @@ async def send_telegram_alert(client: httpx.AsyncClient, chat_id: str, message: 
     except Exception as e:
         print(f"⚠️ [Telegram Dispatch Error] {_scrub(e)}")
 
+def format_alert_registered_telegram_msg(alert: Any) -> str:
+    """Formats a sleek, clean confirmation message when an alert is added to the server"""
+    display_symbol = getattr(alert, 'symbol', '') or ''
+    if '/' not in display_symbol and len(display_symbol) > 3:
+        for q in ['USDT', 'USDC', 'BUSD', 'FDUSD', 'EUR', 'USD', 'TMN', 'IRT', 'BTC', 'ETH']:
+            if display_symbol.endswith(q) and len(display_symbol) > len(q):
+                display_symbol = f"{display_symbol[:-len(q)]}/{q}"
+                break
+    exchange_name = get_exchange_display_name(getattr(alert, 'exchange', ''))
+
+    condition = (getattr(alert, 'condition', 'ABOVE') or 'ABOVE').upper()
+    cond_arrow = "▲" if condition == "ABOVE" else "▼"
+    if condition == "BOTHSIDES":
+        cond_arrow = "⇅"
+
+    cond_type = getattr(alert, 'condition_type', 'priceThreshold')
+    percent_val = getattr(alert, 'percent', None)
+    target_price = getattr(alert, 'target_price', 0.0) or 0.0
+
+    if cond_type == "percentChange" and percent_val:
+        target_repr = f"{percent_val:g}%"
+    else:
+        if target_price < 1:
+            target_repr = f"{target_price:,.4f}".rstrip('0').rstrip('.')
+        else:
+            target_repr = f"{target_price:,.2f}"
+
+    features = []
+    interval_sec = getattr(alert, 'check_interval_seconds', 180)
+    int_mins = interval_sec // 60
+    if interval_sec % 60 == 0:
+        features.append(f"⏱️ {int_mins}m")
+    else:
+        features.append(f"⏱️ {interval_sec}s")
+
+    if getattr(alert, 'sound_enabled', True):
+        features.append("🔊")
+    if getattr(alert, 'vibration_enabled', True):
+        features.append("📳")
+    if getattr(alert, 'tts_enabled', False):
+        features.append("🗣️")
+    if getattr(alert, 'trigger_mode', 'oneShot') == "recurring":
+        features.append("🔄")
+
+    feat_str = " ".join(features)
+
+    lines = [
+        f"✅ <b>{html.escape(display_symbol)}</b> <code>{target_repr}</code> {cond_arrow}",
+        f"🏛️ {html.escape(exchange_name)} | {feat_str}"
+    ]
+    custom_n = getattr(alert, 'note', None) or getattr(alert, 'upper_note', None) or getattr(alert, 'lower_note', None)
+    if custom_n and str(custom_n).strip():
+        n = str(custom_n).strip()
+        if n.startswith('📝'):
+            n = n[1:].strip()
+        if n:
+            lines.append(f"📝 {html.escape(n)}")
+    return "\n".join(lines)
+
 async def init_telegram_bot(client: httpx.AsyncClient):
     global TELEGRAM_BOT_METADATA
     if not TELEGRAM_BOT_TOKEN:
@@ -2269,6 +2328,27 @@ async def create_alert(alert_in: AlertCreate):
             await save_user_profiles_to_disk_async(USER_PROFILES_DB)
     await save_alerts_to_disk_async(ALERTS_DB)
     print(f"📩 [API] New Alert Created/Updated: {new_alert.symbol} ({new_alert.exchange}) | ID: {new_alert.id} | Target: {new_alert.target_price} | Interval: {new_alert.check_interval_seconds}s")
+
+    # Dispatch Telegram confirmation message with alert features upon registration
+    try:
+        effective_chat_id = (new_alert.telegram_chat_id or "").strip()
+        if not effective_chat_id:
+            user_prof = USER_PROFILES_DB.get(new_alert.user_id.lower(), {})
+            effective_chat_id = (user_prof.get('telegram_chat_id') or "").strip()
+        if not effective_chat_id and 'user_default' in USER_PROFILES_DB:
+            effective_chat_id = (USER_PROFILES_DB['user_default'].get('telegram_chat_id') or "").strip()
+        if not effective_chat_id:
+            any_chat = next((a.telegram_chat_id for a in ALERTS_DB if a.telegram_chat_id and (a.user_id.lower() == new_alert.user_id.lower() or a.user_id == 'user_default')), None)
+            if any_chat:
+                effective_chat_id = str(any_chat).strip()
+
+        if effective_chat_id and http_client is not None:
+            tg_conf_msg = format_alert_registered_telegram_msg(new_alert)
+            _spawn(send_telegram_alert(http_client, effective_chat_id, tg_conf_msg))
+            print(f"🤖 [Telegram Confirmation] Sent for {new_alert.symbol} to chat {effective_chat_id}")
+    except Exception as e:
+        print(f"⚠️ [Telegram Confirmation Note] {e}")
+
     return new_alert
 
 @app.post("/api/alerts/sync", dependencies=API_DEP)
@@ -2405,14 +2485,28 @@ async def get_user_alerts(user_id: str, fcm_token: Optional[str] = None):
 
     async with _db_lock:
         results = []
+        seen_ids = set()
         for a in ALERTS_DB:
             a_uid = (a.user_id or "").strip().lower()
             a_fcm = (a.fcm_token or "").strip()
 
-            # Match if user_id matches, or if FCM token matches (same device)
-            if (clean_uid and a_uid == clean_uid) or (clean_fcm and a_fcm and a_fcm == clean_fcm):
-                # If alert was created under 'user_default', migrate it to logged-in user_id
-                if clean_uid and clean_uid != 'user_default' and a_uid == 'user_default':
+            is_match = False
+            # 1. Exact or lowercase user_id match
+            if clean_uid and a_uid == clean_uid:
+                is_match = True
+            # 2. Matching device FCM token
+            elif clean_fcm and a_fcm and (a_fcm == clean_fcm or clean_fcm.startswith(a_fcm) or a_fcm.startswith(clean_fcm)):
+                is_match = True
+            # 3. If user is logging in from guest mode on the same device, adopt alerts
+            elif clean_uid and clean_uid != 'user_default' and (a_uid == 'user_default' or not a_uid):
+                if clean_fcm and a_fcm and a_fcm == clean_fcm:
+                    is_match = True
+                elif not a_fcm or a_fcm.startswith('dev_'):
+                    is_match = True
+
+            if is_match and a.id not in seen_ids:
+                seen_ids.add(a.id)
+                if clean_uid and clean_uid != 'user_default' and (a_uid == 'user_default' or not a_uid):
                     a.user_id = clean_uid
                 results.append(a)
 

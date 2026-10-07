@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
@@ -32,9 +33,20 @@ class ServerAlertService {
     return map;
   }
 
+  /// Resolves the actual effective base URL (supports web origin, local server, or configured URL)
+  static String get effectiveBaseUrl {
+    if (_baseUrl.trim().isNotEmpty) return _baseUrl.trim();
+    if (kIsWeb) {
+      try {
+        final origin = Uri.base.origin;
+        if (origin.isNotEmpty && origin != 'null') return origin;
+      } catch (_) {}
+    }
+    return 'http://127.0.0.1:8000';
+  }
+
   /// Whether server calls should be attempted
   static bool get isServerAvailable {
-    if (_baseUrl.isEmpty) return false;
     if (_circuitBreakerUntil != null && DateTime.now().isBefore(_circuitBreakerUntil!)) {
       return false;
     }
@@ -243,14 +255,15 @@ class ServerAlertService {
 
   /// Restores user alerts from cloud server when signing in or reinstalling app
   static Future<int> restoreUserAlertsFromCloud({
-    required BuildContext context,
+    BuildContext? context,
+    JsonAlertRuleRepository? repository,
     required String userEmail,
   }) async {
-    if (!isServerAvailable || userEmail.trim().isEmpty) return 0;
+    if (userEmail.trim().isEmpty) return 0;
     try {
       final fcmToken = await FCMNotificationService.getFCMToken();
       final cleanUser = userEmail.trim().toLowerCase();
-      final url = Uri.parse('$_baseUrl/api/alerts/$cleanUser').replace(
+      final url = Uri.parse('$effectiveBaseUrl/api/alerts/$cleanUser').replace(
         queryParameters: {
           if (fcmToken.isNotEmpty) 'fcm_token': fcmToken,
         },
@@ -260,7 +273,18 @@ class ServerAlertService {
       if (response.statusCode == 200) {
         final dynamic decoded = jsonDecode(response.body);
         if (decoded is List && decoded.isNotEmpty) {
-          final repo = context.read<JsonAlertRuleRepository>();
+          JsonAlertRuleRepository? repo = repository;
+          if (repo == null && context != null) {
+            try {
+              repo = context.read<JsonAlertRuleRepository>();
+            } catch (_) {}
+          }
+          if (repo == null) {
+            final dir = await getApplicationDocumentsDirectory();
+            repo = JsonAlertRuleRepository(dir.path);
+            await repo.load();
+          }
+
           int imported = 0;
           for (final item in decoded) {
             if (item is Map<String, dynamic>) {
@@ -385,7 +409,7 @@ class ServerAlertService {
   /// Completely purge all alerts stored on the Python server
   static Future<bool> purgeAllServerAlerts() async {
     try {
-      final url = Uri.parse('$_baseUrl/api/alerts');
+      final url = Uri.parse('$effectiveBaseUrl/api/alerts');
       final response = await http.delete(url, headers: _buildHeaders()).timeout(const Duration(seconds: 5));
       return response.statusCode == 200;
     } catch (_) {
@@ -460,7 +484,7 @@ class ServerAlertService {
         }
       } catch (_) {}
 
-      final url = Uri.parse('$_baseUrl/api/alerts');
+      final url = Uri.parse('$effectiveBaseUrl/api/alerts');
       final payload = {
         if (ruleId != null && ruleId.isNotEmpty) 'id': ruleId,
         'user_id': userId,
@@ -520,7 +544,7 @@ class ServerAlertService {
   /// Fetch all active alerts for a user from the Python server
   static Future<List<Map<String, dynamic>>> fetchUserAlerts(String userId) async {
     try {
-      final url = Uri.parse('$_baseUrl/api/alerts/$userId');
+      final url = Uri.parse('$effectiveBaseUrl/api/alerts/$userId');
       final response = await http.get(url, headers: _buildHeaders()).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
@@ -538,7 +562,7 @@ class ServerAlertService {
   /// Delete an alert from the Python server by ID
   static Future<bool> deleteAlertFromServer(String alertId) async {
     try {
-      final url = Uri.parse('$_baseUrl/api/alerts/$alertId');
+      final url = Uri.parse('$effectiveBaseUrl/api/alerts/$alertId');
       final response = await http.delete(url, headers: _buildHeaders()).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
@@ -558,7 +582,7 @@ class ServerAlertService {
     if (!isServerAvailable) return null;
     try {
       final sanitizedSym = symbol.replaceAll('/', '').replaceAll(' ', '');
-      final url = Uri.parse('$_baseUrl/api/price/${exchange.toLowerCase()}/$sanitizedSym');
+      final url = Uri.parse('$effectiveBaseUrl/api/price/${exchange.toLowerCase()}/$sanitizedSym');
       final response = await http.get(url, headers: _buildHeaders()).timeout(const Duration(seconds: 4));
 
       if (response.statusCode == 200) {
@@ -581,7 +605,7 @@ class ServerAlertService {
     if (!isServerAvailable) return null;
     try {
       final sanitizedSym = symbol.replaceAll('/', '').replaceAll(' ', '');
-      final url = Uri.parse('$_baseUrl/api/price/${exchange.toLowerCase()}/$sanitizedSym');
+      final url = Uri.parse('$effectiveBaseUrl/api/price/${exchange.toLowerCase()}/$sanitizedSym');
       final response = await http.get(url, headers: _buildHeaders()).timeout(const Duration(seconds: 6));
 
       if (response.statusCode == 200) {
@@ -599,7 +623,7 @@ class ServerAlertService {
   static Future<Map<String, dynamic>?> fetchMarketsStatus() async {
     if (!isServerAvailable) return null;
     try {
-      final url = Uri.parse('$_baseUrl/api/markets/status');
+      final url = Uri.parse('$effectiveBaseUrl/api/markets/status');
       final response = await http.get(url, headers: _buildHeaders()).timeout(const Duration(seconds: 6));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -615,7 +639,7 @@ class ServerAlertService {
   static Future<Map<String, dynamic>?> fetchMarketsOverview() async {
     if (!isServerAvailable) return null;
     try {
-      final url = Uri.parse('$_baseUrl/api/markets/status');
+      final url = Uri.parse('$effectiveBaseUrl/api/markets/status');
       final response = await http.get(url, headers: _buildHeaders()).timeout(const Duration(seconds: 8));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -631,7 +655,7 @@ class ServerAlertService {
   static Future<Map<String, dynamic>?> inspectMarketSource(String exchange, String symbol) async {
     try {
       final sanitizedSym = symbol.replaceAll('/', '').replaceAll(' ', '');
-      final url = Uri.parse('$_baseUrl/api/debug/inspect/${exchange.toLowerCase()}/$sanitizedSym');
+      final url = Uri.parse('$effectiveBaseUrl/api/debug/inspect/${exchange.toLowerCase()}/$sanitizedSym');
       final response = await http.get(url, headers: _buildHeaders()).timeout(const Duration(seconds: 12));
 
       if (response.statusCode == 200) {
@@ -647,7 +671,7 @@ class ServerAlertService {
   /// Fetch recent server diagnostic logs
   static Future<List<Map<String, dynamic>>> fetchDebugLogs() async {
     try {
-      final url = Uri.parse('$_baseUrl/api/debug/logs');
+      final url = Uri.parse('$effectiveBaseUrl/api/debug/logs');
       final response = await http.get(url, headers: _buildHeaders()).timeout(const Duration(seconds: 8));
 
       if (response.statusCode == 200) {
@@ -666,7 +690,7 @@ class ServerAlertService {
   static Future<Map<String, dynamic>> sendTestPush({String? customTitle, String? customBody}) async {
     try {
       final token = await FCMNotificationService.getFCMToken();
-      final uri = Uri.parse('$_baseUrl/api/test/push').replace(
+      final uri = Uri.parse('$effectiveBaseUrl/api/test/push').replace(
         queryParameters: {
           if (token.isNotEmpty) 'fcm_token': token,
           if (customTitle != null && customTitle.isNotEmpty) 'title': customTitle,
@@ -696,7 +720,7 @@ class ServerAlertService {
     // 1. If custom server is configured, try server endpoint first
     if (isServerAvailable) {
       try {
-        final url = Uri.parse('$_baseUrl/api/telegram/test-message');
+        final url = Uri.parse('$effectiveBaseUrl/api/telegram/test-message');
         final response = await http.post(
           url,
           headers: _buildHeaders(),
@@ -749,7 +773,7 @@ class ServerAlertService {
     if (!isServerAvailable || userId.trim().isEmpty) return false;
     try {
       final cleanUser = userId.trim().toLowerCase();
-      final url = Uri.parse('$_baseUrl/api/user/$cleanUser/telegram');
+      final url = Uri.parse('$effectiveBaseUrl/api/user/$cleanUser/telegram');
       final response = await http.post(
         url,
         headers: _buildHeaders(),
@@ -770,7 +794,7 @@ class ServerAlertService {
     if (!isServerAvailable || userId.trim().isEmpty) return null;
     try {
       final cleanUser = userId.trim().toLowerCase();
-      final url = Uri.parse('$_baseUrl/api/user/$cleanUser/telegram');
+      final url = Uri.parse('$effectiveBaseUrl/api/user/$cleanUser/telegram');
       final response = await http.get(url, headers: _buildHeaders()).timeout(const Duration(seconds: 6));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
