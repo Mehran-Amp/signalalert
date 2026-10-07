@@ -265,6 +265,14 @@ class AlertRow extends StatelessWidget {
   String _buildConditionDescription(AlertRule rule, String lang) {
     switch (rule.conditionType) {
       case AlertConditionType.priceThreshold:
+        if (rule.direction == AlertDirection.bothSides && rule.upperTargetPrice != null && rule.lowerTargetPrice != null) {
+          final upT = FormatUtils.formatAlertCardPrice(rule.upperTargetPrice!, rule.counterCurrency);
+          final lowT = FormatUtils.formatAlertCardPrice(rule.lowerTargetPrice!, rule.counterCurrency);
+          if (lang == 'fa') {
+            return 'عبور قیمت: بالا > $upT یا پایین < $lowT';
+          }
+          return 'Price breakout: > $upT or < $lowT';
+        }
         final target = FormatUtils.formatAlertCardPrice(rule.targetPrice ?? 0.0, rule.counterCurrency);
         final isAbove = rule.direction == AlertDirection.above;
         if (lang == 'fa') {

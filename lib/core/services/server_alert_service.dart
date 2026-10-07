@@ -162,7 +162,9 @@ class ServerAlertService {
       
       final alertsPayload = activeRules.map((rule) {
         final effectiveTarget = rule.targetPrice ?? rule.upperTargetPrice ?? rule.lowerTargetPrice ?? 0.0;
-        final conditionStr = (rule.direction == AlertDirection.below) ? 'BELOW' : 'ABOVE';
+        final conditionStr = (rule.direction == AlertDirection.below)
+            ? 'BELOW'
+            : (rule.direction == AlertDirection.bothSides ? 'BOTHSIDES' : 'ABOVE');
         final trigMode = (rule.triggerMode == TriggerMode.recurring) ? 'recurring' : 'oneShot';
         return {
           'id': rule.uuid,
@@ -170,6 +172,21 @@ class ServerAlertService {
           'symbol': rule.marketSymbol.toUpperCase(),
           'target_price': effectiveTarget,
           'condition': conditionStr,
+          'condition_type': rule.conditionType.name,
+          'direction': rule.direction.name,
+          'both_way_behavior': rule.bothWayBehavior.name,
+          'percent': rule.percent,
+          'upper_target_price': rule.upperTargetPrice,
+          'upper_note': rule.upperNote,
+          'lower_target_price': rule.lowerTargetPrice,
+          'lower_note': rule.lowerNote,
+          'delta_absolute': rule.deltaAbsolute,
+          'volume_percent': rule.volumePercent,
+          'base_price': rule.basePrice,
+          'base_volume': rule.baseVolume,
+          'base_currency': rule.baseCurrency,
+          'counter_currency': rule.counterCurrency,
+          'market_symbol': rule.marketSymbol,
           'check_interval_seconds': rule.checkIntervalSeconds,
           'note': rule.customNote ?? rule.upperNote ?? rule.lowerNote,
           'trigger_mode': trigMode,
@@ -177,8 +194,11 @@ class ServerAlertService {
           'vibration_enabled': rule.vibrationEnabled,
           'tts_enabled': rule.ttsEnabled,
           'sound': rule.customSound ?? 'alarm_siren',
+          'language': rule.language ?? 'fa',
+          'prefer_server_proxy': rule.preferServerProxy,
           'is_active': rule.isActive,
           'fcm_token': fcmToken,
+          'raw_rule': rule.toJson(),
           if (telegramChatId != null && telegramChatId.isNotEmpty) 'telegram_chat_id': telegramChatId,
         };
       }).toList();
@@ -245,6 +265,14 @@ class ServerAlertService {
           for (final item in decoded) {
             if (item is Map<String, dynamic>) {
               try {
+                if (item['raw_rule'] is Map) {
+                  final rawMap = Map<String, dynamic>.from(item['raw_rule'] as Map);
+                  final rule = AlertRule.fromJson(rawMap);
+                  await repo.saveRule(rule, syncToServer: false);
+                  imported++;
+                  continue;
+                }
+
                 final symbol = item['symbol'] as String? ?? 'BTCUSDT';
                 final exchange = item['exchange'] as String? ?? 'binance';
                 final target = (item['target_price'] as num?)?.toDouble() ?? 0.0;
@@ -258,20 +286,44 @@ class ServerAlertService {
                 final ttsEnabled = item['tts_enabled'] as bool? ?? false;
                 final isActive = item['is_active'] as bool? ?? true;
 
-                final direction = condition.toUpperCase() == 'BELOW' ? AlertDirection.below : AlertDirection.above;
+                final condTypeStr = item['condition_type'] as String? ?? 'priceThreshold';
+                final condType = AlertConditionType.values.firstWhere(
+                  (c) => c.name == condTypeStr,
+                  orElse: () => AlertConditionType.priceThreshold,
+                );
 
-                String base = 'BTC';
-                String counter = 'USDT';
-                if (symbol.contains('/')) {
-                  final parts = symbol.split('/');
-                  base = parts[0];
-                  counter = parts.length > 1 ? parts[1] : 'USDT';
-                } else {
-                  for (final q in ['USDT', 'USDC', 'BUSD', 'FDUSD', 'EUR', 'USD', 'TMN', 'IRT', 'BTC', 'ETH']) {
-                    if (symbol.endsWith(q) && symbol.length > q.length) {
-                      base = symbol.substring(0, symbol.length - q.length);
-                      counter = q;
-                      break;
+                final dirStr = item['direction'] as String? ?? (condition.toUpperCase() == 'BELOW' ? 'below' : (condition.toUpperCase() == 'BOTHSIDES' ? 'bothSides' : 'above'));
+                final direction = AlertDirection.values.firstWhere(
+                  (d) => d.name == dirStr,
+                  orElse: () => (condition.toUpperCase() == 'BELOW' ? AlertDirection.below : AlertDirection.above),
+                );
+
+                final bothWayStr = item['both_way_behavior'] as String? ?? 'oco';
+                final bothWay = BothWayBehavior.values.firstWhere(
+                  (b) => b.name == bothWayStr,
+                  orElse: () => BothWayBehavior.oco,
+                );
+
+                final trigModeStr = item['trigger_mode'] as String? ?? 'oneShot';
+                final trigMode = TriggerMode.values.firstWhere(
+                  (t) => t.name == trigModeStr,
+                  orElse: () => TriggerMode.oneShot,
+                );
+
+                String base = item['base_currency'] as String? ?? 'BTC';
+                String counter = item['counter_currency'] as String? ?? 'USDT';
+                if (item['base_currency'] == null) {
+                  if (symbol.contains('/')) {
+                    final parts = symbol.split('/');
+                    base = parts[0];
+                    counter = parts.length > 1 ? parts[1] : 'USDT';
+                  } else {
+                    for (final q in ['USDT', 'USDC', 'BUSD', 'FDUSD', 'EUR', 'USD', 'TMN', 'IRT', 'BTC', 'ETH']) {
+                      if (symbol.endsWith(q) && symbol.length > q.length) {
+                        base = symbol.substring(0, symbol.length - q.length);
+                        counter = q;
+                        break;
+                      }
                     }
                   }
                 }
@@ -283,15 +335,27 @@ class ServerAlertService {
                   marketSymbol: symbol,
                   exchangeId: exchange,
                   checkIntervalSeconds: interval,
-                  conditionType: AlertConditionType.priceThreshold,
+                  conditionType: condType,
                   direction: direction,
-                  triggerMode: TriggerMode.oneShot,
-                  targetPrice: target,
+                  bothWayBehavior: bothWay,
+                  triggerMode: trigMode,
+                  targetPrice: target > 0 ? target : null,
+                  upperTargetPrice: (item['upper_target_price'] as num?)?.toDouble(),
+                  upperNote: item['upper_note'] as String?,
+                  lowerTargetPrice: (item['lower_target_price'] as num?)?.toDouble(),
+                  lowerNote: item['lower_note'] as String?,
+                  percent: (item['percent'] as num?)?.toDouble(),
+                  deltaAbsolute: (item['delta_absolute'] as num?)?.toDouble(),
+                  volumePercent: (item['volume_percent'] as num?)?.toDouble(),
+                  basePrice: (item['base_price'] as num?)?.toDouble(),
+                  baseVolume: (item['base_volume'] as num?)?.toDouble(),
                   customNote: note,
                   customSound: sound,
+                  language: item['language'] as String? ?? 'fa',
                   soundEnabled: soundEnabled,
                   vibrationEnabled: vibEnabled,
                   ttsEnabled: ttsEnabled,
+                  preferServerProxy: item['prefer_server_proxy'] as bool? ?? false,
                   isActive: isActive,
                   createdAt: DateTime.now(),
                 );
@@ -351,10 +415,28 @@ class ServerAlertService {
     required String exchange,
     required String symbol,
     required double targetPrice,
-    required String condition, // 'ABOVE' or 'BELOW'
+    required String condition, // 'ABOVE' or 'BELOW' or 'BOTHSIDES'
     required int checkIntervalSeconds,
     String? note,
     String triggerMode = 'oneShot',
+    String? conditionType,
+    String? direction,
+    String? bothWayBehavior,
+    double? percent,
+    double? upperTargetPrice,
+    String? upperNote,
+    double? lowerTargetPrice,
+    String? lowerNote,
+    double? deltaAbsolute,
+    double? volumePercent,
+    double? basePrice,
+    double? baseVolume,
+    String? baseCurrency,
+    String? counterCurrency,
+    String? marketSymbol,
+    String? language,
+    bool preferServerProxy = false,
+    Map<String, dynamic>? rawRule,
     bool soundEnabled = true,
     bool vibrationEnabled = true,
     bool ttsEnabled = false,
@@ -386,6 +468,24 @@ class ServerAlertService {
         'symbol': symbol.toUpperCase(),
         'target_price': targetPrice,
         'condition': condition.toUpperCase(),
+        if (conditionType != null) 'condition_type': conditionType,
+        if (direction != null) 'direction': direction,
+        if (bothWayBehavior != null) 'both_way_behavior': bothWayBehavior,
+        if (percent != null) 'percent': percent,
+        if (upperTargetPrice != null) 'upper_target_price': upperTargetPrice,
+        if (upperNote != null) 'upper_note': upperNote,
+        if (lowerTargetPrice != null) 'lower_target_price': lowerTargetPrice,
+        if (lowerNote != null) 'lower_note': lowerNote,
+        if (deltaAbsolute != null) 'delta_absolute': deltaAbsolute,
+        if (volumePercent != null) 'volume_percent': volumePercent,
+        if (basePrice != null) 'base_price': basePrice,
+        if (baseVolume != null) 'base_volume': baseVolume,
+        if (baseCurrency != null) 'base_currency': baseCurrency,
+        if (counterCurrency != null) 'counter_currency': counterCurrency,
+        if (marketSymbol != null) 'market_symbol': marketSymbol,
+        if (language != null) 'language': language,
+        'prefer_server_proxy': preferServerProxy,
+        if (rawRule != null) 'raw_rule': rawRule,
         'fcm_token': fcmToken.isNotEmpty ? fcmToken : 'device_token_pending',
         'check_interval_seconds': checkIntervalSeconds,
         'trigger_mode': triggerMode,

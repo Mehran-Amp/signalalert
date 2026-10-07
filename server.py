@@ -100,12 +100,43 @@ def _normalize_sync_item(item: Any) -> Dict[str, Any]:
         raise ValueError("invalid target_price")
     out['target_price'] = tp
     out['condition'] = str(item.get('condition') or 'ABOVE').strip().upper()
+    out['condition_type'] = str(item.get('condition_type') or 'priceThreshold').strip()
+    out['direction'] = str(item.get('direction') or ('below' if out['condition'] == 'BELOW' else 'above')).strip()
+    out['both_way_behavior'] = str(item.get('both_way_behavior') or 'oco').strip()
+    
+    for float_k in ('percent', 'upper_target_price', 'lower_target_price', 'delta_absolute', 'volume_percent', 'base_price', 'base_volume'):
+        v = item.get(float_k)
+        if v is not None:
+            try:
+                fv = float(v)
+                if math.isfinite(fv):
+                    out[float_k] = fv
+            except (ValueError, TypeError):
+                out[float_k] = None
+        else:
+            out[float_k] = None
+
+    for note_k in ('upper_note', 'lower_note'):
+        nv = item.get(note_k)
+        out[note_k] = str(nv)[:MAX_NOTE_LEN] if nv is not None else None
+
     out['check_interval_seconds'] = _clamp_interval(item.get('check_interval_seconds', 180))
     note = item.get('note')
     out['note'] = str(note)[:MAX_NOTE_LEN] if note is not None else None
-    for k in ('id', 'created_at', 'sound', 'trigger_mode', 'alert_nature'):
+    
+    for k in ('id', 'created_at', 'sound', 'trigger_mode', 'alert_nature', 'base_currency', 'counter_currency', 'market_symbol', 'language'):
         if item.get(k) is not None:
             out[k] = str(item[k])[:128]
+
+    out['sound_enabled'] = bool(item.get('sound_enabled', True))
+    out['vibration_enabled'] = bool(item.get('vibration_enabled', True))
+    out['tts_enabled'] = bool(item.get('tts_enabled', True))
+    out['prefer_server_proxy'] = bool(item.get('prefer_server_proxy', False))
+    out['is_active'] = bool(item.get('is_active', True))
+    
+    if isinstance(item.get('raw_rule'), dict):
+        out['raw_rule'] = item['raw_rule']
+
     chat = item.get('telegram_chat_id')
     if chat is not None and str(chat).strip():
         chat = str(chat).strip()
@@ -185,9 +216,27 @@ class AlertCreate(BaseModel):
     user_id: str
     exchange: str            # e.g. 'nobitex', 'wallex', 'tabdeal', 'binance', 'stocks'
     symbol: str              # e.g. 'BTCUSDT', 'USDTIRT', 'GOLD', 'DX-Y.NYB'
-    target_price: float
-    condition: str           # 'ABOVE' or 'BELOW'
-    fcm_token: str
+    target_price: float = 0.0
+    condition: str = "ABOVE"  # 'ABOVE' or 'BELOW' or 'BOTHSIDES'
+    condition_type: Optional[str] = "priceThreshold" # 'priceThreshold' | 'percentChange' | 'absolutePriceChange' | 'volumeChange'
+    direction: Optional[str] = "above" # 'above' | 'below' | 'bothSides'
+    both_way_behavior: Optional[str] = "oco" # 'oco' | 'dualActive'
+    percent: Optional[float] = None
+    upper_target_price: Optional[float] = None
+    upper_note: Optional[str] = None
+    lower_target_price: Optional[float] = None
+    lower_note: Optional[str] = None
+    delta_absolute: Optional[float] = None
+    volume_percent: Optional[float] = None
+    base_price: Optional[float] = None
+    base_volume: Optional[float] = None
+    base_currency: Optional[str] = None
+    counter_currency: Optional[str] = None
+    market_symbol: Optional[str] = None
+    language: Optional[str] = "fa"
+    prefer_server_proxy: bool = False
+    raw_rule: Optional[Dict[str, Any]] = None
+    fcm_token: str = ""
     check_interval_seconds: int = 180
     note: Optional[str] = None
     trigger_mode: Optional[str] = "oneShot" # 'oneShot' | 'recurring'
@@ -215,8 +264,26 @@ class AlertPublic(BaseModel):
     user_id: str
     exchange: str
     symbol: str
-    target_price: float
-    condition: str
+    target_price: float = 0.0
+    condition: str = "ABOVE"
+    condition_type: Optional[str] = "priceThreshold"
+    direction: Optional[str] = "above"
+    both_way_behavior: Optional[str] = "oco"
+    percent: Optional[float] = None
+    upper_target_price: Optional[float] = None
+    upper_note: Optional[str] = None
+    lower_target_price: Optional[float] = None
+    lower_note: Optional[str] = None
+    delta_absolute: Optional[float] = None
+    volume_percent: Optional[float] = None
+    base_price: Optional[float] = None
+    base_volume: Optional[float] = None
+    base_currency: Optional[str] = None
+    counter_currency: Optional[str] = None
+    market_symbol: Optional[str] = None
+    language: Optional[str] = "fa"
+    prefer_server_proxy: bool = False
+    raw_rule: Optional[Dict[str, Any]] = None
     check_interval_seconds: int = 180
     note: Optional[str] = None
     trigger_mode: Optional[str] = "oneShot"
@@ -1782,7 +1849,12 @@ async def check_alerts_job():
 
     active_alerts = [
         a for a in ALERTS_DB
-        if a.is_active and getattr(a, 'alert_nature', 'price') == 'price' and a.target_price > 0 and a.exchange.lower() not in ['timer', 'local', 'clock', 'none']
+        if a.is_active and getattr(a, 'alert_nature', 'price') == 'price' and (
+            a.target_price > 0 or 
+            (a.upper_target_price is not None and a.upper_target_price > 0) or 
+            (a.lower_target_price is not None and a.lower_target_price > 0) or
+            (a.percent is not None and a.percent > 0 and (a.base_price or 0) > 0)
+        ) and a.exchange.lower() not in ['timer', 'local', 'clock', 'none']
     ]
     ready_alerts = [
         a for a in active_alerts
@@ -1843,38 +1915,90 @@ async def check_alerts_job():
                 return
             alert.last_eval_asof = as_of
 
+        # Determine effective target parameters
+        cond_type = getattr(alert, 'condition_type', 'priceThreshold') or 'priceThreshold'
+        pct = getattr(alert, 'percent', None)
+        base_p = getattr(alert, 'base_price', None)
+        upper_t = getattr(alert, 'upper_target_price', None)
+        lower_t = getattr(alert, 'lower_target_price', None)
+        eff_cond = (alert.condition or 'ABOVE').upper()
+
+        eff_target = alert.target_price
+        eff_upper = upper_t
+        eff_lower = lower_t
+
+        if cond_type == 'percentChange' and pct is not None and pct > 0 and base_p and base_p > 0:
+            eff_upper = base_p * (1.0 + pct / 100.0)
+            eff_lower = base_p * (1.0 - pct / 100.0)
+            if eff_cond in ['BOTHSIDES', 'BOTH']:
+                eff_target = eff_upper if current_price >= base_p else eff_lower
+            elif eff_cond == 'BELOW':
+                eff_target = eff_lower
+            else:
+                eff_target = eff_upper
+        elif eff_upper is not None and eff_lower is not None:
+            eff_target = eff_upper if current_price >= ((eff_upper + eff_lower) / 2.0) else eff_lower
+
         # 2. Level-Crossing Guard (Edge-Trigger Hysteresis across ALL markets):
         # If an alert is evaluated for the very first time (last_eval_price is None):
         if getattr(alert, 'last_eval_price', None) is None:
             alert.last_eval_price = current_price
-            # If current price is ALREADY on the triggered side at creation/startup:
-            is_initially_triggered = (
-                (alert.condition == 'ABOVE' and current_price >= alert.target_price) or
-                (alert.condition == 'BELOW' and current_price <= alert.target_price)
-            )
+            is_initially_triggered = False
+            if eff_upper is not None and eff_lower is not None and eff_cond in ['BOTHSIDES', 'BOTH']:
+                is_initially_triggered = (current_price >= eff_upper or current_price <= eff_lower)
+            elif eff_cond == 'ABOVE' and current_price >= eff_target:
+                is_initially_triggered = True
+            elif eff_cond == 'BELOW' and current_price <= eff_target:
+                is_initially_triggered = True
+
             if is_initially_triggered:
                 alert.waiting_for_cross = True
-                print(f"🛡️ [Edge Guard] {alert.symbol} ({alert.exchange}): initial price {current_price} already meets {alert.condition} {alert.target_price}. Armed for crossing.")
+                print(f"🛡️ [Edge Guard] {alert.symbol} ({alert.exchange}): initial price {current_price} already meets target {eff_target}. Armed for crossing.")
                 return
 
         # If waiting for price to cross to the non-triggered side first:
         if getattr(alert, 'waiting_for_cross', False):
-            if alert.condition == 'ABOVE' and current_price < alert.target_price:
+            if eff_upper is not None and eff_lower is not None and eff_cond in ['BOTHSIDES', 'BOTH']:
+                if current_price < eff_upper and current_price > eff_lower:
+                    alert.waiting_for_cross = False
+                    print(f"🎯 [Edge Armed] {alert.symbol} entered corridor between {eff_lower} and {eff_upper} ({current_price}).")
+            elif eff_cond == 'ABOVE' and current_price < eff_target:
                 alert.waiting_for_cross = False
-                print(f"🎯 [Edge Armed] {alert.symbol} dipped below {alert.target_price} ({current_price}). Ready to trigger on upward crossing.")
-            elif alert.condition == 'BELOW' and current_price > alert.target_price:
+                print(f"🎯 [Edge Armed] {alert.symbol} dipped below {eff_target} ({current_price}). Ready to trigger on upward crossing.")
+            elif eff_cond == 'BELOW' and current_price > eff_target:
                 alert.waiting_for_cross = False
-                print(f"🎯 [Edge Armed] {alert.symbol} rose above {alert.target_price} ({current_price}). Ready to trigger on downward crossing.")
+                print(f"🎯 [Edge Armed] {alert.symbol} rose above {eff_target} ({current_price}). Ready to trigger on downward crossing.")
             alert.last_eval_price = current_price
             return
 
         alert.last_eval_price = current_price
 
         triggered = False
-        if alert.condition == 'ABOVE' and current_price >= alert.target_price:
+        is_above = True
+        triggered_target = eff_target
+        triggered_note = alert.note
+
+        if eff_upper is not None and eff_lower is not None and eff_cond in ['BOTHSIDES', 'BOTH']:
+            if current_price >= eff_upper:
+                triggered = True
+                is_above = True
+                triggered_target = eff_upper
+                triggered_note = getattr(alert, 'upper_note', None) or alert.note
+            elif current_price <= eff_lower:
+                triggered = True
+                is_above = False
+                triggered_target = eff_lower
+                triggered_note = getattr(alert, 'lower_note', None) or alert.note
+        elif eff_cond == 'ABOVE' and current_price >= eff_target:
             triggered = True
-        elif alert.condition == 'BELOW' and current_price <= alert.target_price:
+            is_above = True
+            triggered_target = eff_target
+            triggered_note = getattr(alert, 'upper_note', None) or alert.note
+        elif eff_cond == 'BELOW' and current_price <= eff_target:
             triggered = True
+            is_above = False
+            triggered_target = eff_target
+            triggered_note = getattr(alert, 'lower_note', None) or alert.note
 
         if triggered:
             async with _db_lock:
@@ -1896,15 +2020,14 @@ async def check_alerts_job():
                 updated = True
 
             METRICS["total_triggers"] += 1
-            print(f"🔔 [TRIGGER] {alert.symbol} @ {current_price} (Target: {alert.target_price})")
+            print(f"🔔 [TRIGGER] {alert.symbol} @ {current_price} (Target: {triggered_target})")
 
-            is_above = alert.condition.upper() == 'ABOVE'
             emoji = '🟢' if is_above else '🔴'
             arrow = '▲' if is_above else '▼'
             sign = '+' if is_above else '-'
 
             display_symbol = alert.symbol
-            pct_str = f"{sign}{abs(((current_price - alert.target_price) / alert.target_price) * 100.0):.2f}%" if alert.target_price > 0 else ""
+            pct_str = f"{sign}{abs(((current_price - triggered_target) / triggered_target) * 100.0):.2f}%" if (triggered_target and triggered_target > 0) else ""
             price_formatted = f"${current_price:,.4f}".rstrip('0').rstrip('.') if current_price < 1 else f"${current_price:,.2f}"
             if alert.symbol.endswith('TMN') or alert.symbol.endswith('IRT'):
                 price_formatted = f"{int(current_price):,} TMN"
@@ -1920,8 +2043,8 @@ async def check_alerts_job():
             resolved_source = cached_meta.get('source')
             source_badge = f" [via {resolved_source}]" if (resolved_source and alert.exchange.lower() not in resolved_source.lower()) else ""
             body_lines = [f"🏛️ {exchange_name}{source_badge}"]
-            if alert.note and alert.note.strip():
-                clean_note = alert.note.strip()
+            if triggered_note and triggered_note.strip():
+                clean_note = triggered_note.strip()
                 if not clean_note.startswith('📝'):
                     clean_note = f"📝 {clean_note}"
                 body_lines.append(clean_note)
@@ -2146,6 +2269,24 @@ async def create_alert(alert_in: AlertCreate):
             existing.symbol = alert_in.symbol
             existing.target_price = alert_in.target_price
             existing.condition = alert_in.condition
+            existing.condition_type = alert_in.condition_type or "priceThreshold"
+            existing.direction = alert_in.direction or "above"
+            existing.both_way_behavior = alert_in.both_way_behavior or "oco"
+            existing.percent = alert_in.percent
+            existing.upper_target_price = alert_in.upper_target_price
+            existing.upper_note = alert_in.upper_note
+            existing.lower_target_price = alert_in.lower_target_price
+            existing.lower_note = alert_in.lower_note
+            existing.delta_absolute = alert_in.delta_absolute
+            existing.volume_percent = alert_in.volume_percent
+            existing.base_price = alert_in.base_price
+            existing.base_volume = alert_in.base_volume
+            existing.base_currency = alert_in.base_currency
+            existing.counter_currency = alert_in.counter_currency
+            existing.market_symbol = alert_in.market_symbol
+            existing.language = alert_in.language or "fa"
+            existing.prefer_server_proxy = alert_in.prefer_server_proxy
+            existing.raw_rule = alert_in.raw_rule
             existing.fcm_token = alert_in.fcm_token
             existing.check_interval_seconds = alert_in.check_interval_seconds
             existing.note = alert_in.note
@@ -2171,6 +2312,24 @@ async def create_alert(alert_in: AlertCreate):
                 symbol=alert_in.symbol,
                 target_price=alert_in.target_price,
                 condition=alert_in.condition,
+                condition_type=alert_in.condition_type or "priceThreshold",
+                direction=alert_in.direction or "above",
+                both_way_behavior=alert_in.both_way_behavior or "oco",
+                percent=alert_in.percent,
+                upper_target_price=alert_in.upper_target_price,
+                upper_note=alert_in.upper_note,
+                lower_target_price=alert_in.lower_target_price,
+                lower_note=alert_in.lower_note,
+                delta_absolute=alert_in.delta_absolute,
+                volume_percent=alert_in.volume_percent,
+                base_price=alert_in.base_price,
+                base_volume=alert_in.base_volume,
+                base_currency=alert_in.base_currency,
+                counter_currency=alert_in.counter_currency,
+                market_symbol=alert_in.market_symbol,
+                language=alert_in.language or "fa",
+                prefer_server_proxy=alert_in.prefer_server_proxy,
+                raw_rule=alert_in.raw_rule,
                 fcm_token=alert_in.fcm_token,
                 check_interval_seconds=alert_in.check_interval_seconds,
                 note=alert_in.note,
@@ -2251,6 +2410,24 @@ async def sync_user_alerts(payload: dict):
                 symbol=item.get('symbol', 'USDTIRT').upper(),
                 target_price=float(item.get('target_price', 0.0)),
                 condition=item.get('condition', 'ABOVE').upper(),
+                condition_type=item.get('condition_type') or 'priceThreshold',
+                direction=item.get('direction') or 'above',
+                both_way_behavior=item.get('both_way_behavior') or 'oco',
+                percent=item.get('percent'),
+                upper_target_price=item.get('upper_target_price'),
+                upper_note=item.get('upper_note'),
+                lower_target_price=item.get('lower_target_price'),
+                lower_note=item.get('lower_note'),
+                delta_absolute=item.get('delta_absolute'),
+                volume_percent=item.get('volume_percent'),
+                base_price=item.get('base_price'),
+                base_volume=item.get('base_volume'),
+                base_currency=item.get('base_currency'),
+                counter_currency=item.get('counter_currency'),
+                market_symbol=item.get('market_symbol'),
+                language=item.get('language') or 'fa',
+                prefer_server_proxy=bool(item.get('prefer_server_proxy', False)),
+                raw_rule=item.get('raw_rule'),
                 fcm_token=item.get('fcm_token') or fcm_token,
                 check_interval_seconds=_clamp_interval(item.get('check_interval_seconds', 180)),
                 note=item.get('note'),

@@ -213,8 +213,8 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
         _selectedPair = rule.pair;
       }
     } else {
-      _unitValueController = TextEditingController(text: '1');
-      _percentController = TextEditingController(text: '2.5');
+      _unitValueController = TextEditingController(text: '3');
+      _percentController = TextEditingController();
       _targetPriceController = TextEditingController();
       _upperPriceController = TextEditingController();
       _upperNoteController = TextEditingController();
@@ -243,22 +243,22 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
   }
 
   int _calculateTotalIntervalSeconds() {
-    final value = int.tryParse(_unitValueController.text.trim()) ?? 1;
+    final value = int.tryParse(_unitValueController.text.trim()) ?? 3;
     switch (_checkUnit) {
       case CheckUnit.seconds:
-        return value.clamp(1, 86400);
+        return (value * 60).clamp(60, 86400 * 7);
       case CheckUnit.minutes:
-        return (value * 60).clamp(1, 86400 * 7);
+        return (value * 60).clamp(60, 86400 * 7);
       case CheckUnit.hours:
-        return (value * 3600).clamp(1, 86400 * 30);
+        return (value * 3600).clamp(3600, 86400 * 30);
     }
   }
 
   String _formatCalculatedInterval(String lang) {
-    final val = int.tryParse(_unitValueController.text.trim()) ?? 1;
+    final val = int.tryParse(_unitValueController.text.trim()) ?? 3;
     switch (_checkUnit) {
       case CheckUnit.seconds:
-        return '$val ${AppStrings.get('seconds', lang)}';
+        return '$val ${AppStrings.get('minutes', lang)}';
       case CheckUnit.minutes:
         return '$val ${AppStrings.get('minutes', lang)}';
       case CheckUnit.hours:
@@ -450,7 +450,6 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
       _selectedExchange = null;
       _selectedPair = null;
       _step = 2;
-      _percentController.text = '2';
       _isLoadingPrice = true;
       _currentPrice = (asset['price'] as num?)?.toDouble();
       if (_currentPrice != null && _currentPrice! > 0) {
@@ -721,11 +720,25 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
     String? lowerNote;
 
     if (_conditionType == AlertConditionType.percentChange) {
+      final textVal = _percentController.text.trim();
+      final parsed = double.tryParse(FormatUtils.normalizePersianDigits(textVal));
+      if (parsed == null || parsed <= 0) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(lang == 'fa'
+                ? 'لطفاً درصد نوسان مورد نظر خود را وارد کنید (مثال: ۲.۵٪)'
+                : 'Please enter a target percentage (e.g. 2.5%)'),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+        return;
+      }
       if (_flowType == MarketFlowType.iran) {
-        final parsed = double.tryParse(FormatUtils.normalizePersianDigits(_percentController.text.trim())) ?? 2.0;
         percent = parsed.roundToDouble(); // Integer percentage only for Iran market
       } else {
-        percent = double.tryParse(FormatUtils.normalizePersianDigits(_percentController.text.trim())) ?? 2.5;
+        percent = parsed;
       }
     } else if (_conditionType == AlertConditionType.priceThreshold && _direction == AlertDirection.bothSides) {
       upperTargetPrice = double.tryParse(FormatUtils.normalizePersianDigits(_upperPriceController.text.trim()));
@@ -2265,7 +2278,7 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
             Expanded(
               flex: 3,
               child: DropdownButtonFormField<CheckUnit>(
-                initialValue: _checkUnit,
+                initialValue: _checkUnit == CheckUnit.seconds ? CheckUnit.minutes : _checkUnit,
                 decoration: InputDecoration(
                   labelText: AppStrings.get('time_unit', lang),
                   filled: true,
@@ -2273,7 +2286,6 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: theme.dividerColor)),
                 ),
                 items: [
-                  DropdownMenuItem(value: CheckUnit.seconds, child: Text(AppStrings.get('seconds', lang))),
                   DropdownMenuItem(value: CheckUnit.minutes, child: Text(AppStrings.get('minutes', lang))),
                   DropdownMenuItem(value: CheckUnit.hours, child: Text(AppStrings.get('hours', lang))),
                 ],
@@ -2421,8 +2433,9 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
                 : const TextInputType.numberWithOptions(decimal: true),
             style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'monospace', color: theme.colorScheme.onSurface),
             decoration: InputDecoration(
-              labelText: _flowType == MarketFlowType.iran ? 'درصد نوسان (عدد صحیح)' : AppStrings.get('percent_label', lang),
-              hintText: _flowType == MarketFlowType.iran ? '۲' : '2.5',
+              labelText: _flowType == MarketFlowType.iran ? 'درصد نوسان مد نظر (%)' : AppStrings.get('percent_label', lang),
+              hintText: _flowType == MarketFlowType.iran ? 'یک درصد وارد کنید (مثال: ۲)' : (lang == 'fa' ? 'یک درصد وارد کنید (مثال: ۲.۵)' : 'Enter a percentage (e.g. 2.5)'),
+              helperText: lang == 'fa' ? 'درصد تغییرات دلخواه را وارد کنید' : 'Enter target percentage change',
               filled: true,
               fillColor: theme.colorScheme.surface,
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: theme.dividerColor)),
