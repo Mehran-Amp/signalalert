@@ -153,7 +153,7 @@ def _normalize_sync_item(item: Any) -> Dict[str, Any]:
 SERVICE_ACCOUNT_FILE = "serviceAccountKey.json"
 firebase_initialized = False
 
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip() or "8597547058:AAFNRkiAnCU3NLdTgRs_Oz4p8GKkV-fR7jg"
 TELEGRAM_BOT_METADATA: Dict[str, Any] = {
     "username": "aisocialfeedbot",
     "first_name": "AiSFeed",
@@ -316,23 +316,23 @@ def load_alerts_from_disk() -> List[Alert]:
 
 async def save_alerts_to_disk_async(alerts: List[Alert]):
     """Atomic asynchronous disk writer to prevent file corruption during power/server events"""
-    async with _db_lock:
-        try:
-            loop = asyncio.get_running_loop()
+    try:
+        loop = asyncio.get_running_loop()
+        async with _db_lock:
             data = [a.model_dump() if hasattr(a, 'model_dump') else a.dict() for a in alerts]
-            json_str = json.dumps(data, ensure_ascii=False, indent=2)
+        json_str = json.dumps(data, ensure_ascii=False, indent=2)
 
-            def _write():
-                tmp_file = f"{DB_FILE}.tmp"
-                with open(tmp_file, "w", encoding="utf-8") as f:
-                    f.write(json_str)
-                    f.flush()
-                    os.fsync(f.fileno())
-                os.replace(tmp_file, DB_FILE)
+        def _write():
+            tmp_file = f"{DB_FILE}.tmp"
+            with open(tmp_file, "w", encoding="utf-8") as f:
+                f.write(json_str)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_file, DB_FILE)
 
-            await loop.run_in_executor(None, _write)
-        except Exception as e:
-            print(f"⚠️ Error saving alerts disk DB: {e}")
+        await loop.run_in_executor(None, _write)
+    except Exception as e:
+        print(f"⚠️ Error saving alerts disk DB: {e}")
 
 ALERTS_DB: List[Alert] = load_alerts_from_disk()
 
@@ -348,22 +348,23 @@ def load_user_profiles_from_disk() -> Dict[str, Dict[str, Any]]:
     return {}
 
 async def save_user_profiles_to_disk_async(profiles: Dict[str, Dict[str, Any]]):
-    async with _db_lock:
-        try:
-            loop = asyncio.get_running_loop()
-            json_str = json.dumps(profiles, ensure_ascii=False, indent=2)
+    try:
+        loop = asyncio.get_running_loop()
+        async with _db_lock:
+            prof_copy = dict(profiles)
+        json_str = json.dumps(prof_copy, ensure_ascii=False, indent=2)
 
-            def _write():
-                tmp_file = f"{PROFILES_FILE}.tmp"
-                with open(tmp_file, "w", encoding="utf-8") as f:
-                    f.write(json_str)
-                    f.flush()
-                    os.fsync(f.fileno())
-                os.replace(tmp_file, PROFILES_FILE)
+        def _write():
+            tmp_file = f"{PROFILES_FILE}.tmp"
+            with open(tmp_file, "w", encoding="utf-8") as f:
+                f.write(json_str)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_file, PROFILES_FILE)
 
-            await loop.run_in_executor(None, _write)
-        except Exception as e:
-            print(f"⚠️ Error saving user profiles disk DB: {e}")
+        await loop.run_in_executor(None, _write)
+    except Exception as e:
+        print(f"⚠️ Error saving user profiles disk DB: {e}")
 
 USER_PROFILES_DB: Dict[str, Dict[str, Any]] = load_user_profiles_from_disk()
 
@@ -2460,6 +2461,25 @@ async def sync_user_alerts(payload: dict):
     await save_alerts_to_disk_async(ALERTS_DB)
     active_remaining = len([a for a in ALERTS_DB if a.is_active])
     print(f"🔄 [API] Bulk Synced {added_count} alert(s) for user {user_id} (Active remaining: {active_remaining})")
+
+    # Send Telegram confirmation message for newly synced alerts if chat_id is available
+    if http_client is not None:
+        try:
+            for new_alert in new_alerts:
+                effective_chat_id = (new_alert.telegram_chat_id or "").strip()
+                if not effective_chat_id:
+                    user_prof = USER_PROFILES_DB.get(new_alert.user_id.lower(), {})
+                    effective_chat_id = (user_prof.get('telegram_chat_id') or "").strip()
+                if not effective_chat_id and 'user_default' in USER_PROFILES_DB:
+                    effective_chat_id = (USER_PROFILES_DB['user_default'].get('telegram_chat_id') or "").strip()
+
+                if effective_chat_id:
+                    tg_conf_msg = format_alert_registered_telegram_msg(new_alert)
+                    _spawn(send_telegram_alert(http_client, effective_chat_id, tg_conf_msg))
+                    print(f"🤖 [Telegram Sync Confirmation] Sent for {new_alert.symbol} to chat {effective_chat_id}")
+        except Exception as e:
+            print(f"⚠️ [Telegram Sync Confirmation Note] {e}")
+
     return {"status": "synced", "count": added_count, "total_active": active_remaining}
 
 @app.delete("/api/alerts", dependencies=API_DEP)
@@ -2967,8 +2987,8 @@ async def admin_probe_market_sources(format: Optional[str] = None, accept: Optio
 
     return probe_report
 
-@app.get("/api/test/push", dependencies=ADMIN_DEP)
-@app.post("/api/test/push", dependencies=ADMIN_DEP)
+@app.get("/api/test/push", dependencies=API_DEP)
+@app.post("/api/test/push", dependencies=API_DEP)
 async def test_push_notification(fcm_token: Optional[str] = None, title: Optional[str] = None, body: Optional[str] = None):
     token_to_use = fcm_token
     if not token_to_use:
@@ -3070,7 +3090,14 @@ async def send_telegram_test_message(req: TelegramTestRequest):
             METRICS["telegram_sent"] += 1
             return {"status": "ok", "message": "پیام تست با موفقیت به تلگرام شما ارسال شد!", "chat_id": chat_id}
         else:
-            return {"status": "error", "detail": res.text[:200], "status_code": res.status_code}
+            err_msg = res.text[:200]
+            if res.status_code == 401:
+                raise HTTPException(status_code=502, detail="توکن ربات تلگرام روی سرور نامعتبر یا منقضی شده است (Telegram Bot Unauthorized 401).")
+            elif res.status_code == 400:
+                raise HTTPException(status_code=400, detail="شناسه چت نامعتبر است یا کاربر ربات را استارت نکرده است (/start در ربات تلگرام لازم است).")
+            raise HTTPException(status_code=res.status_code, detail=f"خطای تلگرام: {err_msg}")
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"⚠️ [Telegram Test Error] {_scrub(e)}")
-        raise HTTPException(status_code=502, detail="Telegram request failed.")
+        raise HTTPException(status_code=502, detail=f"ارتباط با تلگرام برقرار نشد: {_scrub(e)}")

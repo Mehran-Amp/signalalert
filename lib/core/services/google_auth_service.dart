@@ -145,14 +145,20 @@ class GoogleAuthService {
       // 3. Restore persisted Telegram connection status from cloud
       try {
         final tgStatus = await ServerAlertService.fetchUserTelegramStatus(userEmail);
-        if (tgStatus != null && tgStatus['is_connected'] == true && tgStatus['telegram_chat_id'] != null) {
-          final savedChatId = tgStatus['telegram_chat_id'] as String;
-          if (savedChatId.isNotEmpty) {
+        if (tgStatus != null) {
+          final isConnected = tgStatus['is_connected'] == true;
+          final savedChatId = (tgStatus['telegram_chat_id'] as String?)?.trim() ?? '';
+          if (isConnected && savedChatId.isNotEmpty) {
             await settingsService.setTelegramChatId(savedChatId);
-            debugPrint('📱 [Cloud Sync] Restored Telegram Chat ID: $savedChatId');
+            debugPrint('📱 [Cloud Sync] Restored active Telegram Chat ID: $savedChatId');
+          } else {
+            await settingsService.setTelegramChatId(null);
+            debugPrint('📱 [Cloud Sync] Telegram is not connected for $userEmail');
           }
         }
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('⚠️ Error fetching Telegram status on sign in: $e');
+      }
 
       if (context.mounted) {
         try {

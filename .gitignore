@@ -7,11 +7,17 @@ coverage/
 .env*
 !.env.example
 
+# Flutter & Dart Build Artifacts (machine specific)
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+android/.gradle/
+android/local.properties
+
 # Sensitive Firebase & Service Account Keys
 serviceAccountKey.json
 *serviceAccount*.json
-google-services.json
-android/app/google-services.json
 *.pem
 *.key
 .last_fcm_token

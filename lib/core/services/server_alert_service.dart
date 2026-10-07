@@ -732,10 +732,24 @@ class ServerAlertService {
 
         debugPrint('📥 [Telegram Test] Server response status: ${response.statusCode}, body: ${response.body}');
         if (response.statusCode == 200) {
+          try {
+            final data = jsonDecode(response.body);
+            if (data is Map && data['status'] == 'error') {
+              final detail = data['detail'] ?? 'خطای تلگرام';
+              debugPrint('⚠️ [Telegram Test] Server returned business error: $detail');
+              return {'success': false, 'error': 'خطای سرور تلگرام: $detail'};
+            }
+          } catch (_) {}
           debugPrint('✅ [Telegram Test] Server successfully dispatched Telegram test message.');
           return {'success': true, 'message': 'پیام تست با موفقیت توسط سرور به تلگرام ارسال شد.'};
         } else {
           debugPrint('⚠️ [Telegram Test] Server returned error ${response.statusCode}: ${response.body}');
+          try {
+            final data = jsonDecode(response.body);
+            if (data is Map && data['detail'] != null) {
+              return {'success': false, 'error': data['detail'].toString()};
+            }
+          } catch (_) {}
         }
       } catch (e) {
         debugPrint('⚠️ [Telegram Test] Python Server dispatch failed/timeout: $e');

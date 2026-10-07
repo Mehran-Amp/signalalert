@@ -1609,6 +1609,9 @@ class _SettingsPageState extends State<SettingsPage> {
                   onPressed: () async {
                     await settingsService.signOut();
                     if (context.mounted) {
+                      try {
+                        context.read<AlertRulesBloc>().add(const LoadAlertRules());
+                      } catch (_) {}
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text(isFa ? 'از حساب گوگل خارج شدید.' : 'Signed out of Google account.'),
