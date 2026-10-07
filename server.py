@@ -519,6 +519,10 @@ ICE_MAP = {
 CACHE_TTL_IRAN = 60.0 # Strict 60-second cache as requested for Iran markets
 IRAN_MARKET_CACHE: Dict[str, Tuple[float, float, Dict[str, Any]]] = {}
 
+# Iran High-Speed Bridge / Relay Endpoint (aegkala.com Host in Iran)
+IRAN_BRIDGE_URL = os.environ.get("IRAN_BRIDGE_URL", "https://aegkala.com/market-bridge.php")
+IRAN_BRIDGE_TOKEN = os.environ.get("IRAN_BRIDGE_TOKEN", "sig_bridge_98f4a2e1d7c6b5a0e3f892147acb")
+
 FOREX_PAIRS = {
     'EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'USDCAD', 'USDCHF', 'NZDUSD',
     'EURGBP', 'EURJPY', 'GBPJPY', 'EURCHF', 'AUDJPY', 'GBPAUD', 'USDCNY',
@@ -686,7 +690,29 @@ async def fetch_price_with_trace(
                  sym_clean.startswith('USDT_') or sym_clean.startswith('GOLD_')
 
     if is_iranian:
-        # 0. Specialized Exchange Tethers & Digital Gold routing
+        # 0. Iran High-Speed Bridge (aegkala.com Host in Iran for domestic market & special tokens)
+        if IRAN_BRIDGE_URL and (ex in ['iran_market', 'bridge', 'tse', 'ice', 'bonbast'] or sym_clean.startswith('USDT_') or sym_clean.startswith('GOLD_') or sym_clean in TSETMC_INDEX_MAP or sym_clean in TSETMC_GOLD_FUNDS_MAP):
+            def _extract_iran_bridge(data):
+                if isinstance(data, dict) and data.get('success'):
+                    rates = data.get('data', {})
+                    item = rates.get(sym_clean) or rates.get(f"{sym_clean}_TMN") or rates.get(sym_clean.replace('_TMN', ''))
+                    if item and isinstance(item, dict):
+                        p = float(item.get('price', 0))
+                        if p > 0:
+                            return {
+                                'price': p,
+                                'state': 'LIVE',
+                                'currency': item.get('unit', 'TMN'),
+                                'source': f"پل اختصاصی ایران ({item.get('source', 'aegkala.com')})"
+                            }
+                return None
+
+            bridge_headers = {'Authorization': f'Bearer {IRAN_BRIDGE_TOKEN}'}
+            p = await _try_fetch('پل اختصاصی ایران (aegkala.com)', IRAN_BRIDGE_URL, _extract_iran_bridge, headers=bridge_headers)
+            if p and not collect_all_traces:
+                return p, traces
+
+        # 0-b. Specialized Exchange Tethers & Digital Gold routing
         if sym_clean == 'USDT_TETHERLAND':
             def _extract_tetherland_direct(data):
                 if isinstance(data, dict):

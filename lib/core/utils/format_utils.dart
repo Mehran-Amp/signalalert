@@ -134,15 +134,17 @@ class FormatUtils {
 
   /// Formats prices for Alert List / Card rows in English digits with 'T' (e.g. 268,500 T)
   static String formatAlertCardPrice(double price, String quoteCurrency) {
-    final isToman = quoteCurrency == 'TMN' || quoteCurrency == 'IRT' || quoteCurrency == 'تومان';
-    final isRial = quoteCurrency == 'IRR' || quoteCurrency == 'RLS' || quoteCurrency == 'ریال';
+    final isToman = quoteCurrency.toUpperCase() == 'TMN' ||
+        quoteCurrency.toUpperCase() == 'IRT' ||
+        quoteCurrency == 'تومان' ||
+        quoteCurrency.toUpperCase() == 'IRR' ||
+        quoteCurrency.toUpperCase() == 'RLS' ||
+        quoteCurrency == 'ریال';
     if (isToman) {
-      final numStr = price >= 1000 ? _noDecimal.format(price) : price.toStringAsFixed(2);
+      final numStr = price >= 1000
+          ? _noDecimal.format(price)
+          : (price == price.roundToDouble() ? price.toInt().toString() : price.toStringAsFixed(2));
       return '$numStr T';
-    }
-    if (isRial) {
-      final numStr = price >= 1000 ? _noDecimal.format(price) : price.toStringAsFixed(2);
-      return '$numStr RLS';
     }
     return formatPrice(price, currencySymbol: quoteCurrency);
   }

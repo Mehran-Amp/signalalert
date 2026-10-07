@@ -270,30 +270,31 @@ class AlertRow extends StatelessWidget {
         if (lang == 'fa') {
           return 'عبور قیمت ${isAbove ? 'به بالاتر از' : 'به پایین‌تر از'} $target';
         } else if (lang == 'ckb') {
-          return 'تێپەڕینی نرخ بۆ ${isAbove ? 'سەرەوەی' : 'خوارەوەی'} \$$target';
+          return 'تێپەڕینی نرخ بۆ ${isAbove ? 'سەرەوەی' : 'خوارەوەی'} $target';
         } else if (lang == 'ar') {
-          return 'تجاوز السعر ${isAbove ? 'أعلى من' : 'أدنى من'} \$$target';
+          return 'تجاوز السعر ${isAbove ? 'أعلى من' : 'أدنى من'} $target';
         } else if (lang == 'tr') {
-          return 'Fiyat \$$target ${isAbove ? 'üzerine çıkışı' : 'altına düşüşü'}';
+          return 'Fiyat $target ${isAbove ? 'üzerine çıkışı' : 'altına düşüşü'}';
         } else if (lang == 'de') {
-          return 'Preis ${isAbove ? 'über' : 'unter'} \$$target';
+          return 'Preis ${isAbove ? 'über' : 'unter'} $target';
         } else if (lang == 'es') {
-          return 'Precio ${isAbove ? 'por encima de' : 'por debajo de'} \$$target';
+          return 'Precio ${isAbove ? 'por encima de' : 'por debajo de'} $target';
         } else if (lang == 'fr') {
-          return 'Prix ${isAbove ? 'au-dessus de' : 'en dessous de'} \$$target';
+          return 'Prix ${isAbove ? 'au-dessus de' : 'en dessous de'} $target';
         } else if (lang == 'ru') {
-          return 'Цена ${isAbove ? 'выше' : 'ниже'} \$$target';
+          return 'Цена ${isAbove ? 'выше' : 'ниже'} $target';
         } else if (lang == 'zh') {
-          return '价格${isAbove ? '高于' : '低于'} \$$target';
+          return '价格${isAbove ? '高于' : '低于'} $target';
         }
         final dir = isAbove ? 'ABOVE' : 'BELOW';
-        return 'Price crosses $dir \$$target';
+        return 'Price crosses $dir $target';
 
       case AlertConditionType.percentChange:
         final dir = rule.direction == AlertDirection.above
             ? '+'
             : (rule.direction == AlertDirection.below ? '-' : '±');
-        final pct = rule.percent ?? 0.0;
+        final pctNum = rule.percent ?? 0.0;
+        final pct = (pctNum == pctNum.roundToDouble()) ? pctNum.toInt().toString() : pctNum.toString();
         final secs = rule.checkIntervalSeconds;
         final windowLabel = secs >= 3600
             ? '${secs ~/ 3600}h'

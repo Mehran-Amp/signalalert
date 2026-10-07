@@ -147,8 +147,10 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
         _unitValueController = TextEditingController(text: secs.toString());
       }
 
+      final rawPct = rule.percent ?? 2.5;
+      final pctText = (rawPct == rawPct.roundToDouble()) ? rawPct.toInt().toString() : rawPct.toString();
       _percentController = TextEditingController(
-        text: (rule.percent ?? 2.5).toString(),
+        text: pctText,
       );
       _targetPriceController = TextEditingController(
         text: rule.targetPrice != null ? rule.targetPrice.toString() : (_currentPrice?.toStringAsFixed(2) ?? ''),
@@ -444,6 +446,7 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
       _selectedExchange = null;
       _selectedPair = null;
       _step = 2;
+      _percentController.text = '2';
       _isLoadingPrice = true;
       _currentPrice = (asset['price'] as num?)?.toDouble();
       if (_currentPrice != null && _currentPrice! > 0) {
@@ -681,7 +684,12 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
     String? lowerNote;
 
     if (_conditionType == AlertConditionType.percentChange) {
-      percent = double.tryParse(FormatUtils.normalizePersianDigits(_percentController.text.trim())) ?? 2.5;
+      if (_flowType == MarketFlowType.iran) {
+        final parsed = double.tryParse(FormatUtils.normalizePersianDigits(_percentController.text.trim())) ?? 2.0;
+        percent = parsed.roundToDouble(); // Integer percentage only for Iran market
+      } else {
+        percent = double.tryParse(FormatUtils.normalizePersianDigits(_percentController.text.trim())) ?? 2.5;
+      }
     } else if (_conditionType == AlertConditionType.priceThreshold && _direction == AlertDirection.bothSides) {
       upperTargetPrice = double.tryParse(FormatUtils.normalizePersianDigits(_upperPriceController.text.trim()));
       lowerTargetPrice = double.tryParse(FormatUtils.normalizePersianDigits(_lowerPriceController.text.trim()));
@@ -1636,38 +1644,9 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
 
     return Column(
       children: [
-        // Live Cache Status Banner
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: const Color(0xFFFFB300).withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: const Color(0xFFFFB300).withValues(alpha: 0.3)),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.bolt_rounded, size: 16, color: Color(0xFFFFB300)),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    '⚡ نرخ‌های زنده طلا و ارز (بن‌بست)، بورس و صندوق‌های طلا (TSETMC)، نرخ‌های رسمی (مرکز مبادله) و تتر صرافی‌ها با کش ۶۰ ثانیه پایش می‌شوند.',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-
         // Search Bar in Persian
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
           child: TextField(
             onChanged: (val) => setState(() => _iranSearchQuery = val),
             style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurface),
@@ -2149,13 +2128,47 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
             ],
           ),
           const SizedBox(height: 12),
+          if (_flowType == MarketFlowType.iran) ...[
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [1, 2, 3, 5, 10, 15, 20].map((p) {
+                    final currentVal = FormatUtils.normalizePersianDigits(_percentController.text.trim());
+                    final isSel = currentVal == p.toString();
+                    return Padding(
+                      padding: const EdgeInsets.only(left: 6),
+                      child: ActionChip(
+                        label: Text(FormatUtils.toPersianDigits('$p٪')),
+                        labelStyle: TextStyle(
+                          fontSize: 11,
+                          fontWeight: isSel ? FontWeight.bold : FontWeight.normal,
+                          color: isSel ? const Color(0xFFFFB300) : theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                        ),
+                        backgroundColor: isSel ? const Color(0xFFFFB300).withValues(alpha: 0.15) : theme.colorScheme.surface,
+                        side: BorderSide(color: isSel ? const Color(0xFFFFB300) : theme.dividerColor),
+                        onPressed: () {
+                          setState(() {
+                            _percentController.text = p.toString();
+                          });
+                        },
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
+          ],
           TextField(
             controller: _percentController,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            keyboardType: _flowType == MarketFlowType.iran
+                ? TextInputType.number
+                : const TextInputType.numberWithOptions(decimal: true),
             style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'monospace', color: theme.colorScheme.onSurface),
             decoration: InputDecoration(
-              labelText: AppStrings.get('percent_label', lang),
-              hintText: '2.5',
+              labelText: _flowType == MarketFlowType.iran ? 'درصد نوسان (عدد صحیح)' : AppStrings.get('percent_label', lang),
+              hintText: _flowType == MarketFlowType.iran ? '۲' : '2.5',
               filled: true,
               fillColor: theme.colorScheme.surface,
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: theme.dividerColor)),
