@@ -1526,7 +1526,7 @@ class AppStrings {
     'iran_cat_leveraged': '⚡ ETFs à effet de levier',
     'iran_cat_index_funds': '📊 ETFs indiciels et publics',
     'iran_cat_top_stocks': '🏢 Grandes actions de Téhéran',
-    'iran_cat_commodities': '🌾 Lingots d'or et safran',
+    'iran_cat_commodities': '🌾 Lingots d\'or et safran',
     'iran_cat_treasury': '📜 Bons du Trésor et taux',
     'iran_cat_gold_funds': '🏆 Fonds d\'or (TSETMC)',
     'iran_cat_official': '🏛️ Taux officiels ICE',
