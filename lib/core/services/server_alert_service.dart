@@ -215,7 +215,7 @@ class ServerAlertService {
         };
       }).toList();
 
-      final url = Uri.parse('$_baseUrl/api/alerts/sync');
+      final url = Uri.parse('$effectiveBaseUrl/api/alerts/sync');
       final payload = {
         'user_id': effectiveUserId,
         'fcm_token': fcmToken,
@@ -226,7 +226,7 @@ class ServerAlertService {
         url,
         headers: _buildHeaders(),
         body: jsonEncode(payload),
-      ).timeout(const Duration(seconds: 5));
+      ).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         _circuitBreakerUntil = null;
@@ -237,7 +237,6 @@ class ServerAlertService {
       }
     } catch (e) {
       debugPrint('⚠️ Network/Sync Exception: $e');
-      _circuitBreakerUntil = DateTime.now().add(const Duration(minutes: 2));
     }
     return false;
   }
