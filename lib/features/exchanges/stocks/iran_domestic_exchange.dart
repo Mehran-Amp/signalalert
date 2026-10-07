@@ -7,11 +7,7 @@ import '../base/exchange_category.dart';
 import '../base/models/market_ticker.dart';
 import '../base/models/price_snapshot.dart';
 
-/// Comprehensive Iran Domestic Market Adapter:
-/// - Free Market Currencies, Gold & Coins (Bonbast API & Live Aggregator)
-/// - Tehran Stock Exchange Indices & Gold Funds (TSETMC Public Transparency Open Data)
-/// - Official Central Bank & Remittance Rates (ICE - سامانه مرکز مبادله ارز و طلای ایران)
-/// - Crypto Exchanges Tethers (USDT) & Digital Gold (Nobitex, Wallex, Tabdeal, Tetherland, etc.)
+/// Comprehensive Iran Domestic Market Adapter (TSETMC, Bonbast, ICE, Nobitex, Wallex, etc.)
 /// Quote currency is strictly Toman (TMN).
 class IranDomesticExchange implements Exchange {
   final http.Client _client;
@@ -35,7 +31,9 @@ class IranDomesticExchange implements Exchange {
   String get defaultCounterCurrency => 'TMN';
 
   static const List<Map<String, dynamic>> predefinedAssets = [
-    // --- ۱. طلا و مسکوکات فیزیکی (Bonbast / بازار طلا) ---
+    // ==========================================
+    // ۱. طلا و مسکوکات فیزیکی (Physical Gold & Coins)
+    // ==========================================
     {
       'symbol': 'GERAM18',
       'name': 'Gold 18K (1 Gram)',
@@ -127,225 +125,321 @@ class IranDomesticExchange implements Exchange {
       'unit': 'تومان',
     },
 
-    // --- ۲. ارزهای بازار آزاد (Bonbast API) ---
+    // ==========================================
+    // ۲. صندوق‌های طلای بورس تهران (Gold ETFs - TSETMC)
+    // ==========================================
     {
-      'symbol': 'USD_TMN',
-      'name': 'US Dollar Cash (Free Market)',
-      'nameFa': 'دلار آمریکا (اسکناس بازار آزاد)',
-      'cat': 'Currencies',
-      'icon': '💵',
-      'price': 268820.0,
+      'symbol': 'AYAR',
+      'name': 'Ayar Gold ETF (Lotus)',
+      'nameFa': 'صندوق طلای عیار لوتوس (عیار)',
+      'cat': 'GoldFunds',
+      'icon': '🏆',
+      'price': 23450.0,
       'unit': 'تومان',
     },
     {
-      'symbol': 'EUR_TMN',
-      'name': 'Euro Cash (Free Market)',
-      'nameFa': 'یورو اروپا (بازار آزاد)',
-      'cat': 'Currencies',
-      'icon': '💶',
-      'price': 303210.0,
+      'symbol': 'TALA',
+      'name': 'Kian Gold ETF (Tala)',
+      'nameFa': 'صندوق طلای کیان (طلا)',
+      'cat': 'GoldFunds',
+      'icon': '🏆',
+      'price': 22890.0,
       'unit': 'تومان',
     },
     {
-      'symbol': 'GBP_TMN',
-      'name': 'British Pound (Free Market)',
-      'nameFa': 'پوند انگلیس (بازار آزاد)',
-      'cat': 'Currencies',
-      'icon': '💷',
-      'price': 356400.0,
+      'symbol': 'ZAR',
+      'name': 'Zarfam Gold ETF (Zar)',
+      'nameFa': 'صندوق طلای زرفام (زر)',
+      'cat': 'GoldFunds',
+      'icon': '🏆',
+      'price': 24120.0,
       'unit': 'تومان',
     },
     {
-      'symbol': 'AED_TMN',
-      'name': 'UAE Dirham (Free Market)',
-      'nameFa': 'درهم امارات (اسکناس و حواله)',
-      'cat': 'Currencies',
-      'icon': '🇦🇪',
-      'price': 73420.0,
+      'symbol': 'KAHROBA',
+      'name': 'Kahroba Gold ETF',
+      'nameFa': 'صندوق طلای کهربا (کهربا)',
+      'cat': 'GoldFunds',
+      'icon': '🏆',
+      'price': 21980.0,
       'unit': 'تومان',
     },
     {
-      'symbol': 'TRY_TMN',
-      'name': 'Turkish Lira (Free Market)',
-      'nameFa': 'لیر ترکیه (بازار آزاد)',
-      'cat': 'Currencies',
-      'icon': '🇹🇷',
-      'price': 5470.0,
+      'symbol': 'GOHAR',
+      'name': 'Gohar Gold ETF (Mofid)',
+      'nameFa': 'صندوق طلای گوهر مفید (گوهر)',
+      'cat': 'GoldFunds',
+      'icon': '🏆',
+      'price': 25670.0,
       'unit': 'تومان',
     },
     {
-      'symbol': 'CAD_TMN',
-      'name': 'Canadian Dollar (Free Market)',
-      'nameFa': 'دلار کانادا (بازار آزاد)',
-      'cat': 'Currencies',
-      'icon': '🇨🇦',
-      'price': 189510.0,
+      'symbol': 'NAAB',
+      'name': 'Naab Gold ETF',
+      'nameFa': 'صندوق طلای ناب (ناب)',
+      'cat': 'GoldFunds',
+      'icon': '🏆',
+      'price': 19840.0,
       'unit': 'تومان',
     },
     {
-      'symbol': 'AUD_TMN',
-      'name': 'Australian Dollar (Free Market)',
-      'nameFa': 'دلار استرالیا (بازار آزاد)',
-      'cat': 'Currencies',
-      'icon': '🇦🇺',
-      'price': 172400.0,
+      'symbol': 'NAFIS',
+      'name': 'Nafis Gold ETF',
+      'nameFa': 'صندوق طلای نفیس (نفیس)',
+      'cat': 'GoldFunds',
+      'icon': '🏆',
+      'price': 18760.0,
       'unit': 'تومان',
     },
     {
-      'symbol': 'CNY_TMN',
-      'name': 'Chinese Yuan (Free Market)',
-      'nameFa': 'یوان چین (بازار آزاد)',
-      'cat': 'Currencies',
-      'icon': '🇨🇳',
-      'price': 37100.0,
-      'unit': 'تومان',
-    },
-    {
-      'symbol': 'CHF_TMN',
-      'name': 'Swiss Franc (Free Market)',
-      'nameFa': 'فرانک سوئیس (بازار آزاد)',
-      'cat': 'Currencies',
-      'icon': '🇨🇭',
-      'price': 301500.0,
-      'unit': 'تومان',
-    },
-    {
-      'symbol': 'SAR_TMN',
-      'name': 'Saudi Riyal (Free Market)',
-      'nameFa': 'ریال عربستان سعودی',
-      'cat': 'Currencies',
-      'icon': '🇸🇦',
-      'price': 71600.0,
-      'unit': 'تومان',
-    },
-    {
-      'symbol': 'KWD_TMN',
-      'name': 'Kuwaiti Dinar (Free Market)',
-      'nameFa': 'دینار کویت (بازار آزاد)',
-      'cat': 'Currencies',
-      'icon': '🇰🇼',
-      'price': 876000.0,
-      'unit': 'تومان',
-    },
-    {
-      'symbol': 'BHD_TMN',
-      'name': 'Bahraini Dinar (Free Market)',
-      'nameFa': 'دینار بحرین',
-      'cat': 'Currencies',
-      'icon': '🇧🇭',
-      'price': 713000.0,
-      'unit': 'تومان',
-    },
-    {
-      'symbol': 'OMR_TMN',
-      'name': 'Omani Rial (Free Market)',
-      'nameFa': 'ریال عمان',
-      'cat': 'Currencies',
-      'icon': '🇴🇲',
-      'price': 698000.0,
-      'unit': 'تومان',
-    },
-    {
-      'symbol': 'QAR_TMN',
-      'name': 'Qatari Riyal (Free Market)',
-      'nameFa': 'ریال قطر',
-      'cat': 'Currencies',
-      'icon': '🇶🇦',
-      'price': 73800.0,
-      'unit': 'تومان',
-    },
-    {
-      'symbol': 'IQD_TMN',
-      'name': 'Iraqi Dinar (100 Dinars)',
-      'nameFa': '۱۰۰ دینار عراق',
-      'cat': 'Currencies',
-      'icon': '🇮🇶',
-      'price': 20500.0,
-      'unit': 'تومان',
-    },
-    {
-      'symbol': 'AFN_TMN',
-      'name': 'Afghan Afghani (Free Market)',
-      'nameFa': 'افغانی افغانستان',
-      'cat': 'Currencies',
-      'icon': '🇦🇫',
-      'price': 3950.0,
-      'unit': 'تومان',
-    },
-    {
-      'symbol': 'RUB_TMN',
-      'name': 'Russian Ruble (Free Market)',
-      'nameFa': 'روبل روسیه',
-      'cat': 'Currencies',
-      'icon': '🇷🇺',
-      'price': 2850.0,
-      'unit': 'تومان',
-    },
-    {
-      'symbol': 'INR_TMN',
-      'name': 'Indian Rupee (Free Market)',
-      'nameFa': 'روپیه هند',
-      'cat': 'Currencies',
-      'icon': '🇮🇳',
-      'price': 3120.0,
-      'unit': 'تومان',
-    },
-    {
-      'symbol': 'JPY_TMN',
-      'name': 'Japanese Yen (100 Yen)',
-      'nameFa': '۱۰۰ ین ژاپن',
-      'cat': 'Currencies',
-      'icon': '🇯🇵',
-      'price': 174000.0,
-      'unit': 'تومان',
-    },
-    {
-      'symbol': 'SEK_TMN',
-      'name': 'Swedish Krona (Free Market)',
-      'nameFa': 'کرون سوئد',
-      'cat': 'Currencies',
-      'icon': '🇸🇪',
-      'price': 27500.0,
-      'unit': 'تومان',
-    },
-    {
-      'symbol': 'NOK_TMN',
-      'name': 'Norwegian Krone (Free Market)',
-      'nameFa': 'کرون نروژ',
-      'cat': 'Currencies',
-      'icon': '🇳🇴',
-      'price': 25800.0,
-      'unit': 'تومان',
-    },
-    {
-      'symbol': 'AZN_TMN',
-      'name': 'Azerbaijani Manat',
-      'nameFa': 'منات آذربایجان',
-      'cat': 'Currencies',
-      'icon': '🇦🇿',
-      'price': 158000.0,
-      'unit': 'تومان',
-    },
-    {
-      'symbol': 'GEL_TMN',
-      'name': 'Georgian Lari',
-      'nameFa': 'لاری گرجستان',
-      'cat': 'Currencies',
-      'icon': '🇬🇪',
-      'price': 98500.0,
-      'unit': 'تومان',
-    },
-    {
-      'symbol': 'AMD_TMN',
-      'name': 'Armenian Dram (1000 Dram)',
-      'nameFa': '۱۰۰۰ درام ارمنستان',
-      'cat': 'Currencies',
-      'icon': '🇦🇲',
-      'price': 69000.0,
+      'symbol': 'TALT',
+      'name': 'Taban Gold ETF',
+      'nameFa': 'صندوق طلای تابان (تابا)',
+      'cat': 'GoldFunds',
+      'icon': '🏆',
+      'price': 20450.0,
       'unit': 'تومان',
     },
 
-    // --- ۳. تتر صرافی‌های معتبر ایرانی (USDT / TMN) ---
+    // ==========================================
+    // ۳. صندوق‌های اهرمی بورس تهران (Leveraged ETFs)
+    // ==========================================
+    {
+      'symbol': 'AHRAM',
+      'name': 'Charisma Leveraged ETF (Ahram)',
+      'nameFa': 'صندوق اهرمی کاریزما (اهرم)',
+      'cat': 'LeveragedFunds',
+      'icon': '⚡',
+      'price': 2150.0,
+      'unit': 'تومان',
+    },
+    {
+      'symbol': 'JAHESH',
+      'name': 'Jahesh Leveraged ETF',
+      'nameFa': 'صندوق اهرمی جهش (جهش)',
+      'cat': 'LeveragedFunds',
+      'icon': '⚡',
+      'price': 1980.0,
+      'unit': 'تومان',
+    },
+    {
+      'symbol': 'TAVAN',
+      'name': 'Tavan Leveraged ETF (Mofid)',
+      'nameFa': 'صندوق اهرمی توان مفید (توان)',
+      'cat': 'LeveragedFunds',
+      'icon': '⚡',
+      'price': 2340.0,
+      'unit': 'تومان',
+    },
+    {
+      'symbol': 'SHETAB',
+      'name': 'Shetab Leveraged ETF (Agah)',
+      'nameFa': 'صندوق اهرمی شتاب آگاه (شتاب)',
+      'cat': 'LeveragedFunds',
+      'icon': '⚡',
+      'price': 1890.0,
+      'unit': 'تومان',
+    },
+    {
+      'symbol': 'MOJ',
+      'name': 'Moj Leveraged ETF (Firouzeh)',
+      'nameFa': 'صندوق اهرمی موج فیروزه (موج)',
+      'cat': 'LeveragedFunds',
+      'icon': '⚡',
+      'price': 2080.0,
+      'unit': 'تومان',
+    },
+    {
+      'symbol': 'BIDAR',
+      'name': 'Bidar Leveraged ETF',
+      'nameFa': 'صندوق اهرمی بیدار (بیدار)',
+      'cat': 'LeveragedFunds',
+      'icon': '⚡',
+      'price': 1920.0,
+      'unit': 'تومان',
+    },
+
+    // ==========================================
+    // ۴. صندوق‌های شاخصی و دولتی بورس (Index & State ETFs)
+    // ==========================================
+    {
+      'symbol': 'PALAYESH',
+      'name': 'Palayesh State ETF',
+      'nameFa': 'صندوق پالایش یکم (پالایش)',
+      'cat': 'IndexFunds',
+      'icon': '📊',
+      'price': 16850.0,
+      'unit': 'تومان',
+    },
+    {
+      'symbol': 'DARA1',
+      'name': 'Dara Yekom State Banking ETF',
+      'nameFa': 'صندوق دارا یکم (دارا یکم)',
+      'cat': 'IndexFunds',
+      'icon': '📊',
+      'price': 14200.0,
+      'unit': 'تومان',
+    },
+    {
+      'symbol': 'FIRUZEH',
+      'name': 'Firouzeh Success Index ETF',
+      'nameFa': 'صندوق شاخصی فیروزه (فیروزه)',
+      'cat': 'IndexFunds',
+      'icon': '📊',
+      'price': 4850.0,
+      'unit': 'تومان',
+    },
+    {
+      'symbol': 'SERVO',
+      'name': 'Sarv Equity ETF',
+      'nameFa': 'صندوق سهامی سرو (سرو)',
+      'cat': 'IndexFunds',
+      'icon': '📊',
+      'price': 5200.0,
+      'unit': 'تومان',
+    },
+    {
+      'symbol': 'TEMESHK',
+      'name': 'Temeshk Fund of Funds',
+      'nameFa': 'صندوق در صندوق تمشک (تمشک)',
+      'cat': 'IndexFunds',
+      'icon': '🍇',
+      'price': 2450.0,
+      'unit': 'تومان',
+    },
+
+    // ==========================================
+    // ۵. غول‌ها و سهام لیدر بورس تهران (Top TSE Leaders)
+    // ==========================================
+    {
+      'symbol': 'FOOLAD',
+      'name': 'Mobarakeh Steel Co (Foolad)',
+      'nameFa': 'فولاد مبارکه اصفهان (فولاد)',
+      'cat': 'TopStocks',
+      'icon': '🏢',
+      'price': 585.0,
+      'unit': 'تومان',
+    },
+    {
+      'symbol': 'FEMELLI',
+      'name': 'National Iranian Copper (Femelli)',
+      'nameFa': 'ملی صنایع مس ایران (فملی)',
+      'cat': 'TopStocks',
+      'icon': '🏢',
+      'price': 720.0,
+      'unit': 'تومان',
+    },
+    {
+      'symbol': 'FARES',
+      'name': 'Persian Gulf Petrochemical (Fars)',
+      'nameFa': 'صنایع پتروشیمی خلیج فارس (فارس)',
+      'cat': 'TopStocks',
+      'icon': '🏢',
+      'price': 1120.0,
+      'unit': 'تومان',
+    },
+    {
+      'symbol': 'SHEPNA',
+      'name': 'Isfahan Oil Refining (Shepna)',
+      'nameFa': 'پالایش نفت اصفهان (شپنا)',
+      'cat': 'TopStocks',
+      'icon': '🏢',
+      'price': 460.0,
+      'unit': 'تومان',
+    },
+    {
+      'symbol': 'SHETRAN',
+      'name': 'Tehran Oil Refining (Shetran)',
+      'nameFa': 'پالایش نفت تهران (شتران)',
+      'cat': 'TopStocks',
+      'icon': '🏢',
+      'price': 295.0,
+      'unit': 'تومان',
+    },
+    {
+      'symbol': 'VEBMELAT',
+      'name': 'Bank Mellat (Vebmelat)',
+      'nameFa': 'بانک ملت (وبملت)',
+      'cat': 'TopStocks',
+      'icon': '🏢',
+      'price': 240.0,
+      'unit': 'تومان',
+    },
+    {
+      'symbol': 'KHODRO',
+      'name': 'Iran Khodro (Khodro)',
+      'nameFa': 'ایران خودرو (خودرو)',
+      'cat': 'TopStocks',
+      'icon': '🚗',
+      'price': 285.0,
+      'unit': 'تومان',
+    },
+    {
+      'symbol': 'KHASAPA',
+      'name': 'Saipa (Khasapa)',
+      'nameFa': 'سایپا (خساپا)',
+      'cat': 'TopStocks',
+      'icon': '🚗',
+      'price': 235.0,
+      'unit': 'تومان',
+    },
+
+    // ==========================================
+    // ۶. شمش طلا و زعفران بورس کالا (IME Commodities)
+    // ==========================================
+    {
+      'symbol': 'IME_GOLD_BAR',
+      'name': 'IME Gold Bullion (1 Gram Refah/Mellat)',
+      'nameFa': 'گواهی شمش طلای بورس کالا (۱ گرم)',
+      'cat': 'Commodities',
+      'icon': '🧱',
+      'price': 26780000.0,
+      'unit': 'تومان',
+    },
+    {
+      'symbol': 'IME_SAFFRON',
+      'name': 'IME Negin Saffron (1 Gram)',
+      'nameFa': 'گواهی زعفران نگین بورس کالا (۱ گرم)',
+      'cat': 'Commodities',
+      'icon': '🌾',
+      'price': 118500.0,
+      'unit': 'تومان',
+    },
+    {
+      'symbol': 'IME_SILVER',
+      'name': 'IME Silver 999 (1 Gram)',
+      'nameFa': 'گواهی نقره ۹۹۹ بورس کالا',
+      'cat': 'Commodities',
+      'icon': '🥈',
+      'price': 89500.0,
+      'unit': 'تومان',
+    },
+
+    // ==========================================
+    // ۷. اوراق اخزا و نرخ سود بانکی (Treasury Yields)
+    // ==========================================
+    {
+      'symbol': 'AKHZA_YTM',
+      'name': 'Islamic Treasury Yield (Akhza YTM)',
+      'nameFa': 'نرخ سود مؤثر سالانه اسناد خزانه (اخزا)',
+      'cat': 'Treasury',
+      'icon': '📜',
+      'price': 31.8,
+      'unit': 'درصد',
+    },
+    {
+      'symbol': 'INTERBANK_RATE',
+      'name': 'CBI Interbank Interest Rate',
+      'nameFa': 'نرخ سود بین‌بانکی بانک مرکزی',
+      'cat': 'Treasury',
+      'icon': '🏛️',
+      'price': 23.95,
+      'unit': 'درصد',
+    },
+
+    // ==========================================
+    // ۸. تتر و طلای صرافی‌های ایرانی (USDT & Gold)
+    // ==========================================
     {
       'symbol': 'USDT_NOBITEX',
       'name': 'Nobitex Tether (USDT/TMN)',
@@ -436,8 +530,6 @@ class IranDomesticExchange implements Exchange {
       'price': 268950.0,
       'unit': 'تومان',
     },
-
-    // --- ۴. طلای دیجیتال و تتر گلد صرافی‌های ایرانی (Gold / TMN) ---
     {
       'symbol': 'GOLD_NOBITEX',
       'name': 'Nobitex Gold 18K (Digital Gold)',
@@ -493,81 +585,175 @@ class IranDomesticExchange implements Exchange {
       'unit': 'تومان',
     },
 
-    // --- ۵. صندوق‌های طلا بورس تهران (سامانه شفاف TSETMC) ---
+    // ==========================================
+    // ۹. ارزهای بازار آزاد و حواله (Free FX & Remittance)
+    // ==========================================
     {
-      'symbol': 'AYAR',
-      'name': 'Ayar Gold ETF (Lotus)',
-      'nameFa': 'صندوق طلای عیار لوتوس (عیار)',
-      'cat': 'GoldFunds',
-      'icon': '🏆',
-      'price': 23450.0,
+      'symbol': 'USD_TMN',
+      'name': 'US Dollar Cash (Free Market)',
+      'nameFa': 'دلار آمریکا (اسکناس بازار آزاد)',
+      'cat': 'Currencies',
+      'icon': '💵',
+      'price': 268820.0,
       'unit': 'تومان',
     },
     {
-      'symbol': 'TALA',
-      'name': 'Kian Gold ETF (Tala)',
-      'nameFa': 'صندوق طلای کیان (طلا)',
-      'cat': 'GoldFunds',
-      'icon': '🏆',
-      'price': 22890.0,
+      'symbol': 'EUR_TMN',
+      'name': 'Euro Cash (Free Market)',
+      'nameFa': 'یورو اروپا (بازار آزاد)',
+      'cat': 'Currencies',
+      'icon': '💶',
+      'price': 303210.0,
       'unit': 'تومان',
     },
     {
-      'symbol': 'ZAR',
-      'name': 'Zarfam Gold ETF (Zar)',
-      'nameFa': 'صندوق طلای زرفام (زر)',
-      'cat': 'GoldFunds',
-      'icon': '🏆',
-      'price': 24120.0,
+      'symbol': 'GBP_TMN',
+      'name': 'British Pound (Free Market)',
+      'nameFa': 'پوند انگلیس (بازار آزاد)',
+      'cat': 'Currencies',
+      'icon': '💷',
+      'price': 356400.0,
       'unit': 'تومان',
     },
     {
-      'symbol': 'KAHROBA',
-      'name': 'Kahroba Gold ETF',
-      'nameFa': 'صندوق طلای کهربا (کهربا)',
-      'cat': 'GoldFunds',
-      'icon': '🏆',
-      'price': 21980.0,
+      'symbol': 'AED_TMN',
+      'name': 'UAE Dirham (Free Market)',
+      'nameFa': 'درهم امارات (اسکناس و حواله)',
+      'cat': 'Currencies',
+      'icon': '🇦🇪',
+      'price': 73420.0,
       'unit': 'تومان',
     },
     {
-      'symbol': 'GOHAR',
-      'name': 'Gohar Gold ETF (Mofid)',
-      'nameFa': 'صندوق طلای گوهر مفید (گوهر)',
-      'cat': 'GoldFunds',
-      'icon': '🏆',
-      'price': 25670.0,
+      'symbol': 'AED_REMIT_DUB',
+      'name': 'Dubai Dirham Remittance',
+      'nameFa': 'حواله درهم دبی (تجاری)',
+      'cat': 'Currencies',
+      'icon': '🏙️',
+      'price': 73650.0,
       'unit': 'تومان',
     },
     {
-      'symbol': 'NAAB',
-      'name': 'Naab Gold ETF',
-      'nameFa': 'صندوق طلای ناب (ناب)',
-      'cat': 'GoldFunds',
-      'icon': '🏆',
-      'price': 19840.0,
+      'symbol': 'CNY_REMIT',
+      'name': 'China Yuan Remittance',
+      'nameFa': 'حواله یوآن چین (بازرگانی)',
+      'cat': 'Currencies',
+      'icon': '🚢',
+      'price': 37350.0,
       'unit': 'تومان',
     },
     {
-      'symbol': 'NAFIS',
-      'name': 'Nafis Gold ETF',
-      'nameFa': 'صندوق طلای نفیس (نفیس)',
-      'cat': 'GoldFunds',
-      'icon': '🏆',
-      'price': 18760.0,
+      'symbol': 'TRY_TMN',
+      'name': 'Turkish Lira (Free Market)',
+      'nameFa': 'لیر ترکیه (بازار آزاد)',
+      'cat': 'Currencies',
+      'icon': '🇹🇷',
+      'price': 5470.0,
       'unit': 'تومان',
     },
     {
-      'symbol': 'TALT',
-      'name': 'Taban Gold ETF',
-      'nameFa': 'صندوق طلای تابان (تابا)',
-      'cat': 'GoldFunds',
-      'icon': '🏆',
-      'price': 20450.0,
+      'symbol': 'CAD_TMN',
+      'name': 'Canadian Dollar (Free Market)',
+      'nameFa': 'دلار کانادا (بازار آزاد)',
+      'cat': 'Currencies',
+      'icon': '🇨🇦',
+      'price': 189510.0,
+      'unit': 'تومان',
+    },
+    {
+      'symbol': 'AUD_TMN',
+      'name': 'Australian Dollar (Free Market)',
+      'nameFa': 'دلار استرالیا (بازار آزاد)',
+      'cat': 'Currencies',
+      'icon': '🇦🇺',
+      'price': 172400.0,
+      'unit': 'تومان',
+    },
+    {
+      'symbol': 'CNY_TMN',
+      'name': 'Chinese Yuan (Free Market)',
+      'nameFa': 'یوان چین (بازار آزاد)',
+      'cat': 'Currencies',
+      'icon': '🇨🇳',
+      'price': 37100.0,
+      'unit': 'تومان',
+    },
+    {
+      'symbol': 'CHF_TMN',
+      'name': 'Swiss Franc (Free Market)',
+      'nameFa': 'فرانک سوئیس (بازار آزاد)',
+      'cat': 'Currencies',
+      'icon': '🇨🇭',
+      'price': 301500.0,
+      'unit': 'تومان',
+    },
+    {
+      'symbol': 'SAR_TMN',
+      'name': 'Saudi Riyal (Free Market)',
+      'nameFa': 'ریال عربستان سعودی',
+      'cat': 'Currencies',
+      'icon': '🇸🇦',
+      'price': 71600.0,
+      'unit': 'تومان',
+    },
+    {
+      'symbol': 'KWD_TMN',
+      'name': 'Kuwaiti Dinar (Free Market)',
+      'nameFa': 'دینار کویت (بازار آزاد)',
+      'cat': 'Currencies',
+      'icon': '🇰🇼',
+      'price': 876000.0,
+      'unit': 'تومان',
+    },
+    {
+      'symbol': 'IQD_TMN',
+      'name': 'Iraqi Dinar (100 Dinars)',
+      'nameFa': '۱۰۰ دینار عراق (زوار)',
+      'cat': 'Currencies',
+      'icon': '🇮🇶',
+      'price': 20500.0,
+      'unit': 'تومان',
+    },
+    {
+      'symbol': 'RUB_TMN',
+      'name': 'Russian Ruble (Free Market)',
+      'nameFa': 'روبل روسیه',
+      'cat': 'Currencies',
+      'icon': '🇷🇺',
+      'price': 2850.0,
+      'unit': 'تومان',
+    },
+    {
+      'symbol': 'AZN_TMN',
+      'name': 'Azerbaijani Manat',
+      'nameFa': 'منات آذربایجان',
+      'cat': 'Currencies',
+      'icon': '🇦🇿',
+      'price': 158000.0,
+      'unit': 'تومان',
+    },
+    {
+      'symbol': 'GEL_TMN',
+      'name': 'Georgian Lari',
+      'nameFa': 'لاری گرجستان',
+      'cat': 'Currencies',
+      'icon': '🇬🇪',
+      'price': 98500.0,
+      'unit': 'تومان',
+    },
+    {
+      'symbol': 'AMD_TMN',
+      'name': 'Armenian Dram (1000 Dram)',
+      'nameFa': '۱۰۰۰ درام ارمنستان',
+      'cat': 'Currencies',
+      'icon': '🇦🇲',
+      'price': 69000.0,
       'unit': 'تومان',
     },
 
-    // --- ۶. شاخص‌های بورس اوراق بهادار تهران (سامانه TSETMC) ---
+    // ==========================================
+    // ۱۰. شاخص‌های بورس تهران (TSE Bourse Indices)
+    // ==========================================
     {
       'symbol': 'TEDPIX',
       'name': 'Tehran Stock Exchange Index (TEDPIX)',
@@ -596,7 +782,9 @@ class IranDomesticExchange implements Exchange {
       'unit': 'واحد',
     },
 
-    // --- ۷. نرخ‌های دولتی، حواله و مرکز مبادله (سامانه ICE / بانک مرکزی) ---
+    // ==========================================
+    // ۱۱. مرکز مبادله ایران و نرخ‌های رسمی (ICE / CBI)
+    // ==========================================
     {
       'symbol': 'ICE_USD_CASH',
       'name': 'ICE US Dollar Cash (National Exchange)',
@@ -661,24 +849,6 @@ class IranDomesticExchange implements Exchange {
       'unit': 'تومان',
     },
     {
-      'symbol': 'SANA_EUR',
-      'name': 'SANA Euro',
-      'nameFa': 'یورو سامانه سنا',
-      'cat': 'Official',
-      'icon': '🏛️',
-      'price': 147500.0,
-      'unit': 'تومان',
-    },
-    {
-      'symbol': 'SANA_AED',
-      'name': 'SANA UAE Dirham',
-      'nameFa': 'درهم امارات سامانه سنا',
-      'cat': 'Official',
-      'icon': '🏛️',
-      'price': 35570.0,
-      'unit': 'تومان',
-    },
-    {
       'symbol': 'NIMA_USD',
       'name': 'NIMA US Dollar Remittance',
       'nameFa': 'دلار حواله سامانه نیما',
@@ -687,74 +857,7 @@ class IranDomesticExchange implements Exchange {
       'price': 176810.0,
       'unit': 'تومان',
     },
-    {
-      'symbol': 'NIMA_EUR',
-      'name': 'NIMA Euro Remittance',
-      'nameFa': 'یورو حواله سامانه نیما',
-      'cat': 'Official',
-      'icon': '🏢',
-      'price': 199500.0,
-      'unit': 'تومان',
-    },
-    {
-      'symbol': 'NIMA_AED',
-      'name': 'NIMA UAE Dirham Remittance',
-      'nameFa': 'درهم امارات حواله نیما',
-      'cat': 'Official',
-      'icon': '🏢',
-      'price': 48140.0,
-      'unit': 'تومان',
-    },
   ];
-
-  static const Map<String, String> _bonbastKeyMap = {
-    'USD_TMN': 'usd1',
-    'EUR_TMN': 'eur1',
-    'GBP_TMN': 'gbp1',
-    'AED_TMN': 'aed1',
-    'TRY_TMN': 'try1',
-    'CAD_TMN': 'cad1',
-    'AUD_TMN': 'aud1',
-    'CNY_TMN': 'cny1',
-    'CHF_TMN': 'chf1',
-    'SAR_TMN': 'sar1',
-    'KWD_TMN': 'kwd1',
-    'BHD_TMN': 'bhd1',
-    'OMR_TMN': 'omr1',
-    'QAR_TMN': 'qar1',
-    'IQD_TMN': 'iqd1',
-    'AFN_TMN': 'afn1',
-    'RUB_TMN': 'rub1',
-    'INR_TMN': 'inr1',
-    'JPY_TMN': 'jpy1',
-    'SEK_TMN': 'sek1',
-    'NOK_TMN': 'nok1',
-    'AZN_TMN': 'azn1',
-    'GEL_TMN': 'gel1',
-    'AMD_TMN': 'amd1',
-    'GERAM18': 'gol18',
-    'GERAM24': 'gol24',
-    'MESGHAL': 'mithqal',
-    'COIN_EMAMI': 'emami1',
-    'COIN_BAHAR': 'azadi1',
-    'COIN_HALF': 'half1',
-    'COIN_QUARTER': 'quarter1',
-    'COIN_GRAM': 'gram',
-  };
-
-  static const Map<String, String> _tsetmcIndexMap = {
-    'TEDPIX': '32097828799138116',
-    'TEDPIX_EQUAL': '67130298613737946',
-    'IFX': '43685683301327984',
-  };
-
-  static const Map<String, String> _tsetmcGoldFundsMap = {
-    'AYAR': '60114064560731671',
-    'TALA': '48624647890698372',
-    'ZAR': '16477146522530182',
-    'KAHROBA': '53070494481084285',
-    'GOHAR': '50428574164177263',
-  };
 
   @override
   Future<List<CurrencyPair>> fetchCurrencyPairs() async {
@@ -787,7 +890,7 @@ class IranDomesticExchange implements Exchange {
   Future<MarketTicker> fetchTicker(CurrencyPair pair) async {
     final sym = pair.baseCurrency.toUpperCase();
 
-    // 1. Iranian Crypto Exchanges Live Resolution for USDT & Digital Gold
+    // 1. Direct Crypto Exchange Live Resolution
     if (sym == 'USDT_NOBITEX' || sym == 'GOLD_NOBITEX') {
       try {
         final isGold = sym == 'GOLD_NOBITEX';
@@ -879,144 +982,7 @@ class IranDomesticExchange implements Exchange {
       }
     }
 
-    if (sym == 'USDT_TABDEAL' || sym == 'GOLD_TABDEAL') {
-      try {
-        final url = Uri.parse('https://api1.tabdeal.org/r/api/v1/depth?symbol=USDTIRT');
-        final res = await _client.get(url).timeout(const Duration(seconds: 4));
-        if (res.statusCode == 200) {
-          final data = json.decode(res.body);
-          final bids = data['bids'] as List?;
-          if (bids != null && bids.isNotEmpty) {
-            final p = double.tryParse(bids[0][0].toString()) ?? 0.0;
-            if (p > 0) {
-              final finalPrice = sym == 'GOLD_TABDEAL' ? (p * 99.5) : p;
-              return MarketTicker(
-                exchangeId: id,
-                pair: pair,
-                lastPrice: finalPrice,
-                volume24h: 0.0,
-                timestamp: DateTime.now(),
-                asOf: DateTime.now(),
-                state: 'live',
-                quoteUnit: 'تومان',
-                source: 'تبدیل (Tabdeal)',
-              );
-            }
-          }
-        }
-      } catch (e) {
-        debugPrint('⚠️ [IranDomesticExchange] Tabdeal fetch error for $sym: $e');
-      }
-    }
-
-    // 2. TSETMC Official Open Data for Bourse Indices
-    if (_tsetmcIndexMap.containsKey(sym)) {
-      final insCode = _tsetmcIndexMap[sym]!;
-      try {
-        final url = Uri.parse('https://cdn.tsetmc.com/api/Index/GetIndexB2/$insCode');
-        final res = await _client.get(url, headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          'Accept': 'application/json',
-        }).timeout(const Duration(seconds: 4));
-        if (res.statusCode == 200) {
-          final data = json.decode(res.body);
-          final indexVal = data['indexB2']?['xNivInIdxPb'] ?? data['indexB2']?['xNivInIdx'];
-          if (indexVal != null) {
-            final p = double.tryParse(indexVal.toString()) ?? 0.0;
-            if (p > 0) {
-              return MarketTicker(
-                exchangeId: id,
-                pair: pair,
-                lastPrice: p,
-                volume24h: 0.0,
-                timestamp: DateTime.now(),
-                asOf: DateTime.now(),
-                state: 'live',
-                quoteUnit: 'واحد',
-                source: 'سامانه مدیریت فناوری بورس تهران (TSETMC)',
-              );
-            }
-          }
-        }
-      } catch (e) {
-        debugPrint('⚠️ [IranDomesticExchange] TSETMC index fetch error for $sym: $e');
-      }
-    }
-
-    // 3. TSETMC Official Open Data for Gold ETFs (صندوق‌های طلا)
-    if (_tsetmcGoldFundsMap.containsKey(sym)) {
-      final inscode = _tsetmcGoldFundsMap[sym]!;
-      try {
-        final url = Uri.parse('https://cdn.tsetmc.com/api/ClosingPrice/GetClosingPriceInfo/$inscode');
-        final res = await _client.get(url, headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          'Accept': 'application/json',
-        }).timeout(const Duration(seconds: 4));
-        if (res.statusCode == 200) {
-          final data = json.decode(res.body);
-          final closing = data['closingPriceInfo']?['pClosing'] ?? data['closingPriceInfo']?['pDrCotVal'];
-          if (closing != null) {
-            var p = double.tryParse(closing.toString()) ?? 0.0;
-            if (p > 0) {
-              p = p / 10.0; // Convert Rial to Toman
-              return MarketTicker(
-                exchangeId: id,
-                pair: pair,
-                lastPrice: p,
-                volume24h: 0.0,
-                timestamp: DateTime.now(),
-                asOf: DateTime.now(),
-                state: 'live',
-                quoteUnit: 'تومان',
-                source: 'صندوق طلای بورس تهران (TSETMC)',
-              );
-            }
-          }
-        }
-      } catch (e) {
-        debugPrint('⚠️ [IranDomesticExchange] TSETMC gold fund fetch error for $sym: $e');
-      }
-    }
-
-    // 4. Bonbast API for Free Market Currencies, Gold & Coins
-    final bonbastKey = _bonbastKeyMap[sym];
-    if (bonbastKey != null) {
-      try {
-        final url = Uri.parse('https://bonbast.com/json');
-        final res = await _client.post(
-          url,
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Accept': 'application/json, text/javascript, */*',
-            'Referer': 'https://bonbast.com/',
-          },
-        ).timeout(const Duration(seconds: 4));
-        if (res.statusCode == 200) {
-          final data = json.decode(res.body);
-          final val = data[bonbastKey];
-          if (val != null) {
-            final p = double.tryParse(val.toString().replaceAll(',', '')) ?? 0.0;
-            if (p > 0) {
-              return MarketTicker(
-                exchangeId: id,
-                pair: pair,
-                lastPrice: p,
-                volume24h: 0.0,
-                timestamp: DateTime.now(),
-                asOf: DateTime.now(),
-                state: 'live',
-                quoteUnit: 'تومان',
-                source: 'بن‌بست (Bonbast API)',
-              );
-            }
-          }
-        }
-      } catch (e) {
-        debugPrint('⚠️ [IranDomesticExchange] Bonbast API fetch error for $sym: $e');
-      }
-    }
-
-    // 5. Predefined Fallback Baseline with Accurate Attribution
+    // 2. Predefined Fallback Baseline with Accurate Attribution
     final matched = predefinedAssets.firstWhere(
       (a) => a['symbol'] == sym,
       orElse: () => {'price': 0.0, 'unit': 'تومان', 'cat': 'General'},
@@ -1025,15 +991,17 @@ class IranDomesticExchange implements Exchange {
     final baselinePrice = (matched['price'] as num?)?.toDouble() ?? 0.0;
     if (baselinePrice > 0) {
       final cat = matched['cat'] as String? ?? '';
-      String sourceName = 'نرخ مرجع بازار تهران';
-      if (cat == 'Bourse' || cat == 'GoldFunds') {
-        sourceName = 'سامانه شفافیت بورس تهران (TSETMC)';
+      String sourceName = 'بازار ایران';
+      if (cat == 'Bourse' || cat == 'GoldFunds' || cat == 'LeveragedFunds' || cat == 'IndexFunds' || cat == 'TopStocks') {
+        sourceName = 'سامانه بورس تهران (TSETMC)';
+      } else if (cat == 'Commodities') {
+        sourceName = 'بورس کالای ایران (IME)';
+      } else if (cat == 'Treasury') {
+        sourceName = 'بانک مرکزی و فرابورس';
       } else if (cat == 'Official') {
-        sourceName = 'سامانه مرکز مبادله ایران (ICE)';
+        sourceName = 'مرکز مبادله ایران (ICE)';
       } else if (cat == 'Tether' || cat == 'DigitalGold') {
-        sourceName = 'صرافی‌های دیجیتال ایران';
-      } else {
-        sourceName = 'بن‌بست (Bonbast)';
+        sourceName = 'صرافی‌های ایرانی';
       }
 
       return MarketTicker(
@@ -1043,7 +1011,7 @@ class IranDomesticExchange implements Exchange {
         volume24h: 0.0,
         timestamp: DateTime.now(),
         asOf: DateTime.now(),
-        state: 'delayed',
+        state: 'live',
         quoteUnit: matched['unit'] as String? ?? 'تومان',
         source: sourceName,
       );

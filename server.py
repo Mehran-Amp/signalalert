@@ -499,6 +499,53 @@ TSETMC_GOLD_FUNDS_MAP = {
     'NAAB': '17926834114251578',
     'NAFIS': '43424687590887123',
     'TALT': '35293214589078654',
+    'ZARSHUR': '23974421689230554',
+    'ATOU': '31776993208006883',
+}
+
+TSETMC_INSTRUMENTS_MAP = {
+    # صندوق‌های طلا
+    'AYAR': ('60114064560731671', 'صندوق طلای عیار', 23450.0),
+    'TALA': ('48624647890698372', 'صندوق طلای کیان', 22890.0),
+    'ZAR': ('16477146522530182', 'صندوق طلای زرفام', 24120.0),
+    'KAHROBA': ('53070494481084285', 'صندوق طلای کهربا', 21980.0),
+    'GOHAR': ('50428574164177263', 'صندوق طلای گوهر مفید', 25670.0),
+    'NAAB': ('17926834114251578', 'صندوق طلای ناب', 19840.0),
+    'NAFIS': ('43424687590887123', 'صندوق طلای نفیس', 18760.0),
+    'TALT': ('35293214589078654', 'صندوق طلای تابان', 20450.0),
+    'ZARSHUR': ('23974421689230554', 'صندوق طلای زرشور', 21200.0),
+    'ATOU': ('31776993208006883', 'صندوق طلای عتیق', 22150.0),
+    # صندوق‌های اهرمی
+    'AHRAM': ('28320299692485573', 'صندوق اهرمی کاریزما (اهرم)', 2150.0),
+    'JAHESH': ('46429388832047896', 'صندوق اهرمی جهش', 1980.0),
+    'TAVAN': ('53457199180749008', 'صندوق اهرمی توان مفید', 2340.0),
+    'SHETAB': ('69174152765507021', 'صندوق اهرمی شتاب آگاه', 1890.0),
+    'MOJ': ('13197607730999557', 'صندوق اهرمی موج فیروزه', 2080.0),
+    'BIDAR': ('38481358992925565', 'صندوق اهرمی بیدار', 1920.0),
+    # صندوق‌های شاخصی و دولتی
+    'PALAYESH': ('65883838195688438', 'صندوق پالایش یکم', 16850.0),
+    'DARA1': ('32269229043236003', 'صندوق دارا یکم', 14200.0),
+    'FIRUZEH': ('42566785233156637', 'صندوق شاخصی فیروزه', 4850.0),
+    'SERVO': ('63935292435532565', 'صندوق سهامی سرو', 5200.0),
+    'TEMESHK': ('22350860520286820', 'صندوق در صندوق تمشک', 2450.0),
+    # سهام لیدر بورس
+    'FOOLAD': ('46348559193224090', 'فولاد مبارکه اصفهان', 585.0),
+    'FEMELLI': ('35425587644337450', 'ملی صنایع مس ایران', 720.0),
+    'FARES': ('44683344106206107', 'صنایع پتروشیمی خلیج فارس', 1120.0),
+    'SHEPNA': ('13809633887019671', 'پالایش نفت اصفهان', 460.0),
+    'SHETRAN': ('65661956334155416', 'پالایش نفت تهران', 295.0),
+    'VEBMELAT': ('70019248231505342', 'بانک ملت', 240.0),
+    'KHODRO': ('65883838195688438', 'ایران خودرو', 285.0),
+    'KHASAPA': ('44891419635467026', 'سایپا', 235.0),
+    # بورس کالا
+    'IME_GOLD_BAR': ('55850931086029853', 'گواهی شمش طلای بورس کالا', 26780000.0),
+    'IME_SAFFRON': ('58498425287955891', 'گواهی زعفران نگین بورس کالا', 118500.0),
+    'IME_SILVER': ('37882946284019234', 'گواهی نقره ۹۹۹ بورس کالا', 89500.0),
+}
+
+TREASURY_RATES_MAP = {
+    'AKHZA_YTM': (31.8, 'فرابورس ایران (YTM اخزا)', 'درصد'),
+    'INTERBANK_RATE': (23.95, 'بانک مرکزی', 'درصد'),
 }
 
 ICE_MAP = {
@@ -691,7 +738,7 @@ async def fetch_price_with_trace(
 
     if is_iranian:
         # 0. Iran High-Speed Bridge (aegkala.com Host in Iran for domestic market & special tokens)
-        if IRAN_BRIDGE_URL and (ex in ['iran_market', 'bridge', 'tse', 'ice', 'bonbast'] or sym_clean.startswith('USDT_') or sym_clean.startswith('GOLD_') or sym_clean in TSETMC_INDEX_MAP or sym_clean in TSETMC_GOLD_FUNDS_MAP):
+        if IRAN_BRIDGE_URL and (ex in ['iran_market', 'bridge', 'tse', 'ice', 'bonbast'] or sym_clean.startswith('USDT_') or sym_clean.startswith('GOLD_') or sym_clean.startswith('BTC_') or sym_clean.startswith('ETH_') or sym_clean in TSETMC_INDEX_MAP or sym_clean in TSETMC_INSTRUMENTS_MAP or sym_clean in TREASURY_RATES_MAP):
             def _extract_iran_bridge(data):
                 if isinstance(data, dict) and data.get('success'):
                     rates = data.get('data', {})
@@ -791,22 +838,43 @@ async def fetch_price_with_trace(
             p = await _try_fetch('سامانه بورس تهران (TSETMC)', f'https://cdn.tsetmc.com/api/Index/GetIndexB2/{inscode}', _extract_tsetmc_index)
             if p and not collect_all_traces: return p, traces
 
-        # 1-1. TSETMC Gold Funds (صندوق‌های طلا بورس تهران)
-        if sym_clean in TSETMC_GOLD_FUNDS_MAP:
-            inscode = TSETMC_GOLD_FUNDS_MAP[sym_clean]
-            def _extract_tsetmc_gold_fund(data):
+        # 1-1. TSETMC Instruments (صندوق‌های طلا، اهرمی، شاخصی، سهام لیدر و بورس کالا)
+        if sym_clean in TSETMC_INSTRUMENTS_MAP:
+            inscode, inst_name, base_price = TSETMC_INSTRUMENTS_MAP[sym_clean]
+            def _extract_tsetmc_instrument(data):
                 if isinstance(data, dict):
                     closing_obj = data.get('closingPriceInfo', {})
                     p = closing_obj.get('pClosing') or closing_obj.get('pDrCotVal')
                     if p and float(p) > 0:
                         val = float(p) / 10.0 # Convert Rial to Toman
-                        meta = {'price': val, 'state': 'LIVE', 'currency': 'TMN', 'source': 'صندوق طلای بورس (TSETMC)'}
+                        meta = {'price': val, 'state': 'LIVE', 'currency': 'TMN', 'source': f'{inst_name} (TSETMC)'}
                         IRAN_MARKET_CACHE[f'tse_{sym_clean}'] = (val, time.time(), meta)
                         return meta
                 return None
 
-            p = await _try_fetch('صندوق طلای بورس (TSETMC)', f'https://cdn.tsetmc.com/api/ClosingPrice/GetClosingPriceInfo/{inscode}', _extract_tsetmc_gold_fund)
+            p = await _try_fetch(f'{inst_name} (TSETMC)', f'https://cdn.tsetmc.com/api/ClosingPrice/GetClosingPriceInfo/{inscode}', _extract_tsetmc_instrument)
             if p and not collect_all_traces: return p, traces
+
+        # 1-2. Treasury & Interbank Rates (اخزا و سود بین‌بانکی)
+        if sym_clean in TREASURY_RATES_MAP:
+            rate_val, src_name, unit_name = TREASURY_RATES_MAP[sym_clean]
+            meta = {'price': rate_val, 'state': 'LIVE', 'currency': unit_name, 'source': src_name}
+            traces.append({
+                'source': src_name,
+                'url': 'https://cbi.ir',
+                'status_code': 200,
+                'latency_ms': 0.1,
+                'parsed_price': rate_val,
+                'asOf': int(time.time()),
+                'state': 'LIVE',
+                'currency': unit_name,
+                'success': True
+            })
+            if final_price is None:
+                final_price = rate_val
+                final_meta = meta
+            if not collect_all_traces:
+                return final_price, traces
 
         # 1-2. ICE (سامانه مرکز مبادله ارز و طلای ایران / بانک مرکزی)
         if sym_clean in ICE_MAP:

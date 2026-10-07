@@ -26,11 +26,16 @@ class TestIranMarketSeparation(unittest.TestCase):
         with open('lib/features/exchanges/stocks/iran_domestic_exchange.dart', 'r') as f:
             content = f.read()
 
-        # Key symbols check including Bonbast (Gold & FX), TSETMC (Indices & Gold Funds), ICE, Tether & Digital Gold
+        # Key symbols check including Bonbast (Gold & FX), TSETMC (Indices, Gold & Leveraged Funds, Top Stocks), ICE, IME, Treasury, Tether & Digital Gold
         symbols = [
             'GERAM18', 'GERAM24', 'MESGHAL', 'COIN_EMAMI', 'COIN_BAHAR',
             'USD_TMN', 'EUR_TMN', 'AED_TMN', 'SANA_USD', 'TEDPIX',
-            'AYAR', 'TALA', 'ZAR', 'KAHROBA', 'GOHAR',
+            'AYAR', 'TALA', 'ZAR', 'KAHROBA', 'GOHAR', 'NAAB', 'NAFIS', 'TALT',
+            'AHRAM', 'JAHESH', 'TAVAN', 'SHETAB', 'MOJ', 'BIDAR',
+            'PALAYESH', 'DARA1', 'FIRUZEH', 'SERVO', 'TEMESHK',
+            'FOOLAD', 'FEMELLI', 'FARES', 'SHEPNA', 'SHETRAN', 'VEBMELAT', 'KHODRO', 'KHASAPA',
+            'IME_GOLD_BAR', 'IME_SAFFRON', 'IME_SILVER',
+            'AKHZA_YTM', 'INTERBANK_RATE',
             'ICE_USD_CASH', 'ICE_USD_REMIT',
             'USDT_NOBITEX', 'USDT_WALLEX', 'USDT_TABDEAL', 'USDT_TETHERLAND',
             'GOLD_NOBITEX', 'GOLD_WALLEX', 'GOLD_TABDEAL'
@@ -47,6 +52,8 @@ class TestIranMarketSeparation(unittest.TestCase):
         self.assertIn('BONBAST_MAP', content)
         self.assertIn('TSETMC_INDEX_MAP', content)
         self.assertIn('TSETMC_GOLD_FUNDS_MAP', content)
+        self.assertIn('TSETMC_INSTRUMENTS_MAP', content)
+        self.assertIn('TREASURY_RATES_MAP', content)
         self.assertIn('ICE_MAP', content)
         self.assertIn('bonbast.com', content)
         self.assertIn('cdn.tsetmc.com', content)

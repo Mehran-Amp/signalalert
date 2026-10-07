@@ -11,6 +11,11 @@ class AppStrings {
   static final Map<String, Map<String, String>> _translations = {
     // 1. FARSI / PERSIAN (فارسی - RTL)
     'fa': {
+    'iran_cat_leveraged': '⚡ صندوق‌های اهرمی',
+    'iran_cat_index_funds': '📊 صندوق‌های شاخصی و ETF',
+    'iran_cat_top_stocks': '🏢 سهام و لیدرهای بورس',
+    'iran_cat_commodities': '🌾 شمش و زعفران بورس کالا',
+    'iran_cat_treasury': '📜 اوراق اخزا و سود بانکی',
     'iran_cat_gold_funds': '🏆 صندوق‌های طلا (TSETMC)',
     'iran_cat_official': '🏛️ مرکز مبادله و حواله (ICE)',
     'iran_cat_bourse': '📈 شاخص‌های بورس (TSETMC)',
@@ -222,6 +227,11 @@ class AppStrings {
 
     // 2. ENGLISH (English - LTR)
     'en': {
+    'iran_cat_leveraged': '⚡ Leveraged ETFs',
+    'iran_cat_index_funds': '📊 Index & State ETFs',
+    'iran_cat_top_stocks': '🏢 Top TSE Leaders',
+    'iran_cat_commodities': '🌾 Gold Bullion & Saffron (IME)',
+    'iran_cat_treasury': '📜 Treasury Yields & Bonds',
     'iran_cat_gold_funds': '🏆 Gold Funds (TSETMC)',
     'iran_cat_official': '🏛️ ICE Official & Remittance',
     'iran_cat_bourse': '📈 TSE Bourse Indices',
@@ -433,6 +443,11 @@ class AppStrings {
 
     // 3. KURDISH SORANI (کوردی سۆرانی - RTL)
     'ckb': {
+    'iran_cat_leveraged': '⚡ سندووقە بەهێزکراوەکان',
+    'iran_cat_index_funds': '📊 سندووقی دەوڵەتی و شاخص',
+    'iran_cat_top_stocks': '🏢 پشکە گەورەکانی بۆرسە',
+    'iran_cat_commodities': '🌾 زێڕ و زەعفەرانی بۆرسە',
+    'iran_cat_treasury': '📜 سوودی بانکی و ئەوراق',
     'iran_cat_gold_funds': '🏆 سندووقەکانی زێڕ (TSETMC)',
     'iran_cat_official': '🏛️ حەواڵە و فەرمی (ICE)',
     'iran_cat_bourse': '📈 بۆرسەی تاران',
@@ -644,6 +659,11 @@ class AppStrings {
 
     // 4. ARABIC (العربية - RTL)
     'ar': {
+    'iran_cat_leveraged': '⚡ الصناديق ذات الرافعة المالية',
+    'iran_cat_index_funds': '📊 صناديق المؤشرات والحكومية',
+    'iran_cat_top_stocks': '🏢 كبرى أسهم بورصة طهران',
+    'iran_cat_commodities': '🌾 سبائك الذهب والزعفران (IME)',
+    'iran_cat_treasury': '📜 عوائد سندات الخزانة',
     'iran_cat_gold_funds': '🏆 صناديق الذهب (TSETMC)',
     'iran_cat_official': '🏛️ أسعار الصرف الرسمية (ICE)',
     'iran_cat_bourse': '📈 مؤشرات بورصة طهران',
@@ -855,6 +875,11 @@ class AppStrings {
 
     // 5. TURKISH (Türkçe - LTR)
     'tr': {
+    'iran_cat_leveraged': '⚡ Kaldıraçlı Fonlar',
+    'iran_cat_index_funds': '📊 Endeks ve Devlet Fonları',
+    'iran_cat_top_stocks': '🏢 Lider Borsa Hisseleri',
+    'iran_cat_commodities': '🌾 Altın Külçe & Safran',
+    'iran_cat_treasury': '📜 Hazine Tahvil Faizleri',
     'iran_cat_gold_funds': '🏆 Altın Fonları (TSETMC)',
     'iran_cat_official': '🏛️ Resmi Döviz & Havale (ICE)',
     'iran_cat_bourse': '📈 Tahran Borsa Endeksleri',
@@ -1066,6 +1091,11 @@ class AppStrings {
 
     // 6. GERMAN (Deutsch - LTR)
     'de': {
+    'iran_cat_leveraged': '⚡ Gehebelte ETFs',
+    'iran_cat_index_funds': '📊 Index- & Staats-ETFs',
+    'iran_cat_top_stocks': '🏢 Führende TSE-Aktien',
+    'iran_cat_commodities': '🌾 Goldbarren & Safran (IME)',
+    'iran_cat_treasury': '📜 Staatsanleihen & Renditen',
     'iran_cat_gold_funds': '🏆 Gold-ETFs (TSETMC)',
     'iran_cat_official': '🏛️ ICE Offiziell & Überweisung',
     'iran_cat_bourse': '📈 Teheran Börsenindizes',
@@ -1277,6 +1307,11 @@ class AppStrings {
 
     // 7. SPANISH (Español - LTR)
     'es': {
+    'iran_cat_leveraged': '⚡ ETFs Apalancados',
+    'iran_cat_index_funds': '📊 ETFs de Índice y Estatales',
+    'iran_cat_top_stocks': '🏢 Acciones Líderes de TSE',
+    'iran_cat_commodities': '🌾 Lingotes de Oro y Azafrán',
+    'iran_cat_treasury': '📜 Rendimientos del Tesoro',
     'iran_cat_gold_funds': '🏆 Fondos de Oro (TSETMC)',
     'iran_cat_official': '🏛️ Oficial y Remesas ICE',
     'iran_cat_bourse': '📈 Índices de la Bolsa de Teherán',
@@ -1488,6 +1523,11 @@ class AppStrings {
 
     // 8. FRENCH (Français - LTR)
     'fr': {
+    'iran_cat_leveraged': '⚡ ETFs à effet de levier',
+    'iran_cat_index_funds': '📊 ETFs indiciels et publics',
+    'iran_cat_top_stocks': '🏢 Grandes actions de Téhéran',
+    'iran_cat_commodities': '🌾 Lingots d'or et safran',
+    'iran_cat_treasury': '📜 Bons du Trésor et taux',
     'iran_cat_gold_funds': '🏆 Fonds d\'or (TSETMC)',
     'iran_cat_official': '🏛️ Taux officiels ICE',
     'iran_cat_bourse': '📈 Indices boursiers de Téhéran',
@@ -1699,6 +1739,11 @@ class AppStrings {
 
     // 9. RUSSIAN (Русский - LTR)
     'ru': {
+    'iran_cat_leveraged': '⚡ Фонды с плечом',
+    'iran_cat_index_funds': '📊 Индексные и гос. фонды',
+    'iran_cat_top_stocks': '🏢 Голубые фишки биржи',
+    'iran_cat_commodities': '🌾 Золотые слитки и шафран',
+    'iran_cat_treasury': '📜 Доходность казначейских облигаций',
     'iran_cat_gold_funds': '🏆 Золотые фонды (TSETMC)',
     'iran_cat_official': '🏛️ Официальный курс ICE',
     'iran_cat_bourse': '📈 Индексы Тегеранской биржи',
@@ -1910,6 +1955,11 @@ class AppStrings {
 
     // 10. CHINESE (中文 - LTR)
     'zh': {
+    'iran_cat_leveraged': '⚡ 杠杆基金',
+    'iran_cat_index_funds': '📊 指数与国有基金',
+    'iran_cat_top_stocks': '🏢 德黑兰龙头股票',
+    'iran_cat_commodities': '🌾 黄金金条与藏红花',
+    'iran_cat_treasury': '📜 国债收益率与利率',
     'iran_cat_gold_funds': '🏆 黄金基金 (TSETMC)',
     'iran_cat_official': '🏛️ ICE 官方与汇款汇率',
     'iran_cat_bourse': '📈 德黑兰证券指数',
