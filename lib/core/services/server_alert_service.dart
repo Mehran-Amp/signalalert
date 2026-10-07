@@ -476,6 +476,57 @@ class ServerAlertService {
     return null;
   }
 
+  /// Fetch full price details including market status, market_open, carried_over, etc.
+  static Future<Map<String, dynamic>?> fetchPriceDetailsViaServer(String exchange, String symbol) async {
+    if (!isServerAvailable) return null;
+    try {
+      final sanitizedSym = symbol.replaceAll('/', '').replaceAll(' ', '');
+      final url = Uri.parse('$_baseUrl/api/price/${exchange.toLowerCase()}/$sanitizedSym');
+      final response = await http.get(url, headers: _buildHeaders()).timeout(const Duration(seconds: 6));
+
+      if (response.statusCode == 200) {
+        _circuitBreakerUntil = null;
+        final data = jsonDecode(response.body);
+        if (data is Map<String, dynamic>) {
+          return data;
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// Fetch overall markets status (TSE schedule, open/closed, next_open, exchange_state_fa)
+  static Future<Map<String, dynamic>?> fetchMarketsStatus() async {
+    if (!isServerAvailable) return null;
+    try {
+      final url = Uri.parse('$_baseUrl/api/markets/status');
+      final response = await http.get(url, headers: _buildHeaders()).timeout(const Duration(seconds: 6));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data is Map<String, dynamic>) {
+          return data['markets'] as Map<String, dynamic>? ?? data;
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// Fetch complete market overview including TSE schedule and all items with states/prices
+  static Future<Map<String, dynamic>?> fetchMarketsOverview() async {
+    if (!isServerAvailable) return null;
+    try {
+      final url = Uri.parse('$_baseUrl/api/markets/status');
+      final response = await http.get(url, headers: _buildHeaders()).timeout(const Duration(seconds: 8));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data is Map<String, dynamic>) {
+          return data;
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
   /// Run deep server-side diagnostics on a specific exchange & market symbol
   static Future<Map<String, dynamic>?> inspectMarketSource(String exchange, String symbol) async {
     try {

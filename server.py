@@ -478,10 +478,13 @@ BONBAST_MAP = {
     'BAHAR': 'azadi1',
     'COIN_HALF': 'half1',
     'HALF_COIN': 'half1',
+    'COIN_NIM': 'half1',
     'COIN_QUARTER': 'quarter1',
     'QUARTER_COIN': 'quarter1',
+    'COIN_ROB': 'quarter1',
     'COIN_GRAM': 'gram',
     'GRAM_COIN': 'gram',
+    'COIN_GERAMI': 'gram',
 }
 
 TSETMC_INDEX_MAP = {
@@ -505,26 +508,6 @@ TSETMC_INSTRUMENTS_MAP = {
     'ZAR': ('33254899395816171', 'صندوق طلای زرفام', 24120.0),
     'KAHROBA': ('25559236668122210', 'صندوق طلای کهربا', 21980.0),
     'GOHAR': ('12390706505809150', 'صندوق طلای گوهر مفید', 25670.0),
-}
-
-TREASURY_RATES_MAP = {
-    'AKHZA_YTM': (31.8, 'فرابورس ایران (YTM اخزا)', 'درصد'),
-    'INTERBANK_RATE': (23.95, 'بانک مرکزی', 'درصد'),
-}
-
-ICE_MAP = {
-    'ICE_USD_CASH': 130650.0,
-    'ICE_USD_REMIT': 176810.0,
-    'ICE_EUR_CASH': 147500.0,
-    'ICE_EUR_REMIT': 199500.0,
-    'ICE_AED_CASH': 35570.0,
-    'ICE_AED_REMIT': 48140.0,
-    'SANA_USD': 130650.0,
-    'SANA_EUR': 147500.0,
-    'SANA_AED': 35570.0,
-    'NIMA_USD': 176810.0,
-    'NIMA_EUR': 199500.0,
-    'NIMA_AED': 48140.0,
 }
 
 CACHE_TTL_IRAN = 60.0 # Strict 60-second cache as requested for Iran markets
@@ -658,12 +641,13 @@ async def fetch_price_with_trace(
                 raw_extracted = extractor_func(data)
                 if raw_extracted is not None:
                     if isinstance(raw_extracted, dict):
-                        val = float(raw_extracted.get('price', 0))
+                        raw_p = raw_extracted.get('price')
+                        val = float(raw_p) if (raw_p is not None and str(raw_p).strip() != '') else None
                         item_meta = {k: v for k, v in raw_extracted.items() if k != 'price'}
                     else:
-                        val = float(raw_extracted)
+                        val = float(raw_extracted) if raw_extracted is not None else None
                         item_meta = {}
-                    if val > 0:
+                    if val is not None and val > 0:
                         item_meta['source'] = source_name
                         traces.append({
                             'source': source_name,
@@ -680,6 +664,22 @@ async def fetch_price_with_trace(
                             final_price = val
                             final_meta = item_meta
                         return val
+                    elif isinstance(raw_extracted, dict) and raw_extracted.get('state') in ['no_data', 'no_trade_today', 'closed']:
+                        item_meta['source'] = source_name
+                        traces.append({
+                            'source': source_name,
+                            'url': url,
+                            'status_code': 200,
+                            'latency_ms': latency,
+                            'parsed_price': None,
+                            'asOf': item_meta.get('asOf', int(now)),
+                            'state': item_meta.get('state', 'no_data'),
+                            'currency': item_meta.get('currency', 'TMN'),
+                            'success': True
+                        })
+                        if final_meta is None or not final_meta:
+                            final_meta = item_meta
+                        return None
                     else:
                         traces.append({'source': source_name, 'url': url, 'status_code': 200, 'latency_ms': latency, 'error': 'Symbol not found or 0 price', 'success': False})
                 else:
@@ -702,27 +702,99 @@ async def fetch_price_with_trace(
 
     if is_iranian:
         # 0. Iran High-Speed Bridge (aegkala.com Host in Iran for domestic market & special tokens)
-        if IRAN_BRIDGE_URL and (ex in ['iran_market', 'bridge', 'tse', 'ice', 'bonbast'] or sym_clean.startswith('USDT_') or sym_clean.startswith('GOLD_') or sym_clean.startswith('BTC_') or sym_clean.startswith('ETH_') or sym_clean in TSETMC_INDEX_MAP or sym_clean in TSETMC_INSTRUMENTS_MAP):
+        if IRAN_BRIDGE_URL and (ex in ['iran_market', 'bridge', 'tse', 'bonbast'] or sym_clean.startswith('USDT_') or sym_clean.startswith('GOLD_') or sym_clean.startswith('BTC_') or sym_clean.startswith('ETH_') or sym_clean in TSETMC_INDEX_MAP or sym_clean in TSETMC_INSTRUMENTS_MAP):
             def _extract_iran_bridge(data):
                 if isinstance(data, dict):
                     if data.get('failed_sources'):
                         logger.warning(f"Bridge aegkala reported failed sources: {data.get('failed_sources')}")
                     if data.get('tse_missing'):
-                        logger.info(f"Bridge aegkala TSE missing symbols: {data.get('tse_missing')}")
+                        ignored_missing = {'PALAYESH', 'SHEPNA', 'SHETRAN', 'SHABANDAR', 'SHABRIZ'}
+                        actual_missing = [s for s in data.get('tse_missing', []) if s not in ignored_missing]
+                        if actual_missing:
+                            logger.info(f"Bridge aegkala TSE missing symbols: {actual_missing}")
                     if data.get('success'):
-                        is_stale = data.get('stale', False)
+                        if 'markets' in data:
+                            IRAN_MARKET_CACHE['__markets_status__'] = (0.0, time.time(), data.get('markets'))
+                        is_stale = bool(data.get('stale', False))
                         rates = data.get('data', {})
                         item = rates.get(sym_clean) or rates.get(f"{sym_clean}_TMN") or rates.get(sym_clean.replace('_TMN', ''))
                         if item and isinstance(item, dict):
-                            p = float(item.get('price', 0))
-                            is_carried = item.get('carried_over', False)
-                            if p > 0:
+                            p = float(item.get('price', 0)) if item.get('price') is not None else 0.0
+                            is_carried = bool(item.get('carried_over', False))
+                            market = item.get('market', '')
+                            is_tse = (market == 'tse') or (sym_clean in TSETMC_INDEX_MAP) or (sym_clean in TSETMC_INSTRUMENTS_MAP) or (item.get('category') in ['gold_fund', 'leveraged_fund', 'equity_fund', 'stock', 'index', 'fixed_income_fund'])
+                            market_open = bool(item.get('market_open', True))
+                            traded_today = item.get('traded_today')
+                            daily_close = bool(item.get('daily_close', False))
+                            is_index = (item.get('category') == 'index') or (sym_clean in TSETMC_INDEX_MAP) or (sym_clean in ['TEDPIX', 'TEDPIX_EQUAL', 'IFX'])
+
+                            # Rule 5: Alert ONLY if:
+                            # 1. Top-level stale is False (not stale)
+                            # 2. carried_over does not exist (is False)
+                            # 3. For TSE symbols: market_open is True AND (if index: daily_close is False; else: traded_today is True)
+                            if is_stale or is_carried:
+                                alert_eligible = False
+                            elif is_tse:
+                                if not market_open:
+                                    alert_eligible = False
+                                elif is_index:
+                                    alert_eligible = not daily_close
+                                else:
+                                    alert_eligible = bool(traded_today)
+                            else:
+                                alert_eligible = item.get('alert_eligible', not is_stale)
+
+                            # Determine descriptive state
+                            if is_carried:
+                                state_str = 'CARRIED_OVER'
+                            elif is_stale:
+                                state_str = 'STALE'
+                            elif is_tse and not market_open:
+                                state_str = 'CLOSED'
+                            elif is_tse and not is_index and not traded_today:
+                                state_str = 'NO_TRADE_TODAY'
+                            else:
+                                state_str = 'LIVE'
+
+                            if p is not None and p > 0:
                                 return {
                                     'price': p,
-                                    'state': 'CARRIED_OVER' if is_carried else ('STALE' if is_stale else 'LIVE'),
+                                    'state': item.get('state', state_str),
                                     'currency': item.get('unit', 'TMN'),
                                     'carried_over': is_carried,
-                                    'market_open': item.get('market_open', True),
+                                    'is_stale': is_stale,
+                                    'alert_eligible': alert_eligible,
+                                    'market_open': market_open,
+                                    'traded_today': traded_today,
+                                    'daily_close': daily_close,
+                                    'category': item.get('category'),
+                                    'ticker': item.get('ticker'),
+                                    'name': item.get('name'),
+                                    'state_fa': item.get('state_fa'),
+                                    'change_pct': item.get('change_pct'),
+                                    'prev_close': item.get('prev_close'),
+                                    'high': item.get('high'),
+                                    'low': item.get('low'),
+                                    'volume': item.get('volume'),
+                                    'asOf': item.get('as_of', int(time.time())),
+                                    'source': f"پل اختصاصی ایران ({item.get('source', 'aegkala.com')})"
+                                }
+                            else:
+                                # Supported symbol with price: null (e.g. SHEPNA / no_data)
+                                return {
+                                    'price': None,
+                                    'state': item.get('state', 'no_data'),
+                                    'state_fa': item.get('state_fa', 'فعلاً داده‌ای نیست'),
+                                    'currency': item.get('unit', 'TMN'),
+                                    'carried_over': False,
+                                    'is_stale': is_stale,
+                                    'alert_eligible': False,
+                                    'market_open': market_open,
+                                    'traded_today': traded_today,
+                                    'daily_close': daily_close,
+                                    'category': item.get('category'),
+                                    'ticker': item.get('ticker'),
+                                    'name': item.get('name'),
                                     'asOf': item.get('as_of', int(time.time())),
                                     'source': f"پل اختصاصی ایران ({item.get('source', 'aegkala.com')})"
                                 }
@@ -829,48 +901,6 @@ async def fetch_price_with_trace(
             p = await _try_fetch(f'{inst_name} (TSETMC)', f'https://cdn.tsetmc.com/api/ClosingPrice/GetClosingPriceInfo/{inscode}', _extract_tsetmc_instrument)
             if p and not collect_all_traces: return p, traces
 
-        # 1-2. Treasury & Interbank Rates (اخزا و سود بین‌بانکی)
-        if sym_clean in TREASURY_RATES_MAP:
-            rate_val, src_name, unit_name = TREASURY_RATES_MAP[sym_clean]
-            meta = {'price': rate_val, 'state': 'LIVE', 'currency': unit_name, 'source': src_name}
-            traces.append({
-                'source': src_name,
-                'url': 'https://cbi.ir',
-                'status_code': 200,
-                'latency_ms': 0.1,
-                'parsed_price': rate_val,
-                'asOf': int(time.time()),
-                'state': 'LIVE',
-                'currency': unit_name,
-                'success': True
-            })
-            if final_price is None:
-                final_price = rate_val
-                final_meta = meta
-            if not collect_all_traces:
-                return final_price, traces
-
-        # 1-2. ICE (سامانه مرکز مبادله ارز و طلای ایران / بانک مرکزی)
-        if sym_clean in ICE_MAP:
-            val = ICE_MAP[sym_clean]
-            meta = {'price': val, 'state': 'LIVE', 'currency': 'TMN', 'source': 'مرکز مبادله ارز و طلا (ICE)'}
-            traces.append({
-                'source': 'مرکز مبادله ارز و طلا (ICE)',
-                'url': 'https://ice.ir',
-                'status_code': 200,
-                'latency_ms': 0.1,
-                'parsed_price': val,
-                'asOf': int(time.time()),
-                'state': 'LIVE',
-                'currency': 'TMN',
-                'success': True
-            })
-            if final_price is None:
-                final_price = val
-                final_meta = meta
-            if not collect_all_traces:
-                return final_price, traces
-
         # 1-3. Bonbast API for Free Market Currencies, Physical Gold & Coins (Direct from Server)
         bonbast_k = BONBAST_MAP.get(sym_clean) or (BONBAST_MAP.get(sym_clean[:-3]) if sym_clean.endswith('TMN') else None)
         if bonbast_k:
@@ -894,7 +924,7 @@ async def fetch_price_with_trace(
                 if not collect_all_traces:
                     return final_price, traces
 
-            # Dynamic extraction of live param from bonbast.com
+            # Dynamic extraction of live param from bonbast.com (direct from German server)
             async def _resolve_direct_bonbast():
                 bulk_cached = IRAN_MARKET_CACHE.get('__bonbast_bulk__')
                 if bulk_cached and (now_bb - bulk_cached[1]) < CACHE_TTL_IRAN:
@@ -913,14 +943,49 @@ async def fetch_price_with_trace(
                                 'X-Requested-With': 'XMLHttpRequest',
                                 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
                             }
-                            bb_json_res = await client.post('https://bonbast.com/json', data={'param': param_val}, headers=post_headers, timeout=6.0)
+                            bb_json_res = await client.post('https://bonbast.com/json', data={'param': param_val}, headers=post_headers, cookies=dict(bb_html_res.cookies), timeout=6.0)
                             if bb_json_res.status_code == 200:
                                 parsed = bb_json_res.json()
-                                if isinstance(parsed, dict):
+                                if isinstance(parsed, dict) and ('usd1' in parsed or 'mithqal' in parsed or 'gol18' in parsed):
                                     IRAN_MARKET_CACHE['__bonbast_bulk__'] = (0.0, time.time(), parsed)
                                     return parsed
                 except Exception as e:
-                    logger.warning(f"Bonbast dynamic fetch error: {e}")
+                    logger.warning(f"Bonbast dynamic client fetch error: {e}")
+
+                # Resilient fallback with CookieJar session
+                try:
+                    import urllib.request, urllib.parse, http.cookiejar
+                    loop = asyncio.get_event_loop()
+                    def _sync_bb():
+                        cj = http.cookiejar.CookieJar()
+                        opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
+                        req1 = urllib.request.Request('https://bonbast.com/', headers={
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                        })
+                        with opener.open(req1, timeout=5) as r1:
+                            html = r1.read().decode('utf-8', errors='ignore')
+                        m = re.search(r'param:\s*[\'"]([^\'"]+)[\'"]', html)
+                        if m:
+                            data_bytes = urllib.parse.urlencode({'param': m.group(1)}).encode('utf-8')
+                            req2 = urllib.request.Request('https://bonbast.com/json', data=data_bytes, headers={
+                                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+                                'Referer': 'https://bonbast.com/',
+                                'Origin': 'https://bonbast.com',
+                                'X-Requested-With': 'XMLHttpRequest',
+                                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                            })
+                            with opener.open(req2, timeout=5) as r2:
+                                parsed = json.loads(r2.read().decode('utf-8'))
+                                if isinstance(parsed, dict) and ('usd1' in parsed or 'mithqal' in parsed):
+                                    return parsed
+                        return None
+                    fb_parsed = await loop.run_in_executor(None, _sync_bb)
+                    if fb_parsed:
+                        IRAN_MARKET_CACHE['__bonbast_bulk__'] = (0.0, time.time(), fb_parsed)
+                        return fb_parsed
+                except Exception as e:
+                    logger.warning(f"Bonbast session fallback error: {e}")
                 return None
 
             bb_map = await _resolve_direct_bonbast()
@@ -1253,6 +1318,17 @@ async def get_cached_price(client: httpx.AsyncClient, exchange: str, symbol: str
                 break
         PRICE_CACHE[cache_key] = (price, now, meta)
         return price
+    for tr in traces:
+        if tr.get('success') and tr.get('state') in ['no_data', 'no_trade_today', 'closed']:
+            meta = {
+                'source': tr.get('source'),
+                'asOf': tr.get('asOf'),
+                'state': tr.get('state'),
+                'currency': tr.get('currency', 'TMN'),
+                'alert_eligible': False,
+            }
+            PRICE_CACHE[cache_key] = (None, now, meta)
+            break
     return None
 
 # -------------------------------------------------------------------
@@ -1744,6 +1820,13 @@ async def check_alerts_job():
 
         cached_entry = PRICE_CACHE.get(key)
         cached_meta = cached_entry[2] if (cached_entry and len(cached_entry) > 2 and isinstance(cached_entry[2], dict)) else {}
+
+        # 0. Rule 5 Alert Guard: Never trigger alerts on stale, carried-over, closed, or untraded market data
+        if (cached_meta.get('alert_eligible') is False or 
+            cached_meta.get('carried_over') is True or 
+            cached_meta.get('is_stale') is True or 
+            cached_meta.get('state') in ['CARRIED_OVER', 'STALE', 'CLOSED', 'NO_TRADE_TODAY', 'closed', 'no_trade_today', 'no_data']):
+            return
 
         # 1. Closed-Market Policy (Option B):
         # Applied ONLY when asOf is provided by the market source (stocks/macro/forex).
@@ -2333,22 +2416,104 @@ async def get_live_price(exchange: str, symbol: str):
         raise HTTPException(status_code=503, detail="Server client initializing...")
     _validate_market_args(exchange, symbol)
     price = await get_cached_price(http_client, exchange, symbol)
-    if price is not None and price > 0:
-        cache_key = f"{exchange.lower()}:{normalize_symbol(symbol)}"
-        cached_entry = PRICE_CACHE.get(cache_key)
-        meta = cached_entry[2] if (cached_entry and len(cached_entry) > 2 and isinstance(cached_entry[2], dict)) else {}
-        return {
+    cache_key = f"{exchange.lower()}:{normalize_symbol(symbol)}"
+    cached_entry = PRICE_CACHE.get(cache_key)
+    meta = cached_entry[2] if (cached_entry and len(cached_entry) > 2 and isinstance(cached_entry[2], dict)) else {}
+
+    if (price is not None and price > 0) or meta.get('state') in ['no_data', 'no_trade_today', 'closed']:
+        res = {
             "status": "ok",
             "exchange": exchange,
             "symbol": symbol,
-            "price": price,
+            "price": price if (price is not None and price > 0) else None,
             "source": meta.get("source", "Market API"),
             "asOf": meta.get("asOf", int(time.time())),
             "state": meta.get("state", "LIVE"),
-            "currency": meta.get("currency", "USD"),
+            "currency": meta.get("currency", "TMN" if exchange in ['iran_market', 'tse'] else "USD"),
             "timestamp": time.time()
         }
+        for key in ['state_fa', 'market_open', 'carried_over', 'alert_eligible', 'category', 'ticker', 'name', 'change_pct', 'prev_close', 'high', 'low', 'volume']:
+            if key in meta:
+                res[key] = meta[key]
+        return res
     raise HTTPException(status_code=502, detail="Unable to fetch live price from market sources.")
+
+@app.get("/api/markets/status", dependencies=API_DEP)
+@app.get("/markets/status", dependencies=API_DEP)
+async def get_markets_status():
+    """Returns real-time status of markets (TSE open/closed schedule, next_open, crypto, etc.) along with symbol states"""
+    global http_client
+    cached_overview = IRAN_MARKET_CACHE.get('__markets_overview__')
+    if cached_overview and len(cached_overview) > 2 and isinstance(cached_overview[2], dict) and (time.time() - cached_overview[1]) < CACHE_TTL_IRAN:
+        ov = cached_overview[2]
+        return {
+            "status": "ok",
+            "cached": True,
+            "markets": ov.get("markets"),
+            "state_counts": ov.get("state_counts", {}),
+            "symbols_count": ov.get("symbols_count", 0),
+            "symbols_with_price": ov.get("symbols_with_price", 0),
+            "items": ov.get("items", {})
+        }
+
+    cached_markets = IRAN_MARKET_CACHE.get('__markets_status__')
+    if http_client and IRAN_BRIDGE_URL:
+        try:
+            headers = {'Authorization': f'Bearer {IRAN_BRIDGE_TOKEN}'}
+            resp = await http_client.get(IRAN_BRIDGE_URL, headers=headers, timeout=30.0)
+            if resp.status_code == 200:
+                data = resp.json()
+                if isinstance(data, dict):
+                    markets = data.get('markets') or {}
+                    items = data.get('data') or {}
+                    state_counts = data.get('state_counts') or {}
+                    symbols_count = data.get('symbols_count') or len(items)
+                    symbols_with_price = data.get('symbols_with_price') or len([v for v in items.values() if isinstance(v, dict) and v.get('price') is not None])
+
+                    IRAN_MARKET_CACHE['__markets_status__'] = (0.0, time.time(), markets)
+                    IRAN_MARKET_CACHE['__markets_overview__'] = (0.0, time.time(), {
+                        "markets": markets,
+                        "state_counts": state_counts,
+                        "symbols_count": symbols_count,
+                        "symbols_with_price": symbols_with_price,
+                        "items": items
+                    })
+
+                    # Warm up PRICE_CACHE for all symbols from bridge
+                    now = time.time()
+                    for sym_name, item_dict in items.items():
+                        if isinstance(item_dict, dict):
+                            p = float(item_dict.get('price')) if item_dict.get('price') is not None else None
+                            PRICE_CACHE[f"iran_market:{sym_name.lower()}"] = (p, now, item_dict)
+
+                    return {
+                        "status": "ok",
+                        "cached": False,
+                        "markets": markets,
+                        "state_counts": state_counts,
+                        "symbols_count": symbols_count,
+                        "symbols_with_price": symbols_with_price,
+                        "items": items,
+                        "tse_fresh_count": data.get('tse_fresh_count', 0),
+                        "tse_carried_count": data.get('tse_carried_count', 0)
+                    }
+        except Exception as e:
+            logger.warning(f"Error fetching market status from bridge: {e}")
+
+    # Fallback status if bridge not immediately reachable
+    fallback_markets = cached_markets[2] if (cached_markets and len(cached_markets) > 2 and isinstance(cached_markets[2], dict)) else {
+        "crypto": {"status": "open", "description": "بازار ۲۴ ساعته"},
+        "tse": {"status": "closed", "schedule_fa": "شنبه تا چهارشنبه ۰۹:۰۰ تا ۱۲:۳۰"}
+    }
+    return {
+        "status": "ok",
+        "cached": True,
+        "markets": fallback_markets,
+        "state_counts": {},
+        "symbols_count": 0,
+        "symbols_with_price": 0,
+        "items": {}
+    }
 
 @app.get("/api/debug/inspect/{exchange}/{symbol}", dependencies=ADMIN_DEP)
 @app.get("/debug/inspect/{exchange}/{symbol}", dependencies=ADMIN_DEP)

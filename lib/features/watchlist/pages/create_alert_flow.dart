@@ -87,6 +87,8 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
   String _iranSearchQuery = '';
   Map<String, dynamic>? _selectedIranDomesticAsset;
   final Map<String, double> _iranLivePrices = {};
+  Map<String, dynamic>? _iranMarketsStatus;
+  final Map<String, Map<String, dynamic>> _iranItemMeta = {};
   bool _isLoadingIranPairs = false;
   String _iranPairSearchQuery = '';
   List<CurrencyPair> _iranExchangePairs = [];
@@ -223,6 +225,8 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
       _soundEnabled = true;
       _vibrationEnabled = true;
     }
+
+    _loadIranMarketOverview();
   }
 
   @override
@@ -475,12 +479,18 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
 
     // 2. Fallback server fetch with 60-second cache
     try {
-      final serverPrice = await ServerAlertService.fetchPriceViaServer('iran_market', sym);
-      if (serverPrice != null && serverPrice > 0 && mounted) {
+      final details = await ServerAlertService.fetchPriceDetailsViaServer('iran_market', sym);
+      if (details != null && mounted) {
+        final serverPrice = (details['price'] as num?)?.toDouble();
         setState(() {
-          _iranLivePrices[sym] = serverPrice;
-          _currentPrice = serverPrice;
-          _targetPriceController.text = _formatSmartNumber(serverPrice);
+          _iranItemMeta[sym] = details;
+          if (serverPrice != null && serverPrice > 0) {
+            _iranLivePrices[sym] = serverPrice;
+            _currentPrice = serverPrice;
+            _targetPriceController.text = _formatSmartNumber(serverPrice);
+          } else {
+            _currentPrice = null;
+          }
           _preferServerProxy = true;
           _isLoadingPrice = false;
         });
@@ -490,6 +500,33 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
 
     if (mounted) {
       setState(() => _isLoadingPrice = false);
+    }
+  }
+
+  Future<void> _loadIranMarketOverview() async {
+    try {
+      final overview = await ServerAlertService.fetchMarketsOverview();
+      if (overview != null && mounted) {
+        setState(() {
+          if (overview['markets'] is Map<String, dynamic>) {
+            _iranMarketsStatus = overview['markets'] as Map<String, dynamic>;
+          }
+          final items = overview['items'] as Map<String, dynamic>?;
+          if (items != null) {
+            items.forEach((key, val) {
+              if (val is Map<String, dynamic>) {
+                _iranItemMeta[key] = val;
+                final p = (val['price'] as num?)?.toDouble();
+                if (p != null && p > 0) {
+                  _iranLivePrices[key] = p;
+                }
+              }
+            });
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('⚠️ Error fetching Iran market overview: $e');
     }
   }
 
@@ -740,8 +777,8 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(lang == 'fa'
-                ? 'دریافت قیمت زنده برای محاسبه هشدار درصدی الزامی است. بدون قیمت زنده، ذخیره مجاز نیست.'
-                : 'Live market price is required to calculate percentage change alert. Saving is not allowed without live price.'),
+                ? 'برای نمادهای فاقد قیمت یا بازار بسته، لطفاً نوع شرط را روی «رسیدن به قیمت هدف» بگذارید تا بتوانید قیمت دلخواه خود را مستقیماً وارد کنید.'
+                : 'For symbols without live price, please use "Target Price" condition to set your desired price directly.'),
             behavior: SnackBarBehavior.floating,
             duration: const Duration(seconds: 4),
           ),
@@ -1050,6 +1087,7 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
               _step = 1;
               _iranSubTab = 0;
             });
+            _loadIranMarketOverview();
           },
         ),
       ],
@@ -1674,10 +1712,80 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
               _buildIranChip(AppStrings.get('iran_cat_tether', lang), 'Tether', theme),
               _buildIranChip(AppStrings.get('iran_cat_digital_gold', lang), 'DigitalGold', theme),
               _buildIranChip(AppStrings.get('iran_cat_gold_funds', lang), 'GoldFunds', theme),
+              _buildIranChip(AppStrings.get('iran_cat_leveraged', lang), 'LeveragedFunds', theme),
+              _buildIranChip(AppStrings.get('iran_cat_top_stocks', lang), 'TopStocks', theme),
               _buildIranChip(AppStrings.get('iran_cat_bourse', lang), 'Bourse', theme),
-              _buildIranChip(AppStrings.get('iran_cat_official', lang), 'Official', theme),
             ],
           ),
+        ),
+
+        // Market Closed Notice Banner (Rule 6: Show TSE status, schedule_fa, next_open)
+        Builder(
+          builder: (context) {
+            final tseInfo = _iranMarketsStatus?['tse'] as Map<String, dynamic>?;
+            final isTseClosed = tseInfo != null ? (tseInfo['status'] == 'closed') : true;
+            final scheduleFa = tseInfo?['schedule_fa'] as String? ?? 'شنبه تا چهارشنبه، ۰۹:۰۰ تا ۱۲:۳۰ (وقت تهران)';
+            final nextOpenFa = tseInfo?['next_open_fa'] as String? ?? tseInfo?['next_open'] as String?;
+            final exchangeStateFa = tseInfo?['exchange_state_fa'] as String?;
+
+            if (!isTseClosed) return const SizedBox(height: 4);
+
+            return Container(
+              margin: const EdgeInsets.fromLTRB(16, 6, 16, 4),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE65100).withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFE65100).withValues(alpha: 0.25)),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.lock_clock, size: 12, color: Colors.redAccent),
+                        SizedBox(width: 4),
+                        Text(
+                          'بسته',
+                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.redAccent),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          scheduleFa,
+                          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurface.withValues(alpha: 0.9)),
+                        ),
+                        if (nextOpenFa != null || exchangeStateFa != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: Text(
+                              [
+                                if (nextOpenFa != null) 'بازگشایی: $nextOpenFa',
+                                if (exchangeStateFa != null) 'وضعیت: $exchangeStateFa',
+                              ].join(' · '),
+                              style: TextStyle(fontSize: 9.5, color: theme.colorScheme.onSurface.withValues(alpha: 0.6)),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
         ),
 
         Expanded(
@@ -1692,6 +1800,11 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
               final livePrice = _iranLivePrices[sym] ?? (asset['price'] as num?)?.toDouble();
               final displayName = asset['nameFa'] as String? ?? asset['name'] as String;
               final iconStr = asset['icon']?.toString() ?? '🪙';
+              final cat = asset['cat'] as String? ?? '';
+              final isTseAsset = cat == 'Bourse' || cat == 'GoldFunds' || cat == 'LeveragedFunds' || cat == 'IndexFunds' || cat == 'TopStocks';
+              final tseInfo = _iranMarketsStatus?['tse'] as Map<String, dynamic>?;
+              final isTseClosed = tseInfo != null ? (tseInfo['status'] == 'closed') : true;
+              final showClosedBadge = isTseAsset && isTseClosed;
 
               return InkWell(
                 onTap: () => _onIranDomesticAssetChosen(asset),
@@ -1723,14 +1836,42 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              displayName,
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: theme.colorScheme.onSurface),
+                            Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    displayName,
+                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: theme.colorScheme.onSurface),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                if (showClosedBadge) ...[
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                    decoration: BoxDecoration(
+                                      color: Colors.red.withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: const Text(
+                                      'بسته',
+                                      style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.redAccent),
+                                    ),
+                                  ),
+                                ],
+                              ],
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              '$sym · ${asset['cat'] ?? ''}',
-                              style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurface.withValues(alpha: 0.55)),
+                              _iranItemMeta[sym]?['state_fa'] != null
+                                  ? '$sym · ${_iranItemMeta[sym]!['state_fa']}'
+                                  : '$sym · ${asset['cat'] ?? ''}',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: (_iranItemMeta[sym]?['state'] == 'no_data' || _iranItemMeta[sym]?['state'] == 'no_trade_today')
+                                    ? Colors.orangeAccent.withValues(alpha: 0.9)
+                                    : theme.colorScheme.onSurface.withValues(alpha: 0.55),
+                              ),
                               overflow: TextOverflow.ellipsis,
                             ),
                           ],
@@ -1745,13 +1886,17 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
                               fontWeight: FontWeight.bold,
                               fontSize: 13,
                               fontFamily: 'monospace',
-                              color: const Color(0xFFFFB300),
+                              color: livePrice != null ? const Color(0xFFFFB300) : theme.colorScheme.onSurface.withValues(alpha: 0.4),
                             ),
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            AppStrings.get('select_cta', lang),
-                            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFFFFB300)),
+                            livePrice != null ? AppStrings.get('select_cta', lang) : (_iranItemMeta[sym]?['state_fa'] ?? 'فعلاً داده‌ای نیست'),
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: livePrice != null ? const Color(0xFFFFB300) : Colors.orangeAccent.withValues(alpha: 0.8),
+                            ),
                           ),
                         ],
                       ),
@@ -1968,17 +2113,126 @@ class _CreateAlertFlowState extends State<CreateAlertFlow> {
                       ],
                     )
                   else
-                    TextButton.icon(
-                      onPressed: _fetchLivePriceForSelectedAsset,
-                      icon: const Icon(Icons.refresh_rounded, size: 14),
-                      label: Text(AppStrings.get('retry_btn', lang), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                      style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        visualDensity: VisualDensity.compact,
-                      ),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: Colors.orange.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+                          ),
+                          child: Text(
+                            (_selectedIranDomesticAsset != null && _iranItemMeta[_selectedIranDomesticAsset!['symbol']]?['state_fa'] != null)
+                                ? _iranItemMeta[_selectedIranDomesticAsset!['symbol']]!['state_fa']
+                                : AppStrings.get('live_price_unavailable', lang),
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.orangeAccent),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        InkWell(
+                          onTap: _fetchLivePriceForSelectedAsset,
+                          borderRadius: BorderRadius.circular(16),
+                          child: Padding(
+                            padding: const EdgeInsets.all(4),
+                            child: Icon(Icons.refresh_rounded, size: 18, color: theme.colorScheme.primary),
+                          ),
+                        ),
+                      ],
                     ),
                 ],
               ),
+              if (_flowType == MarketFlowType.iran && _selectedIranDomesticAsset != null) ...[
+                Builder(
+                  builder: (context) {
+                    final symKey = _selectedIranDomesticAsset!['symbol'] as String? ?? '';
+                    final cat = _selectedIranDomesticAsset!['cat'] as String? ?? '';
+                    final meta = _iranItemMeta[symKey];
+                    final isTseAsset = cat == 'Bourse' || cat == 'GoldFunds' || cat == 'LeveragedFunds' || cat == 'IndexFunds' || cat == 'TopStocks';
+                    final tseInfo = _iranMarketsStatus?['tse'] as Map<String, dynamic>?;
+                    final isTseClosed = tseInfo != null ? (tseInfo['status'] == 'closed') : true;
+
+                    if (_currentPrice == null || meta?['state'] == 'no_data') {
+                      final stateFa = meta?['state_fa'] as String? ?? 'فعلاً داده‌ای نیست';
+                      return Container(
+                        margin: const EdgeInsets.only(top: 12),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.orange.withValues(alpha: 0.25)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.info_outline, size: 16, color: Colors.orangeAccent),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    stateFa,
+                                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.orangeAccent),
+                                  ),
+                                  Text(
+                                    'این نماد در سامانه پشتیبانی می‌شود. لطفاً قیمت هدف دلخواه خود را مستقیماً وارد نمایید تا پس از معامله در بازار بررسی گردد.',
+                                    style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurface.withValues(alpha: 0.8)),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+
+                    if (!isTseAsset || !isTseClosed) return const SizedBox.shrink();
+
+                    final scheduleFa = tseInfo?['schedule_fa'] as String? ?? 'شنبه تا چهارشنبه، ۰۹:۰۰ تا ۱۲:۳۰ (وقت تهران)';
+                    final nextOpenFa = tseInfo?['next_open_fa'] as String? ?? tseInfo?['next_open'] as String?;
+                    final exchangeStateFa = tseInfo?['exchange_state_fa'] as String?;
+
+                    return Container(
+                      margin: const EdgeInsets.only(top: 12),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.red.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.red.withValues(alpha: 0.2)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.lock_clock, size: 16, color: Colors.redAccent),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'بازار بورس بسته است (آخرین قیمت ثبت‌شده)',
+                                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.redAccent),
+                                ),
+                                Text(
+                                  scheduleFa,
+                                  style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurface.withValues(alpha: 0.8)),
+                                ),
+                                if (nextOpenFa != null || exchangeStateFa != null)
+                                  Text(
+                                    [
+                                      if (nextOpenFa != null) 'بازگشایی: $nextOpenFa',
+                                      if (exchangeStateFa != null) 'وضعیت: $exchangeStateFa',
+                                    ].join(' · '),
+                                    style: TextStyle(fontSize: 9.5, color: theme.colorScheme.onSurface.withValues(alpha: 0.6)),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ],
             ],
           ),
         ),

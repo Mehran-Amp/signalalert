@@ -26,22 +26,30 @@ class TestIranMarketSeparation(unittest.TestCase):
         with open('lib/features/exchanges/stocks/iran_domestic_exchange.dart', 'r') as f:
             content = f.read()
 
-        # Key symbols check including Bonbast (Gold & FX), TSETMC (Indices, Gold & Leveraged Funds, Top Stocks), ICE, IME, Treasury, Tether & Digital Gold
+        # Key REAL symbols check: Bonbast (Gold & FX), TSETMC (Indices, Gold & Leveraged Funds, Top Stocks), Tether & Digital Gold
         symbols = [
             'GERAM18', 'GERAM24', 'MESGHAL', 'COIN_EMAMI', 'COIN_BAHAR',
-            'USD_TMN', 'EUR_TMN', 'AED_TMN', 'SANA_USD', 'TEDPIX',
-            'AYAR', 'TALA', 'ZAR', 'KAHROBA', 'GOHAR', 'NAAB', 'NAFIS', 'TALT',
+            'USD_TMN', 'EUR_TMN', 'AED_TMN', 'TEDPIX',
+            'AYAR', 'TALA', 'ZAR', 'KAHROBA', 'GOHAR', 'NAAB', 'NAFIS',
+            'ALTUN', 'MESGHAL_ETF', 'JAVAHER', 'ZARFAM',
             'AHRAM', 'JAHESH', 'TAVAN', 'SHETAB', 'MOJ', 'BIDAR',
             'PALAYESH', 'DARA1', 'FIRUZEH', 'SERVO', 'TEMESHK',
             'FOOLAD', 'FEMELLI', 'FARES', 'SHEPNA', 'SHETRAN', 'VEBMELAT', 'KHODRO', 'KHASAPA',
-            'IME_GOLD_BAR', 'IME_SAFFRON', 'IME_SILVER',
-            'AKHZA_YTM', 'INTERBANK_RATE',
-            'ICE_USD_CASH', 'ICE_USD_REMIT',
-            'USDT_NOBITEX', 'USDT_WALLEX', 'USDT_TABDEAL', 'USDT_TETHERLAND',
-            'GOLD_NOBITEX', 'GOLD_WALLEX', 'GOLD_TABDEAL'
+            'USDT_NOBITEX', 'USDT_WALLEX', 'USDT_TETHERLAND',
+            'GOLD_NOBITEX', 'GOLD_WALLEX'
         ]
         for sym in symbols:
             self.assertIn(f"'{sym}'", content, f"Symbol {sym} must be present in IranDomesticExchange")
+
+        # Rule 7: Assert that fake/static placeholder symbols have been removed
+        fake_symbols = [
+            'IME_GOLD_BAR', 'IME_SAFFRON', 'IME_SILVER',
+            'AKHZA_YTM', 'INTERBANK_RATE',
+            'ICE_USD_CASH', 'ICE_USD_REMIT', 'ICE_EUR_CASH', 'ICE_EUR_REMIT',
+            'SANA_USD', 'NIMA_USD'
+        ]
+        for fake in fake_symbols:
+            self.assertNotIn(f"'{fake}'", content, f"Fake symbol {fake} must be removed from IranDomesticExchange")
 
     def test_server_iran_sources_and_cache_ttl_60s(self):
         with open('server.py', 'r') as f:
@@ -53,10 +61,16 @@ class TestIranMarketSeparation(unittest.TestCase):
         self.assertIn('TSETMC_INDEX_MAP', content)
         self.assertIn('TSETMC_GOLD_FUNDS_MAP', content)
         self.assertIn('TSETMC_INSTRUMENTS_MAP', content)
-        self.assertIn('TREASURY_RATES_MAP', content)
-        self.assertIn('ICE_MAP', content)
         self.assertIn('bonbast.com', content)
         self.assertIn('cdn.tsetmc.com', content)
+
+        # Rule 7: Verify static placeholder maps are removed
+        self.assertNotIn('TREASURY_RATES_MAP', content)
+        self.assertNotIn('ICE_MAP', content)
+
+        # Assure TGJU is completely removed
+        self.assertNotIn('TGJU_MAP', content)
+        self.assertNotIn('tgju.org', content)
 
         # Assure TGJU is completely removed
         self.assertNotIn('TGJU_MAP', content)
@@ -91,6 +105,44 @@ class TestIranMarketSeparation(unittest.TestCase):
         self.assertIn('normalizePersianDigits', fmt_content)
         self.assertIn('formatIranPrice', fmt_content)
         self.assertIn('formatAlertCardPrice', fmt_content)
+
+    def test_bridge_v2_5_spec_compliance(self):
+        with open('server.py', 'r') as f:
+            content = f.read()
+
+        # 1. Timeout must be at least 30s
+        self.assertIn('timeout_sec=30.0', content)
+
+        # 2. Authorization header with Bearer token
+        self.assertIn("'Authorization': f'Bearer {IRAN_BRIDGE_TOKEN}'", content)
+
+        # 3. Alert guards (Rule 5): No alerts triggered on carried_over, stale, market closed, or untraded
+        self.assertIn("cached_meta.get('alert_eligible') is False", content)
+        self.assertIn("cached_meta.get('carried_over') is True", content)
+        self.assertIn("cached_meta.get('state') in ['CARRIED_OVER', 'STALE'", content)
+        self.assertIn("traded_today", content)
+        self.assertIn("daily_close", content)
+
+        # 4. Markets status overview endpoint returns state_counts & symbols_with_price
+        self.assertIn('/api/markets/status', content)
+        self.assertIn('symbols_with_price', content)
+        self.assertIn('state_counts', content)
+        self.assertIn('state_fa', content)
+
+    def test_rule_6_app_display(self):
+        with open('lib/features/watchlist/pages/create_alert_flow.dart', 'r') as f:
+            content = f.read()
+
+        # Rule 6: TSE schedule_fa, next_open, and 'بسته' badge displayed
+        self.assertIn('schedule_fa', content)
+        self.assertIn('next_open', content)
+        self.assertIn('بسته', content)
+        self.assertIn('_loadIranMarketOverview', content)
+        self.assertIn('_iranItemMeta', content)
+
+        with open('lib/core/services/server_alert_service.dart', 'r') as f:
+            srv_content = f.read()
+        self.assertIn('fetchMarketsOverview', srv_content)
 
 if __name__ == '__main__':
     unittest.main()
